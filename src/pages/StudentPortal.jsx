@@ -12,6 +12,7 @@ import {
   doc,
   getDoc,
   updateDoc,
+  setDoc,
   serverTimestamp 
 } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
@@ -34,6 +35,7 @@ const StudentPortal = () => {
   const [submitting, setSubmitting] = useState(false);
   const [completedBlocks, setCompletedBlocks] = useState({}); // { subjectId: [blockIndices] }
   const [viewingSummary, setViewingSummary] = useState(null); // For viewing submission summary
+  const [selectedResources, setSelectedResources] = useState([]); // For resource attribution
   
   const db = getFirestore(app);
 
@@ -66,12 +68,12 @@ const StudentPortal = () => {
       console.log('StudentPortal: Found student:', studentData);
       setStudent(studentData);
 
-      // Get subjects for this specific student
+      // Get subjects for this specific student (support both old and new schema)
       const subjectsQuery = query(
         collection(db, 'subjects'),
         where('parent_id', '==', studentData.parent_id),
-        where('student_id', '==', studentData.id),
         where('is_active', '==', true),
+        where('student_ids', 'array-contains', studentData.id),
         orderBy('title')
       );
 
@@ -80,8 +82,35 @@ const StudentPortal = () => {
           id: doc.id,
           ...doc.data()
         }));
-        setSubjects(subjectsData);
-        setLoading(false);
+        
+        if (subjectsData.length === 0) {
+          // Try old schema for backward compatibility
+          const oldSubjectsQuery = query(
+            collection(db, 'subjects'),
+            where('parent_id', '==', studentData.parent_id),
+            where('student_id', '==', studentData.id),
+            where('is_active', '==', true),
+            orderBy('title')
+          );
+
+          const unsubscribeOldSubjects = onSnapshot(oldSubjectsQuery, (oldSnapshot) => {
+            const oldSubjectsData = oldSnapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            setSubjects(oldSubjectsData);
+            setLoading(false);
+          }, (error) => {
+            console.error('Error fetching old schema subjects:', error);
+            setLoading(false);
+          });
+          
+          // Store the old unsubscribe function to be called later
+          window.tempOldUnsubscribe = unsubscribeOldSubjects;
+        } else {
+          setSubjects(subjectsData);
+          setLoading(false);
+        }
       }, (error) => {
         console.error('Error fetching subjects:', error);
         setLoading(false);
@@ -109,6 +138,10 @@ const StudentPortal = () => {
       return () => {
         unsubscribeSubjects();
         unsubscribeSubmissions();
+        if (window.tempOldUnsubscribe) {
+          window.tempOldUnsubscribe();
+          window.tempOldUnsubscribe = null;
+        }
       };
     }, (error) => {
       console.error('StudentPortal: Error fetching student:', error);
@@ -173,6 +206,7 @@ const StudentPortal = () => {
     setSelectedSubject(subject);
     setSelectedBlockIndex(blockIndex);
     setSummaryText('');
+    setSelectedResources([]); // Reset resource selection
   };
 
   const submitBlock = async (subject, blockIndex, summary) => {
@@ -190,10 +224,32 @@ const StudentPortal = () => {
         summary_text: subject.require_input !== false ? summary : null,
         block_duration: subject.block_length || 30,
         is_locked: true,
+        resources_used: selectedResources,
         created_at: serverTimestamp()
       });
 
-      // Update subject document to increment completed_blocks
+      // Update student-specific progress in sub-collection
+      const progressRef = doc(db, 'subjects', subject.id, 'progress', student.id);
+      const progressDoc = await getDoc(progressRef);
+      
+      if (progressDoc.exists()) {
+        // Update existing progress
+        await updateDoc(progressRef, {
+          completed_blocks: (progressDoc.data().completed_blocks || 0) + 1,
+          updated_at: serverTimestamp()
+        });
+      } else {
+        // Create new progress document
+        await setDoc(progressRef, {
+          student_id: student.id,
+          completed_blocks: 1,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp()
+        });
+      }
+
+      // Also update the legacy completed_blocks field for backward compatibility
+      // Note: This will be the same for all students in shared subjects, but maintains compatibility
       const subjectRef = doc(db, 'subjects', subject.id);
       await updateDoc(subjectRef, {
         completed_blocks: (subject.completed_blocks || 0) + 1,
@@ -203,6 +259,7 @@ const StudentPortal = () => {
       setSelectedSubject(null);
       setSelectedBlockIndex(null);
       setSummaryText('');
+      setSelectedResources([]);
     } catch (error) {
       console.error('Error submitting block:', error);
       setError('Failed to submit block. Please try again.');
@@ -223,6 +280,12 @@ const StudentPortal = () => {
 
   const getSubjectProgress = (subject) => {
     return completedBlocks[subject.id]?.length || 0;
+  };
+
+  const getWeeklyProgress = () => {
+    const totalBlocks = subjects.reduce((sum, subject) => sum + (subject.block_count || 0), 0);
+    const completedCount = subjects.reduce((sum, subject) => sum + (completedBlocks[subject.id]?.length || 0), 0);
+    return totalBlocks > 0 ? (completedCount / totalBlocks) * 100 : 0;
   };
 
   if (loading) {
@@ -334,6 +397,27 @@ const StudentPortal = () => {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
+          {/* Weekly Progress Bar */}
+          {subjects.length > 0 && (
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Overall Weekly Progress</h2>
+                <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+                  {Math.round(getWeeklyProgress())}%
+                </span>
+              </div>
+              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 dark:from-indigo-400 dark:to-indigo-500 rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${getWeeklyProgress()}%` }}
+                />
+              </div>
+              <div className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                {subjects.reduce((sum, subject) => sum + (completedBlocks[subject.id]?.length || 0), 0)} of {subjects.reduce((sum, subject) => sum + (subject.block_count || 0), 0)} blocks completed this week
+              </div>
+            </div>
+          )}
+
           {subjects.length === 0 ? (
             <div className="text-center py-12">
               <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-4" />
@@ -396,6 +480,13 @@ const StudentPortal = () => {
                         </span>
                       </div>
 
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600 dark:text-slate-400">Block Length</span>
+                        <span className="font-medium text-slate-900 dark:text-white">
+                          {subject.block_length || 30} mins
+                        </span>
+                      </div>
+
                       {subject.require_input && (
                         <div className="flex items-center gap-2 text-xs text-slate-500">
                           <Clock className="w-3 h-3" />
@@ -408,16 +499,26 @@ const StudentPortal = () => {
                           <p className="text-xs font-medium text-slate-700 mb-2">Resources</p>
                           <div className="space-y-1">
                             {subject.resources.map((resource, index) => (
-                              <a
-                                key={index}
-                                href={resource.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                                {resource.name}
-                              </a>
+                              resource.url ? (
+                                <a
+                                  key={index}
+                                  href={resource.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  {resource.name}
+                                </a>
+                              ) : (
+                                <div
+                                  key={index}
+                                  className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400"
+                                >
+                                  <BookOpen className="w-3 h-3" />
+                                  {resource.name}
+                                </div>
+                              )
                             ))}
                           </div>
                         </div>
@@ -473,6 +574,7 @@ const StudentPortal = () => {
                   setSelectedSubject(null);
                   setSelectedBlockIndex(null);
                   setSummaryText('');
+                  setSelectedResources([]);
                 }}
                 className="text-slate-400 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200"
               >
@@ -488,6 +590,39 @@ const StudentPortal = () => {
                 submitBlock(selectedSubject, selectedBlockIndex, '');
               }
             }} className="p-6 space-y-4" autoComplete="off">
+              {/* Resource Attribution */}
+              {selectedSubject.resources && selectedSubject.resources.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Which resources did you use for this block?
+                  </label>
+                  <div className="space-y-2 max-h-32 overflow-y-auto dark:bg-slate-700">
+                    {selectedSubject.resources.map((resource, index) => (
+                      <label key={index} className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-600 p-2 rounded">
+                        <input
+                          type="checkbox"
+                          checked={selectedResources.includes(index)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedResources([...selectedResources, index]);
+                            } else {
+                              setSelectedResources(selectedResources.filter(i => i !== index));
+                            }
+                          }}
+                          className="w-4 h-4 text-indigo-600 border-slate-300 dark:border-slate-600 rounded focus:ring-indigo-500 focus:ring-2 dark:bg-slate-700"
+                        />
+                        <span className="text-sm text-slate-700 dark:text-slate-300">
+                          {resource.name}
+                          {resource.url && (
+                            <span className="text-xs text-slate-500 dark:text-slate-400 ml-1">(online)</span>
+                          )}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {selectedSubject.require_input !== false ? (
                 <div>
                   <label htmlFor="summary" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -532,6 +667,7 @@ const StudentPortal = () => {
                     setSelectedSubject(null);
                     setSelectedBlockIndex(null);
                     setSummaryText('');
+                    setSelectedResources([]);
                   }}
                   className="flex-1 px-4 py-2 text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors"
                 >

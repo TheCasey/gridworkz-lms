@@ -12,7 +12,9 @@ import {
   deleteDoc,
   serverTimestamp,
   addDoc,
-  writeBatch
+  writeBatch,
+  getDoc,
+  setDoc
 } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
 import { 
@@ -165,20 +167,47 @@ const Reports = () => {
           weekEnding,
           submissions: [],
           totalHours: 0,
-          totalBlocks: 0
+          totalBlocks: 0,
+          subjectsData: {} // For grouping by subject
         };
       }
       
       reports[weekKey].submissions.push(submission);
       reports[weekKey].totalBlocks += 1;
       reports[weekKey].totalHours += (submission.block_duration || 30) / 60;
+      
+      // Group by subject for organized reporting
+      const subjectName = submission.subject_name || 'Unknown Subject';
+      if (!reports[weekKey].subjectsData[subjectName]) {
+        reports[weekKey].subjectsData[subjectName] = {
+          subjectTitle: subjectName,
+          summaries: [],
+          totalBlocks: 0
+        };
+      }
+      
+      reports[weekKey].subjectsData[subjectName].summaries.push({
+        text: submission.summary_text,
+        date: timestamp,
+        blockNumber: submission.block_index + 1,
+        resources: submission.resources_used || [],
+        duration: submission.block_duration || 30
+      });
+      reports[weekKey].subjectsData[subjectName].totalBlocks += 1;
     });
     
     return Object.values(reports);
   };
 
   const getWeeklyGoal = (studentId) => {
-    const studentSubjects = subjects.filter(s => s.student_id === studentId);
+    const studentSubjects = subjects.filter(s => {
+      // New schema: student_ids array
+      if (s.student_ids && Array.isArray(s.student_ids)) {
+        return s.student_ids.includes(studentId);
+      }
+      // Old schema: single student_id
+      return s.student_id === studentId;
+    });
     return studentSubjects.reduce((sum, subject) => sum + (subject.block_count || 10), 0);
   };
 
@@ -218,7 +247,30 @@ const Reports = () => {
 
             const totalBlocks = weekSubmissions.length;
             const totalHours = weekSubmissions.reduce((sum, s) => sum + (s.block_duration || 30) / 60, 0);
-            const summaries = weekSubmissions.map(s => s.summary_text).filter(Boolean);
+            
+            // Group summaries by subject with metadata
+            const subjectsData = {};
+            weekSubmissions.forEach(submission => {
+              const subjectName = submission.subject_name || 'Unknown Subject';
+              if (!subjectsData[subjectName]) {
+                subjectsData[subjectName] = {
+                  subjectTitle: subjectName,
+                  summaries: [],
+                  totalBlocks: 0
+                };
+              }
+              
+              if (submission.summary_text) {
+                subjectsData[subjectName].summaries.push({
+                  text: submission.summary_text,
+                  date: submission.timestamp.toDate(),
+                  blockNumber: submission.block_index + 1,
+                  resources: submission.resources_used || [],
+                  duration: submission.block_duration || 30
+                });
+              }
+              subjectsData[subjectName].totalBlocks += 1;
+            });
 
             // Create atomic batch: report creation + subject reset + submission cleanup
             const batch = writeBatch(db);
@@ -234,20 +286,42 @@ const Reports = () => {
               weekly_goal: weeklyGoal,
               total_blocks: totalBlocks,
               total_hours: Math.round(totalHours * 10) / 10,
-              summaries: summaries,
+              subjects_data: subjectsData, // New structured data
+              summaries: weekSubmissions.map(s => s.summary_text).filter(Boolean), // Keep for backward compatibility
               attachments: [],
               created_at: serverTimestamp()
             });
 
-            // Reset completed blocks for all student subjects in the same batch
-            const studentSubjects = subjects.filter(s => s.student_id === student.id);
-            studentSubjects.forEach(subject => {
+            // Reset student-specific progress in sub-collection
+            const studentSubjects = subjects.filter(s => {
+              // New schema: student_ids array
+              if (s.student_ids && Array.isArray(s.student_ids)) {
+                return s.student_ids.includes(student.id);
+              }
+              // Old schema: single student_id
+              return s.student_id === student.id;
+            });
+            
+            for (const subject of studentSubjects) {
+              // Reset legacy completed_blocks field
               const subjectRef = doc(db, 'subjects', subject.id);
               batch.update(subjectRef, {
                 completed_blocks: 0,
                 updated_at: serverTimestamp()
               });
-            });
+              
+              // Reset student-specific progress only if it exists
+              const progressRef = doc(db, 'subjects', subject.id, 'progress', student.id);
+              const progressDoc = await getDoc(progressRef);
+              
+              if (progressDoc.exists()) {
+                batch.update(progressRef, {
+                  completed_blocks: 0,
+                  updated_at: serverTimestamp()
+                });
+              }
+              // If no progress document exists, we don't need to create one for reset
+            }
 
             // Delete current week's submissions to provide clean slate
             weekSubmissions.forEach(submission => {
@@ -413,7 +487,45 @@ const Reports = () => {
                 </div>
               </div>
               
-              ${report.summaries && report.summaries.length > 0 ? `
+              ${report.subjects_data && Object.keys(report.subjects_data).length > 0 ? `
+                <div class="summaries">
+                  <h3>Learning Summaries by Subject</h3>
+                  ${Object.values(report.subjects_data).map(subjectData => `
+                    <div class="subject-section" style="margin-bottom: 30px; page-break-inside: avoid;">
+                      <h4 style="color: #3B82F6; border-bottom: 2px solid #E5E7EB; padding-bottom: 10px; margin-bottom: 15px;">
+                        📚 ${subjectData.subjectTitle} (${subjectData.totalBlocks} blocks)
+                      </h4>
+                      ${subjectData.summaries.length > 0 ? `
+                        <div class="subject-summaries">
+                          ${subjectData.summaries.map(summary => `
+                            <div class="summary-item" style="margin: 15px 0; padding: 15px; background: #F9FAFB; border-left: 4px solid #3B82F6; border-radius: 4px;">
+                              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; color: #6B7280;">
+                                <span style="background: #3B82F6; color: white; padding: 2px 8px; border-radius: 12px; font-weight: bold;">
+                                  Block ${summary.blockNumber} of ${subjectData.totalBlocks}
+                                </span>
+                                <span>${summary.date.toDate ? summary.date.toDate().toLocaleDateString() : new Date(summary.date).toLocaleDateString()} at ${summary.date.toDate ? summary.date.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : new Date(summary.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                              </div>
+                              <p style="margin: 0 0 10px 0; line-height: 1.5;">${summary.text}</p>
+                              ${summary.resources && summary.resources.length > 0 ? `
+                                <div style="margin-top: 10px;">
+                                  <span style="font-size: 11px; color: #6B7280; font-weight: bold;">Resources Used:</span>
+                                  <div style="display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap;">
+                                    ${summary.resources.map((resourceIndex, resourceIdx) => `
+                                      <span style="background: #DBEAFE; color: #1E40AF; padding: 2px 6px; border-radius: 8px; font-size: 10px;">
+                                        Resource ${resourceIndex + 1}
+                                      </span>
+                                    `).join('')}
+                                  </div>
+                                </div>
+                              ` : ''}
+                            </div>
+                          `).join('')}
+                        </div>
+                      ` : '<p style="font-style: italic; color: #6B7280;">No summaries for this subject</p>'}
+                    </div>
+                  `).join('')}
+                </div>
+              ` : report.summaries && report.summaries.length > 0 ? `
                 <div class="summaries">
                   <h3>Learning Summaries</h3>
                   ${report.summaries.map(summary => `
@@ -573,7 +685,50 @@ const Reports = () => {
                 </div>
               </div>
 
-              {report.summaries && report.summaries.length > 0 && (
+              {report.subjects_data && Object.keys(report.subjects_data).length > 0 ? (
+                <div className="border-t border-slate-100 pt-4">
+                  <h4 className="text-sm font-medium text-slate-700 mb-4">Learning Summaries by Subject</h4>
+                  <div className="space-y-4">
+                    {Object.values(report.subjects_data).map((subjectData, index) => (
+                      <div key={index} className="bg-slate-50 rounded-lg p-4">
+                        <h5 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
+                          <BookOpen className="w-4 h-4" />
+                          {subjectData.subjectTitle}
+                          <span className="text-xs text-slate-500">({subjectData.totalBlocks} blocks)</span>
+                        </h5>
+                        {subjectData.summaries.length > 0 ? (
+                          <div className="space-y-3">
+                            {subjectData.summaries.map((summary, summaryIndex) => (
+                              <div key={summaryIndex} className="bg-white rounded-lg p-3 border border-slate-200">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-xs font-medium text-indigo-600">
+                                    Block {summary.blockNumber} of {subjectData.totalBlocks}
+                                  </span>
+                                  <span className="text-xs text-slate-500">
+                                    {summary.date.toDate ? summary.date.toDate().toLocaleDateString() : new Date(summary.date).toLocaleDateString()}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-slate-700 mb-2">{summary.text}</p>
+                                {summary.resources && summary.resources.length > 0 && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {summary.resources.map((resourceIndex, resourceIdx) => (
+                                      <span key={resourceIdx} className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">
+                                        Resource {resourceIndex + 1}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-500 italic">No summaries for this subject</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : report.summaries && report.summaries.length > 0 ? (
                 <div className="border-t border-slate-100 pt-4">
                   <h4 className="text-sm font-medium text-slate-700 mb-2">Weekly Summaries</h4>
                   <div className="space-y-2">
@@ -589,7 +744,7 @@ const Reports = () => {
                     )}
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
           ))}
         </div>
@@ -629,7 +784,50 @@ const Reports = () => {
                 </div>
               </div>
 
-              {selectedReport.summaries && selectedReport.summaries.length > 0 && (
+              {selectedReport.subjects_data && Object.keys(selectedReport.subjects_data).length > 0 ? (
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4">Learning Summaries by Subject</h3>
+                  <div className="space-y-4">
+                    {Object.values(selectedReport.subjects_data).map((subjectData, index) => (
+                      <div key={index} className="bg-slate-50 rounded-lg p-4">
+                        <h4 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
+                          <BookOpen className="w-4 h-4" />
+                          {subjectData.subjectTitle}
+                          <span className="text-sm text-slate-500">({subjectData.totalBlocks} blocks)</span>
+                        </h4>
+                        {subjectData.summaries.length > 0 ? (
+                          <div className="space-y-3">
+                            {subjectData.summaries.map((summary, summaryIndex) => (
+                              <div key={summaryIndex} className="bg-white rounded-lg p-3 border border-slate-200">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-xs font-medium text-indigo-600">
+                                    Block {summary.blockNumber} of {subjectData.totalBlocks}
+                                  </span>
+                                  <span className="text-xs text-slate-500">
+                                    {summary.date.toDate ? summary.date.toDate().toLocaleDateString() + ' at ' + summary.date.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : new Date(summary.date).toLocaleDateString() + ' at ' + new Date(summary.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-slate-700 mb-2 whitespace-pre-wrap">{summary.text}</p>
+                                {summary.resources && summary.resources.length > 0 && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {summary.resources.map((resourceIndex, resourceIdx) => (
+                                      <span key={resourceIdx} className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">
+                                        Resource {resourceIndex + 1}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-500 italic">No summaries for this subject</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : selectedReport.summaries && selectedReport.summaries.length > 0 ? (
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900 mb-4">All Summaries</h3>
                   <div className="space-y-3">
@@ -640,7 +838,7 @@ const Reports = () => {
                     ))}
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>

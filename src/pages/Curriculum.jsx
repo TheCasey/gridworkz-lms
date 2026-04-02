@@ -35,7 +35,7 @@ const Curriculum = () => {
   const [editingSubject, setEditingSubject] = useState(null);
   
   // Form state
-  const [selectedStudent, setSelectedStudent] = useState('');
+  const [selectedStudents, setSelectedStudents] = useState([]);
   const [subjectName, setSubjectName] = useState('');
   const [totalBlocks, setTotalBlocks] = useState(10);
   const [blockLength, setBlockLength] = useState(30);
@@ -110,7 +110,7 @@ const Curriculum = () => {
   };
 
   const resetForm = () => {
-    setSelectedStudent('');
+    setSelectedStudents([]);
     setSubjectName('');
     setTotalBlocks(10);
     setBlockLength(30);
@@ -124,24 +124,24 @@ const Curriculum = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!selectedStudent || !subjectName.trim()) {
-      alert('Please select a student and enter a subject name');
+    if (!selectedStudents.length || !subjectName.trim()) {
+      alert('Please select at least one student and enter a subject name');
       return;
     }
 
-    const selectedStudentData = students.find(s => s.id === selectedStudent);
+    const selectedStudentsData = students.filter(s => selectedStudents.includes(s.id));
+    const studentNames = selectedStudentsData.map(s => s.name).join(', ');
     
     try {
       const subjectData = {
-        student_id: selectedStudent,
-        student_name: selectedStudentData.name,
+        student_ids: selectedStudents,
+        student_names: studentNames,
         parent_id: currentUser.uid,
         title: subjectName.trim(),
         block_count: totalBlocks,
         block_length: blockLength,
-        completed_blocks: 0,
         color: subjectColor,
-        resources: resources.filter(r => r.name.trim() && r.url.trim()),
+        resources: resources.filter(r => r.name.trim()),
         require_input: requireSummary,
         is_active: true,
         created_at: serverTimestamp(),
@@ -168,7 +168,9 @@ const Curriculum = () => {
   };
 
   const handleEdit = (subject) => {
-    setSelectedStudent(subject.student_id);
+    // Handle both old schema (student_id) and new schema (student_ids)
+    const studentIds = subject.student_ids || [subject.student_id].filter(Boolean);
+    setSelectedStudents(studentIds);
     setSubjectName(subject.title);
     setTotalBlocks(subject.block_count || 10);
     setBlockLength(subject.block_length || 30);
@@ -247,21 +249,35 @@ const Curriculum = () => {
               {/* Student Selection */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Student *
+                  Students *
                 </label>
-                <select
-                  value={selectedStudent}
-                  onChange={(e) => setSelectedStudent(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  required
-                >
-                  <option value="">Select a student</option>
+                <div className="space-y-2 max-h-48 overflow-y-auto border border-slate-300 rounded-lg p-3">
                   {students.map((student) => (
-                    <option key={student.id} value={student.id}>
-                      {student.name}
-                    </option>
+                    <label key={student.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-2 rounded">
+                      <input
+                        type="checkbox"
+                        checked={selectedStudents.includes(student.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedStudents([...selectedStudents, student.id]);
+                          } else {
+                            setSelectedStudents(selectedStudents.filter(id => id !== student.id));
+                          }
+                        }}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-sm text-slate-700">{student.name}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
+                {selectedStudents.length === 0 && (
+                  <p className="text-xs text-red-500 mt-1">Please select at least one student</p>
+                )}
+                {selectedStudents.length > 0 && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    {selectedStudents.length} student{selectedStudents.length > 1 ? 's' : ''} selected
+                  </p>
+                )}
               </div>
 
               {/* Subject Name */}
@@ -455,7 +471,9 @@ const Curriculum = () => {
                       {subject.title}
                     </h3>
                   </div>
-                  <p className="text-sm text-slate-500">{subject.student_name}</p>
+                  <p className="text-sm text-slate-500">
+                    {subject.student_names || subject.student_name || 'Unknown students'}
+                  </p>
                 </div>
                 <div className="flex gap-2">
                   <button

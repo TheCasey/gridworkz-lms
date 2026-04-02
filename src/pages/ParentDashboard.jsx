@@ -14,7 +14,8 @@ import {
   limit,
   addDoc,
   serverTimestamp,
-  writeBatch
+  writeBatch,
+  setDoc
 } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
 import { nanoid } from 'nanoid';
@@ -92,7 +93,7 @@ const ParentDashboard = () => {
       console.error('Firebase Error Details:', error.code, error.message);
     });
 
-    // Fetch subjects for weekly progress
+    // Fetch subjects for weekly progress (support both old and new schema)
     const subjectsQuery = query(
       collection(db, 'subjects'),
       where('parent_id', '==', currentUser.uid),
@@ -242,8 +243,7 @@ const ParentDashboard = () => {
       const results = await Promise.allSettled(
         students.map(async (student) => {
           try {
-            const weeklyGoal = subjects
-              .filter(s => s.student_id === student.id)
+            const weeklyGoal = getStudentSubjects(student.id)
               .reduce((sum, subject) => sum + (subject.block_count || 10), 0);
             
             const weekSubmissions = submissions.filter(s => {
@@ -275,15 +275,28 @@ const ParentDashboard = () => {
               created_at: serverTimestamp()
             });
 
-            // Reset completed blocks for all student subjects in the same batch
-            const studentSubjects = subjects.filter(s => s.student_id === student.id);
-            studentSubjects.forEach(subject => {
+            // Reset student-specific progress in sub-collection
+            const studentSubjects = getStudentSubjects(student.id);
+            for (const subject of studentSubjects) {
+              // Reset legacy completed_blocks field
               const subjectRef = doc(db, 'subjects', subject.id);
               batch.update(subjectRef, {
                 completed_blocks: 0,
                 updated_at: serverTimestamp()
               });
-            });
+              
+              // Reset student-specific progress only if it exists
+              const progressRef = doc(db, 'subjects', subject.id, 'progress', student.id);
+              const progressDoc = await getDoc(progressRef);
+              
+              if (progressDoc.exists()) {
+                batch.update(progressRef, {
+                  completed_blocks: 0,
+                  updated_at: serverTimestamp()
+                });
+              }
+              // If no progress document exists, we don't need to create one for reset
+            }
 
             // Delete current week's submissions to provide clean slate
             weekSubmissions.forEach(submission => {
@@ -353,6 +366,18 @@ const ParentDashboard = () => {
       total: totalBlocks,
       percentage: Math.round((completedBlocks / totalBlocks) * 100)
     };
+  };
+
+  // Helper function to get subjects for a specific student (supporting shared subjects)
+  const getStudentSubjects = (studentId) => {
+    return subjects.filter(subject => {
+      // New schema: student_ids array
+      if (subject.student_ids && Array.isArray(subject.student_ids)) {
+        return subject.student_ids.includes(studentId);
+      }
+      // Old schema: single student_id
+      return subject.student_id === studentId;
+    });
   };
 
   const navItems = [
@@ -555,7 +580,7 @@ const ParentDashboard = () => {
                     <h4 className="text-sm font-semibold text-indigo-900 mb-3">Weekly Progress</h4>
                     <div className="space-y-2">
                       {students.map(student => {
-                        const studentSubjects = subjects.filter(s => s.student_id === student.id);
+                        const studentSubjects = getStudentSubjects(student.id);
                         if (studentSubjects.length === 0) return null;
                         
                         const totalWeeklyBlocks = studentSubjects.reduce((sum, subject) => sum + (subject.block_count || 10), 0);
