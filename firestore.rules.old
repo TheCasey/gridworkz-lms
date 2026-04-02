@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Test collection for debugging
+    match /test/{documentId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Parents can read/write their own documents
+    match /parents/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Students can be read by their parent or publicly via slug queries
+    match /students/{studentId} {
+      allow write: if request.auth != null && 
+        request.auth.uid == resource.data.parent_id ||
+        request.auth.uid == request.resource.data.parent_id;
+      // Allow read for authenticated parents or public access for student portal
+      allow read, list: if request.auth != null && request.auth.uid == resource.data.parent_id || request.auth == null;
+    }
+    
+    // Subjects can be read by their parent or publicly for student portal
+    match /subjects/{subjectId} {
+      allow write: if request.auth != null && 
+        request.auth.uid == resource.data.parent_id ||
+        request.auth.uid == request.resource.data.parent_id;
+      // Allow read for authenticated parents or public access for student portal
+      allow read, list: if request.auth != null && request.auth.uid == resource.data.parent_id || request.auth == null;
+    }
+    
+    // Submissions can be read/written by the parent or the student
+    // Also allow public read/write for student portal
+    match /submissions/{submissionId} {
+      // Allow write for authenticated users (parent or student)
+      allow write: if request.auth != null && 
+        (request.auth.uid == resource.data.parent_id ||
+         request.auth.uid == request.resource.data.parent_id ||
+         request.auth.uid == resource.data.student_id ||
+         request.auth.uid == request.resource.data.student_id);
+      // Allow read for authenticated users or public access for student portal
+      allow read, list: if request.auth != null && 
+        (request.auth.uid == resource.data.parent_id ||
+         request.auth.uid == resource.data.student_id) || request.auth == null;
+    }
+    
+    // Weekly reports can be read/written by their parent
+    match /weeklyReports/{reportId} {
+      allow read, write: if request.auth != null && 
+        request.auth.uid == resource.data.parent_id ||
+        request.auth.uid == request.resource.data.parent_id;
+    }
+    
+    // Daily logs can be read/written by their parent
+    match /dailyLogs/{logId} {
+      allow read, write: if request.auth != null && 
+        request.auth.uid == resource.data.parent_id ||
+        request.auth.uid == request.resource.data.parent_id;
+    }
+  }
+}
