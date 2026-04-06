@@ -1,5 +1,8 @@
 # **GridWorkz 🎓**
 
+**Use Gridworkz** Make your own account and start using it today at the following link, or host it yourself. This is a work in progress so please report any issues you find.
+https://gridworkz-lms.pages.dev/
+
 **GridWorkz** is a custom-built, full-stack homeschooling management platform designed to streamline curriculum tracking, student accountability, and state-mandated reporting. Built with a "Mobile-First" philosophy, it empowers students to manage their daily "Blocks" while providing parents with real-time insights and automated weekly transcripts.
 
 ## **🚀 Key Features**

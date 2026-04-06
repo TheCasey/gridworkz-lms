@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { 
   getFirestore, 
@@ -278,45 +278,26 @@ const StudentPortal = () => {
   const handleTimerComplete = (subjectId) => {
     const subject = subjects.find(s => s.id === subjectId);
     
-    playNotificationSound();
-    
-    // Find the next available block
-    const nextAvailableBlock = getNextAvailableBlock(subject);
-    
-    if (nextAvailableBlock !== null) {
-      const message = `Great job! Ready to submit your summary for ${subject.title}?`;
-      
-      if (window.confirm(message)) {
-        handleBlockClick(subject, nextAvailableBlock);
-      } else {
-        // Auto-reset the timer for mandatory timer subjects
-        if (subject.require_timer) {
-          const totalSeconds = (subject.block_length || 30) * 60;
-          const timerData = {
-            timeLeft: totalSeconds,
-            isRunning: false,
-            totalSeconds,
-            workingOnBlockIndex: nextAvailableBlock,
-            timestamp: Date.now()
-          };
-          
-          setActiveTimers(prev => ({
-            ...prev,
-            [subjectId]: timerData
-          }));
-          
-          saveTimerToStorage(subjectId, timerData);
-          
-          alert('Timer reset. You can start again when you\'re ready!');
-        }
-      }
-    } else {
-      alert("Time's up! All blocks for this subject are completed.");
+    if (!subject) {
+      console.error('Subject not found for timer completion:', subjectId);
+      return;
     }
+    
+    // Play completion sound once with error handling
+    try {
+      playNotificationSound();
+    } catch (error) {
+      console.warn('Failed to play notification sound:', error);
+    }
+    
+    // Timer is now completed, update state to show Complete Block button
+    // The timer state is already set to isRunning: false in the countdown effect
+    // No automatic modal popup - user must click Complete Block button
   };
 
   const getNextAvailableBlock = (subject) => {
-    const totalBlocks = subject.block_count || 10;
+    if (!subject) return null;
+    const totalBlocks = subject?.block_count || 10;
     const completed = completedBlocks[subject.id] || [];
     
     for (let i = 0; i < totalBlocks; i++) {
@@ -328,10 +309,15 @@ const StudentPortal = () => {
   };
 
   const startTimer = (subject) => {
+    if (!subject) {
+      console.error('Invalid subject provided to startTimer');
+      return;
+    }
+    
     const nextAvailableBlock = getNextAvailableBlock(subject);
     
     if (nextAvailableBlock === null) {
-      alert('All blocks for this subject are completed!');
+      alert('Subject Complete! All blocks for this subject are already finished.');
       return;
     }
     
@@ -350,7 +336,7 @@ const StudentPortal = () => {
       };
     } else {
       // Start new timer
-      const totalSeconds = (subject.block_length || 30) * 60;
+      const totalSeconds = (subject?.block_length || 30) * 60;
       timerData = {
         timeLeft: totalSeconds,
         isRunning: true,
@@ -398,14 +384,21 @@ const StudentPortal = () => {
     saveTimerToStorage(subject.id, timerData);
   };
 
-  const completeNextBlock = (subject) => {
+  const handleCompleteBlock = (subject) => {
+    if (!subject) {
+      console.error('Invalid subject provided to handleCompleteBlock');
+      return;
+    }
+    
     const nextAvailableBlock = getNextAvailableBlock(subject);
     
-    if (nextAvailableBlock !== null) {
-      handleBlockClick(subject, nextAvailableBlock);
-    } else {
-      alert('All blocks for this subject are completed!');
+    if (nextAvailableBlock === null) {
+      alert('Subject Complete! All blocks for this subject are already finished.');
+      return;
     }
+    
+    // Open submission modal for the next available block
+    handleBlockClick(subject, nextAvailableBlock);
   };
 
   const resetTimer = (subject) => {
@@ -485,7 +478,19 @@ const StudentPortal = () => {
   };
 
   const handleBlockClick = (subject, blockIndex) => {
+    if (!subject) {
+      console.error('Invalid subject provided to handleBlockClick');
+      return;
+    }
+    
     if (isBlockCompleted(subject, blockIndex)) return;
+    
+    // Check if all blocks are already completed
+    const nextAvailableBlock = getNextAvailableBlock(subject);
+    if (nextAvailableBlock === null) {
+      alert('Subject Complete! All blocks for this subject are already finished.');
+      return;
+    }
     
     // Check if timer is required for this subject
     if (subject.require_timer) {
@@ -544,9 +549,36 @@ const StudentPortal = () => {
         });
       }
 
-      // NOTE: Removed the legacy completed_blocks field update from main subject document
-      // This was causing the bug where progress synced across all students in shared subjects
-      // Progress is now tracked exclusively per-student via submissions and progress sub-collection
+      // Reset timer for next session after successful submission
+      const totalSeconds = (subject?.block_length || 30) * 60;
+      const nextAvailableBlock = getNextAvailableBlock(subject);
+      
+      if (nextAvailableBlock !== null) {
+        // Reset timer for the next block
+        const timerData = {
+          timeLeft: totalSeconds,
+          isRunning: false,
+          totalSeconds,
+          workingOnBlockIndex: nextAvailableBlock,
+          timestamp: Date.now()
+        };
+        
+        setActiveTimers(prev => ({
+          ...prev,
+          [subject.id]: timerData
+        }));
+        
+        saveTimerToStorage(subject.id, timerData);
+      } else {
+        // All blocks completed, clear timer
+        setActiveTimers(prev => {
+          const updated = { ...prev };
+          delete updated[subject.id];
+          return updated;
+        });
+        
+        clearTimerFromStorage(subject.id);
+      }
 
       setSelectedSubject(null);
       setSelectedBlockIndex(null);
@@ -561,39 +593,25 @@ const StudentPortal = () => {
     }
   };
 
-  const isBlockCompleted = (subject, blockIndex) => {
-    const isCompleted = completedBlocks[subject.id]?.includes(blockIndex) || false;
-    console.log(`[DEBUG] isBlockCompleted for subject "${subject.title}", block ${blockIndex}:`, {
-      subjectId: subject.id,
-      blockIndex,
-      completedBlocks: completedBlocks[subject.id],
-      isCompleted
-    });
-    return isCompleted;
-  };
+  const isBlockCompleted = useMemo(() => (subject, blockIndex) => {
+    return completedBlocks[subject.id]?.includes(blockIndex) || false;
+  }, [completedBlocks]);
 
-  const isSubjectLocked = (subject) => {
-    const totalBlocks = subject.block_count || 4;
+  const isSubjectLocked = useMemo(() => (subject) => {
+    const totalBlocks = subject?.block_count || 4;
     const completedCount = completedBlocks[subject.id]?.length || 0;
     return completedCount >= totalBlocks;
-  };
+  }, [completedBlocks]);
 
-  const getSubjectProgress = (subject) => {
-    const progress = completedBlocks[subject.id]?.length || 0;
-    console.log(`[DEBUG] getSubjectProgress for subject "${subject.title}":`, {
-      subjectId: subject.id,
-      completedBlocks: completedBlocks[subject.id],
-      progressCount: progress,
-      blockCount: subject.block_count
-    });
-    return progress;
-  };
+  const getSubjectProgress = useMemo(() => (subject) => {
+    return completedBlocks[subject.id]?.length || 0;
+  }, [completedBlocks]);
 
-  const getWeeklyProgress = () => {
-    const totalBlocks = subjects.reduce((sum, subject) => sum + (subject.block_count || 0), 0);
+  const getWeeklyProgress = useMemo(() => () => {
+    const totalBlocks = subjects.reduce((sum, subject) => sum + (subject?.block_count || 0), 0);
     const completedCount = subjects.reduce((sum, subject) => sum + (completedBlocks[subject.id]?.length || 0), 0);
     return totalBlocks > 0 ? (completedCount / totalBlocks) * 100 : 0;
-  };
+  }, [subjects, completedBlocks]);
 
   if (loading) {
     return (
@@ -736,7 +754,7 @@ const StudentPortal = () => {
               {subjects.map((subject) => {
                 const progress = getSubjectProgress(subject);
                 const isLocked = isSubjectLocked(subject);
-                const isCompleted = progress >= subject.block_count;
+                const isCompleted = progress >= (subject?.block_count || 0);
 
                 return (
                   <div
@@ -753,7 +771,7 @@ const StudentPortal = () => {
                           {subject.title}
                         </h3>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
-                          {progress} / {subject.block_count} blocks this week
+                          {progress} / {subject?.block_count} blocks this week
                         </p>
                       </div>
                       <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
@@ -790,7 +808,7 @@ const StudentPortal = () => {
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-slate-600 dark:text-slate-400">Block Length</span>
                         <span className="font-medium text-slate-900 dark:text-white">
-                          {subject.block_length || 30} mins
+                          {subject?.block_length || 30} mins
                         </span>
                       </div>
 
@@ -835,7 +853,7 @@ const StudentPortal = () => {
                       <div className="pt-3 border-t border-slate-100">
                         <p className="text-sm font-medium text-slate-700 mb-3">Weekly Blocks</p>
                         <div className="flex gap-2 flex-wrap">
-                          {Array.from({ length: subject.block_count || 10 }, (_, index) => {
+                          {Array.from({ length: subject?.block_count || 10 }, (_, index) => {
                             const isCompleted = isBlockCompleted(subject, index);
                             const timer = activeTimers[subject.id];
                             const isWorkingOn = timer && timer.workingOnBlockIndex === index && timer.timeLeft > 0;
@@ -884,9 +902,11 @@ const StudentPortal = () => {
                           <div className="text-center mb-4">
                             {activeTimers[subject.id] ? (
                               <div className={`text-3xl font-bold font-mono ${
-                                subject.require_timer 
-                                  ? 'text-orange-600 dark:text-orange-400' 
-                                  : 'text-indigo-600 dark:text-indigo-400'
+                                activeTimers[subject.id].timeLeft === 0
+                                  ? 'text-green-600 dark:text-green-400 animate-pulse'
+                                  : subject.require_timer 
+                                    ? 'text-orange-600 dark:text-orange-400' 
+                                    : 'text-indigo-600 dark:text-indigo-400'
                               }`}>
                                 {formatTime(activeTimers[subject.id].timeLeft)}
                               </div>
@@ -895,11 +915,15 @@ const StudentPortal = () => {
                                 --:--
                               </div>
                             )}
-                            {subject.require_timer && (
+                            {activeTimers[subject.id]?.timeLeft === 0 ? (
+                              <div className="text-sm text-green-600 dark:text-green-400 mt-1 font-medium">
+                                ⏰ Time's Up! Ready to submit?
+                              </div>
+                            ) : subject.require_timer ? (
                               <div className="text-xs text-orange-600 dark:text-orange-400 mt-1 font-medium">
                                 ⏱ Mandatory Timer Required
                               </div>
-                            )}
+                            ) : null}
                           </div>
                           
                           {/* Control Buttons */}
@@ -914,34 +938,55 @@ const StudentPortal = () => {
                               </button>
                             ) : (
                               <>
-                                {activeTimers[subject.id].isRunning ? (
-                                  <button
-                                    onClick={() => pauseTimer(subject)}
-                                    className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors"
-                                  >
-                                    Pause
-                                  </button>
+                                {activeTimers[subject.id].timeLeft > 0 ? (
+                                  // Timer is still running - show Pause/Resume and Reset
+                                  <>
+                                    {activeTimers[subject.id].isRunning ? (
+                                      <button
+                                        onClick={() => pauseTimer(subject)}
+                                        className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors"
+                                      >
+                                        Pause
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => resumeTimer(subject)}
+                                        className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
+                                      >
+                                        Resume
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => resetTimer(subject)}
+                                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
+                                    >
+                                      Reset
+                                    </button>
+                                  </>
                                 ) : (
-                                  <button
-                                    onClick={() => resumeTimer(subject)}
-                                    className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
-                                  >
-                                    Resume
-                                  </button>
+                                  // Timer completed - show Complete Block button
+                                  <>
+                                    <button
+                                      onClick={() => handleCompleteBlock(subject)}
+                                      className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors animate-pulse"
+                                    >
+                                      Complete Block
+                                    </button>
+                                    <button
+                                      onClick={() => resetTimer(subject)}
+                                      className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg font-medium transition-colors"
+                                    >
+                                      Reset
+                                    </button>
+                                  </>
                                 )}
-                                <button
-                                  onClick={() => resetTimer(subject)}
-                                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
-                                >
-                                  Reset
-                                </button>
                               </>
                             )}
                             
-                            {/* Only show Complete Next Block if timer is not required OR timer is completed */}
-                            {!subject.require_timer && (activeTimers[subject.id] || !isSubjectLocked(subject)) && (
+                            {/* Only show Complete Next Block if timer is not required OR no active timer */}
+                            {!subject.require_timer && (!activeTimers[subject.id] || activeTimers[subject.id].timeLeft > 0) && !isSubjectLocked(subject) && (
                               <button
-                                onClick={() => completeNextBlock(subject)}
+                                onClick={() => handleCompleteBlock(subject)}
                                 className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
                               >
                                 Complete Next Block
@@ -1075,7 +1120,7 @@ const StudentPortal = () => {
               {selectedSubject.require_input !== false ? (
                 <div>
                   <label htmlFor="summary" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    You're completing 1 block of {selectedSubject.title} ({selectedSubject.block_length || 30} minutes). What did you accomplish?
+                    You're completing 1 block of {selectedSubject.title} ({selectedSubject?.block_length || 30} minutes). What did you accomplish?
                   </label>
                   <textarea
                     id="summary"
@@ -1103,7 +1148,7 @@ const StudentPortal = () => {
               ) : (
                 <div className="text-center py-4">
                   <p className="text-sm text-slate-600">
-                    Completing 1 block of {selectedSubject.title} ({selectedSubject.block_length || 30} minutes)
+                    Completing 1 block of {selectedSubject.title} ({selectedSubject?.block_length || 30} minutes)
                   </p>
                   <p className="text-xs text-slate-500 mt-2">No summary required for this subject</p>
                 </div>
