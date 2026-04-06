@@ -56,6 +56,9 @@ const ParentDashboard = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [addingStudent, setAddingStudent] = useState(false);
   const [activeNav, setActiveNav] = useState('dashboard');
+  const [viewingStudentProgress, setViewingStudentProgress] = useState(null);
+  const [studentSubmissions, setStudentSubmissions] = useState([]);
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [viewingSummary, setViewingSummary] = useState(null);
   const [finalizingWeek, setFinalizingWeek] = useState(false);
   
@@ -204,6 +207,85 @@ const ParentDashboard = () => {
     }
   };
 
+  const handleViewStudentProgress = async (student) => {
+    setViewingStudentProgress(student);
+    
+    // Fetch this student's submissions
+    try {
+      const submissionsQuery = query(
+        collection(db, 'submissions'),
+        where('student_id', '==', student.id),
+        orderBy('timestamp', 'desc')
+      );
+      
+      const unsubscribe = onSnapshot(submissionsQuery, (snapshot) => {
+        const submissionsData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setStudentSubmissions(submissionsData);
+      });
+      
+      // Store unsubscribe function for cleanup
+      window.studentProgressUnsubscribe = unsubscribe;
+    } catch (error) {
+      console.error('Error fetching student submissions:', error);
+    }
+  };
+
+  const handleCloseStudentProgress = () => {
+    setViewingStudentProgress(null);
+    setStudentSubmissions([]);
+    setSelectedSubmission(null);
+    
+    // Cleanup subscription
+    if (window.studentProgressUnsubscribe) {
+      window.studentProgressUnsubscribe();
+      window.studentProgressUnsubscribe = null;
+    }
+  };
+
+  const handleResetBlock = async (submissionId) => {
+    if (!window.confirm('Are you sure you want to reset this block? This will delete the submission and the student will need to redo it.')) {
+      return;
+    }
+    
+    try {
+      await deleteDoc(doc(db, 'submissions', submissionId));
+      
+      // Also update the student's progress count
+      if (viewingStudentProgress) {
+        const progressRef = doc(db, 'subjects', selectedSubmission.subject_id, 'progress', viewingStudentProgress.id);
+        const progressDoc = await getDoc(progressRef);
+        
+        if (progressDoc.exists()) {
+          const currentCount = progressDoc.data().completed_blocks || 0;
+          if (currentCount > 0) {
+            await updateDoc(progressRef, {
+              completed_blocks: currentCount - 1,
+              updated_at: serverTimestamp()
+            });
+          }
+        }
+      }
+      
+      setSelectedSubmission(null);
+      alert('Block reset successfully! The student can now redo this block.');
+    } catch (error) {
+      console.error('Error resetting block:', error);
+      alert('Failed to reset block. Please try again.');
+    }
+  };
+
+  const getStudentProgressForSubject = (subjectId) => {
+    const subjectSubmissions = studentSubmissions.filter(s => s.subject_id === subjectId);
+    return subjectSubmissions.map(s => s.block_index);
+  };
+
+  const isBlockCompletedForStudent = (subjectId, blockIndex) => {
+    return getStudentProgressForSubject(subjectId).includes(blockIndex);
+  };
+
   const handleLogout = async () => {
     const result = await logout();
     if (!result.success) {
@@ -340,6 +422,64 @@ const ParentDashboard = () => {
       alert('Failed to finalize week. Please try again.');
     } finally {
       setFinalizingWeek(false);
+    }
+  };
+
+  const handleCleanupDeprecatedFields = async () => {
+    if (!window.confirm('This will remove deprecated completed_blocks fields from all subjects. This prevents confusion and ensures only per-student tracking is used. Continue?')) {
+      return;
+    }
+
+    try {
+      console.log('Starting cleanup of deprecated fields...');
+      
+      // Get all subjects for this parent
+      const subjectsQuery = query(
+        collection(db, 'subjects'),
+        where('parent_id', '==', currentUser.uid)
+      );
+      
+      const subjectsSnapshot = await getDocs(subjectsQuery);
+      const subjectsData = subjectsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      console.log(`Found ${subjectsData.length} subjects to clean up`);
+
+      const batch = writeBatch(db);
+      let cleanedCount = 0;
+
+      for (const subject of subjectsData) {
+        const subjectRef = doc(db, 'subjects', subject.id);
+        const updates = {};
+
+        // Remove deprecated completed_blocks field if it exists
+        if (subject.completed_blocks !== undefined) {
+          updates.completed_blocks = deleteField();
+          console.log(`Removing completed_blocks field from subject: ${subject.title}`);
+          cleanedCount++;
+        }
+
+        // Only update if there are changes
+        if (Object.keys(updates).length > 0) {
+          updates.updated_at = serverTimestamp();
+          batch.update(subjectRef, updates);
+        }
+      }
+
+      if (cleanedCount > 0) {
+        await batch.commit();
+        console.log(`Successfully cleaned up ${cleanedCount} subjects`);
+        alert(`Cleanup completed! Removed deprecated fields from ${cleanedCount} subjects.`);
+      } else {
+        console.log('No deprecated fields found to clean up');
+        alert('No deprecated fields found to clean up.');
+      }
+
+    } catch (error) {
+      console.error('Cleanup failed:', error);
+      alert(`Cleanup failed: ${error.message}`);
     }
   };
 
@@ -584,6 +724,12 @@ const ParentDashboard = () => {
                     >
                       Migrate Schema
                     </button>
+                    <button
+                      onClick={handleCleanupDeprecatedFields}
+                      className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-medium transition-colors text-sm"
+                    >
+                      Cleanup Fields
+                    </button>
                   </>
                 )}
                 
@@ -633,7 +779,12 @@ const ParentDashboard = () => {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {students.map((student) => (
-                      <StudentCard key={student.id} student={student} onDelete={handleDeleteStudent} />
+                      <StudentCard 
+                        key={student.id} 
+                        student={student} 
+                        onDelete={handleDeleteStudent}
+                        onViewProgress={handleViewStudentProgress}
+                      />
                     ))}
                   </div>
                 )}
@@ -774,6 +925,201 @@ const ParentDashboard = () => {
                 <p className="text-sm text-slate-700 whitespace-pre-wrap">
                   {viewingSummary.summary_text}
                 </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Student Progress Modal */}
+      {viewingStudentProgress && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-6xl mx-4 max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+                  {viewingStudentProgress.name}'s Progress
+                </h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  View and manage individual student progress
+                </p>
+              </div>
+              <button
+                onClick={handleCloseStudentProgress}
+                className="text-slate-400 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-auto max-h-[70vh]">
+              {(() => {
+                const studentSubjects = subjects.filter(subject => {
+                  // New schema: student_ids array
+                  if (subject.student_ids && Array.isArray(subject.student_ids)) {
+                    return subject.student_ids.includes(viewingStudentProgress.id);
+                  }
+                  // Old schema: single student_id
+                  return subject.student_id === viewingStudentProgress.id;
+                });
+
+                if (studentSubjects.length === 0) {
+                  return (
+                    <div className="text-center py-12">
+                      <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-2">No subjects assigned</h3>
+                      <p className="text-slate-500 dark:text-slate-400">This student hasn't been assigned any subjects yet.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-6">
+                    {studentSubjects.map((subject) => {
+                      const completedBlocks = getStudentProgressForSubject(subject.id);
+                      const totalBlocks = subject.block_count || 10;
+                      const progressPercentage = Math.round((completedBlocks.length / totalBlocks) * 100);
+
+                      return (
+                        <div key={subject.id} className="bg-white dark:bg-slate-700 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-600 p-6">
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <div 
+                                  className="w-4 h-4 rounded-full"
+                                  style={{ backgroundColor: subject.color || '#3B82F6' }}
+                                />
+                                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                                  {subject.title}
+                                </h3>
+                              </div>
+                              <div className="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
+                                <span>Progress: {completedBlocks.length}/{totalBlocks} blocks</span>
+                                <span className="font-medium text-indigo-600 dark:text-indigo-400">{progressPercentage}%</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Progress Bar */}
+                          <div className="w-full bg-slate-200 dark:bg-slate-600 rounded-full h-3 overflow-hidden mb-4">
+                            <div 
+                              className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 dark:from-indigo-400 dark:to-indigo-500 rounded-full transition-all duration-500"
+                              style={{ width: `${progressPercentage}%` }}
+                            />
+                          </div>
+
+                          {/* Blocks Grid */}
+                          <div>
+                            <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Weekly Blocks</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {Array.from({ length: totalBlocks }, (_, index) => {
+                                const isCompleted = isBlockCompletedForStudent(subject.id, index);
+                                const submission = studentSubmissions.find(s => 
+                                  s.subject_id === subject.id && s.block_index === index
+                                );
+                                
+                                return (
+                                  <button
+                                    key={index}
+                                    onClick={() => isCompleted && setSelectedSubmission(submission)}
+                                    disabled={!isCompleted}
+                                    className={`w-12 h-12 rounded-lg border-2 font-medium text-sm transition-all ${
+                                      isCompleted
+                                        ? 'bg-green-100 border-green-300 text-green-700 cursor-pointer hover:bg-green-200'
+                                        : 'bg-slate-100 border-slate-300 text-slate-400 cursor-not-allowed'
+                                    }`}
+                                    title={isCompleted ? 'Click to view details' : 'Not completed'}
+                                  >
+                                    {isCompleted ? '✓' : index + 1}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Submission Details Modal */}
+      {selectedSubmission && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+                Block {selectedSubmission.block_index + 1} Details
+              </h2>
+              <button
+                onClick={() => setSelectedSubmission(null)}
+                className="text-slate-400 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Subject</h3>
+                <p className="text-slate-900 dark:text-white">{selectedSubmission.subject_name}</p>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Completed</h3>
+                <p className="text-slate-600 dark:text-slate-400">
+                  {selectedSubmission.timestamp?.toDate?.() ? 
+                    new Date(selectedSubmission.timestamp.toDate()).toLocaleString() : 
+                    'Unknown time'
+                  }
+                </p>
+              </div>
+
+              {selectedSubmission.summary_text && (
+                <div>
+                  <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Student Summary</h3>
+                  <div className="bg-slate-50 dark:bg-slate-700 rounded-lg p-4">
+                    <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                      {selectedSubmission.summary_text}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {selectedSubmission.resources_used && selectedSubmission.resources_used.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Resources Used</h3>
+                  <div className="space-y-1">
+                    {selectedSubmission.resources_used.map((resourceIndex, index) => {
+                      const subject = subjects.find(s => s.id === selectedSubmission.subject_id);
+                      const resource = subject?.resources?.[resourceIndex];
+                      return resource ? (
+                        <div key={index} className="text-sm text-slate-600 dark:text-slate-400">
+                          • {resource.name}
+                        </div>
+                      ) : null;
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => setSelectedSubmission(null)}
+                  className="flex-1 px-4 py-2 text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => handleResetBlock(selectedSubmission.id)}
+                  className="flex-1 px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors"
+                >
+                  Reset Block
+                </button>
               </div>
             </div>
           </div>

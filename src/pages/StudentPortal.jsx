@@ -248,13 +248,9 @@ const StudentPortal = () => {
         });
       }
 
-      // Also update the legacy completed_blocks field for backward compatibility
-      // Note: This will be the same for all students in shared subjects, but maintains compatibility
-      const subjectRef = doc(db, 'subjects', subject.id);
-      await updateDoc(subjectRef, {
-        completed_blocks: ((subject.completed_blocks || 0) + 1),
-        updated_at: serverTimestamp()
-      });
+      // NOTE: Removed the legacy completed_blocks field update from main subject document
+      // This was causing the bug where progress synced across all students in shared subjects
+      // Progress is now tracked exclusively per-student via submissions and progress sub-collection
 
       setSelectedSubject(null);
       setSelectedBlockIndex(null);
@@ -269,7 +265,14 @@ const StudentPortal = () => {
   };
 
   const isBlockCompleted = (subject, blockIndex) => {
-    return completedBlocks[subject.id]?.includes(blockIndex) || false;
+    const isCompleted = completedBlocks[subject.id]?.includes(blockIndex) || false;
+    console.log(`[DEBUG] isBlockCompleted for subject "${subject.title}", block ${blockIndex}:`, {
+      subjectId: subject.id,
+      blockIndex,
+      completedBlocks: completedBlocks[subject.id],
+      isCompleted
+    });
+    return isCompleted;
   };
 
   const isSubjectLocked = (subject) => {
@@ -279,7 +282,14 @@ const StudentPortal = () => {
   };
 
   const getSubjectProgress = (subject) => {
-    return completedBlocks[subject.id]?.length || 0;
+    const progress = completedBlocks[subject.id]?.length || 0;
+    console.log(`[DEBUG] getSubjectProgress for subject "${subject.title}":`, {
+      subjectId: subject.id,
+      completedBlocks: completedBlocks[subject.id],
+      progressCount: progress,
+      blockCount: subject.block_count
+    });
+    return progress;
   };
 
   const getWeeklyProgress = () => {

@@ -508,10 +508,6 @@ const Curriculum = () => {
                   <span className="font-medium">{subject.block_count || 10}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-600">Completed Blocks</span>
-                  <span className="font-medium">{subject.completed_blocks || 0}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-600">Block Length</span>
                   <span className="font-medium">{subject.block_length || 30} min</span>
                 </div>

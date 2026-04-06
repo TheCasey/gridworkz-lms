@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Copy, Check, Trash2, Archive } from 'lucide-react';
+import { Copy, Check, Trash2, Archive, Eye } from 'lucide-react';
 
-const StudentCard = ({ student, onDelete }) => {
+const StudentCard = ({ student, onDelete, onViewProgress }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopyMagicLink = async () => {
@@ -13,6 +13,12 @@ const StudentCard = ({ student, onDelete }) => {
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
+    }
+  };
+
+  const handleViewProgress = () => {
+    if (onViewProgress) {
+      onViewProgress(student);
     }
   };
 
@@ -76,6 +82,14 @@ const StudentCard = ({ student, onDelete }) => {
               Copy Magic Link
             </>
           )}
+        </button>
+
+        <button
+          onClick={handleViewProgress}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white rounded-lg font-medium transition-colors"
+        >
+          <Eye className="w-4 h-4" />
+          View Progress
         </button>
       </div>
     </div>
