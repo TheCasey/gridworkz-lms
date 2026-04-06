@@ -9,13 +9,15 @@ import {
   orderBy,
   doc,
   getDoc,
+  getDocs,
   updateDoc,
   deleteDoc,
   limit,
   addDoc,
   serverTimestamp,
   writeBatch,
-  setDoc
+  setDoc,
+  deleteField
 } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
 import { nanoid } from 'nanoid';
@@ -341,6 +343,87 @@ const ParentDashboard = () => {
     }
   };
 
+  const handleMigrationScript = async () => {
+    if (!window.confirm('This will migrate all subjects to the new schema format. This action cannot be undone. Continue?')) {
+      return;
+    }
+
+    try {
+      console.log('Starting migration script...');
+      
+      // Get all subjects for this parent
+      const subjectsQuery = query(
+        collection(db, 'subjects'),
+        where('parent_id', '==', currentUser.uid)
+      );
+      
+      const subjectsSnapshot = await getDocs(subjectsQuery);
+      const subjectsData = subjectsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      console.log(`Found ${subjectsData.length} subjects to migrate`);
+
+      const batch = writeBatch(db);
+      let migratedCount = 0;
+
+      for (const subject of subjectsData) {
+        const subjectRef = doc(db, 'subjects', subject.id);
+        const updates = {};
+
+        // Migrate student_id to student_ids array if needed
+        if (subject.student_id && !subject.student_ids) {
+          updates.student_ids = [subject.student_id];
+          console.log(`Migrating student_id to student_ids for subject: ${subject.title}`);
+        }
+
+        // Add completed_blocks: 0 if missing
+        if (subject.completed_blocks === undefined || subject.completed_blocks === null) {
+          updates.completed_blocks = 0;
+          console.log(`Adding completed_blocks: 0 for subject: ${subject.title}`);
+        }
+
+        // Ensure is_active: true if missing
+        if (subject.is_active === undefined || subject.is_active === null) {
+          updates.is_active = true;
+          console.log(`Adding is_active: true for subject: ${subject.title}`);
+        }
+
+        // Remove deprecated fields
+        if (subject.student_name !== undefined) {
+          updates.student_name = deleteField();
+          console.log(`Removing student_name field for subject: ${subject.title}`);
+        }
+
+        if (subject.student_names !== undefined) {
+          updates.student_names = deleteField();
+          console.log(`Removing student_names field for subject: ${subject.title}`);
+        }
+
+        // Only update if there are changes
+        if (Object.keys(updates).length > 0) {
+          updates.updated_at = serverTimestamp();
+          batch.update(subjectRef, updates);
+          migratedCount++;
+        }
+      }
+
+      if (migratedCount > 0) {
+        await batch.commit();
+        console.log(`Successfully migrated ${migratedCount} subjects`);
+        alert(`Migration completed! ${migratedCount} subjects have been updated to the new schema.`);
+      } else {
+        console.log('No subjects needed migration');
+        alert('All subjects are already using the new schema format.');
+      }
+
+    } catch (error) {
+      console.error('Migration failed:', error);
+      alert(`Migration failed: ${error.message}`);
+    }
+  };
+
   // Helper function to get weekly progress
   const getWeeklyProgress = (studentId, subjectId) => {
     // Get current week's start (Sunday)
@@ -484,16 +567,24 @@ const ParentDashboard = () => {
                 
                 {/* Debug button for testing */}
                 {process.env.NODE_ENV === 'development' && (
-                  <button
-                    onClick={() => {
-                      console.log('Manual debug triggered');
-                      checkEnvironment();
-                      testFirebaseConnection();
-                    }}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors text-sm"
-                  >
-                    Test Firebase
-                  </button>
+                  <>
+                    <button
+                      onClick={() => {
+                        console.log('Manual debug triggered');
+                        checkEnvironment();
+                        testFirebaseConnection();
+                      }}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors text-sm"
+                    >
+                      Test Firebase
+                    </button>
+                    <button
+                      onClick={handleMigrationScript}
+                      className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-colors text-sm"
+                    >
+                      Migrate Schema
+                    </button>
+                  </>
                 )}
                 
                 {/* Theme Toggle Button */}

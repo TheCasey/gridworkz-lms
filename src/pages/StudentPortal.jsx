@@ -252,7 +252,7 @@ const StudentPortal = () => {
       // Note: This will be the same for all students in shared subjects, but maintains compatibility
       const subjectRef = doc(db, 'subjects', subject.id);
       await updateDoc(subjectRef, {
-        completed_blocks: (subject.completed_blocks || 0) + 1,
+        completed_blocks: ((subject.completed_blocks || 0) + 1),
         updated_at: serverTimestamp()
       });
 

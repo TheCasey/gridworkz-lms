@@ -75,7 +75,6 @@ const Curriculum = () => {
     const subjectsQuery = query(
       collection(db, 'subjects'),
       where('parent_id', '==', currentUser.uid),
-      orderBy('student_name'),
       orderBy('title')
     );
 
@@ -130,12 +129,10 @@ const Curriculum = () => {
     }
 
     const selectedStudentsData = students.filter(s => selectedStudents.includes(s.id));
-    const studentNames = selectedStudentsData.map(s => s.name).join(', ');
     
     try {
       const subjectData = {
         student_ids: selectedStudents,
-        student_names: studentNames,
         parent_id: currentUser.uid,
         title: subjectName.trim(),
         block_count: totalBlocks,
@@ -144,6 +141,7 @@ const Curriculum = () => {
         resources: resources.filter(r => r.name.trim()),
         require_input: requireSummary,
         is_active: true,
+        completed_blocks: 0,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp()
       };
@@ -472,7 +470,14 @@ const Curriculum = () => {
                     </h3>
                   </div>
                   <p className="text-sm text-slate-500">
-                    {subject.student_names || subject.student_name || 'Unknown students'}
+                    {(() => {
+                      const studentIds = subject.student_ids || [subject.student_id].filter(Boolean);
+                      const studentNames = studentIds.map(id => {
+                        const student = students.find(s => s.id === id);
+                        return student ? student.name : 'Unknown';
+                      }).join(', ');
+                      return studentNames || 'Unknown students';
+                    })()}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -501,6 +506,10 @@ const Curriculum = () => {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-600">Weekly Blocks</span>
                   <span className="font-medium">{subject.block_count || 10}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-600">Completed Blocks</span>
+                  <span className="font-medium">{subject.completed_blocks || 0}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-600">Block Length</span>
