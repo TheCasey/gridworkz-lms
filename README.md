@@ -6,7 +6,7 @@
 
 ### **👨‍👩‍👧‍👦 Parent Dashboard**
 
-* **Multi-Student Support:** Manage multiple students (Caleb, Evelyn, etc.) from a single interface.  
+* **Multi-Student Support:** Manage multiple students from a single interface.  
 * **Shared Curriculum:** Assign a single subject (e.g., PE, Chess, Spanish) to multiple students with independent progress tracking.  
 * **Live Pulse:** Real-time feed of student submissions and learning summaries.  
 * **Automated Reporting:** Generate professional Weekly Reports grouped by subject, including dates and resources used.
@@ -49,9 +49,9 @@
 
 ## **📅 Roadmap & Future Enhancements**
 
-* \[ \] **Daily SMS Notifications:** Automated text reminders for students via Twilio/AWS.  
-* \[ \] **Auto-Reset Engine:** Scheduled Sunday night "Finalize & Reset" logic.  
-* \[ \] **Google Calendar Sync:** Exporting blocks to student calendars using .edu account integrations.  
+* \[ \] **Daily SMS Notifications:** Automated text reminders for students via Twilio/AWS and text updates and summaries for parents.  
+* \[ \] **Auto-Reset Engine:** Scheduled Sunday night "Finalize & Reset" logic instead of current manual experience.  
+* \[ \] **Full Mobile Capabilities:** Adapting for mobile devices and use.
 * \[ \] **PWA Support:** Official "Add to Home Screen" manifest for native mobile experience.
 
 ## **🚢 Deployment Workflow**
