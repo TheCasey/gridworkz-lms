@@ -43,6 +43,7 @@ const Curriculum = () => {
   const [requireSummary, setRequireSummary] = useState(true);
   const [resources, setResources] = useState([{ name: '', url: '' }]);
   const [customFields, setCustomFields] = useState([]);
+  const [requireTimer, setRequireTimer] = useState(false);
   
   const db = getFirestore(app);
 
@@ -139,6 +140,7 @@ const Curriculum = () => {
     setRequireSummary(true);
     setResources([{ name: '', url: '' }]);
     setCustomFields([]);
+    setRequireTimer(false);
     setShowAddForm(false);
     setEditingSubject(null);
   };
@@ -164,6 +166,7 @@ const Curriculum = () => {
         resources: resources.filter(r => r.name.trim()),
         require_input: requireSummary,
         custom_fields: customFields.filter(field => field.label.trim()),
+        require_timer: requireTimer,
         is_active: true,
         completed_blocks: 0,
         created_at: serverTimestamp(),
@@ -200,6 +203,7 @@ const Curriculum = () => {
     setRequireSummary(subject.require_input !== false);
     setResources(subject.resources || [{ name: '', url: '' }]);
     setCustomFields(subject.custom_fields || []);
+    setRequireTimer(subject.require_timer || false);
     setEditingSubject(subject);
     setShowAddForm(true);
   };
@@ -387,6 +391,32 @@ const Curriculum = () => {
                   {requireSummary 
                     ? 'Students must write a summary for each block' 
                     : 'Students can complete blocks without a summary'
+                  }
+                </p>
+              </div>
+
+              {/* Require Timer Toggle */}
+              <div>
+                <label className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-700">Require Timer for Completion</span>
+                  <button
+                    type="button"
+                    onClick={() => setRequireTimer(!requireTimer)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      requireTimer ? 'bg-orange-600' : 'bg-slate-200'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        requireTimer ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </label>
+                <p className="text-xs text-slate-500 mt-1">
+                  {requireTimer 
+                    ? 'Students must complete the timer before submitting blocks' 
+                    : 'Students can complete blocks without using the timer'
                   }
                 </p>
               </div>

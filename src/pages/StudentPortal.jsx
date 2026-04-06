@@ -204,9 +204,12 @@ const StudentPortal = () => {
               ...updated[subjectId],
               timeLeft: updated[subjectId].timeLeft - 1
             };
+            // Save updated state to localStorage
+            saveTimerToStorage(subjectId, updated[subjectId]);
           } else if (updated[subjectId].isRunning && updated[subjectId].timeLeft === 0) {
             // Timer completed
             updated[subjectId] = { ...updated[subjectId], isRunning: false };
+            saveTimerToStorage(subjectId, updated[subjectId]);
             handleTimerComplete(subjectId);
           }
         });
@@ -216,6 +219,31 @@ const StudentPortal = () => {
 
     return () => clearInterval(interval);
   }, []);
+
+  // Load timers from localStorage on component mount and when subjects change
+  useEffect(() => {
+    if (!student || !subjects.length) return;
+    
+    const loadedTimers = {};
+    
+    subjects.forEach(subject => {
+      const storedTimer = loadTimerFromStorage(subject.id);
+      if (storedTimer) {
+        // Only load if it's for the same block index that's still available
+        const nextAvailableBlock = getNextAvailableBlock(subject);
+        if (storedTimer.workingOnBlockIndex === nextAvailableBlock) {
+          loadedTimers[subject.id] = storedTimer;
+        } else {
+          // Clear outdated timer
+          clearTimerFromStorage(subject.id);
+        }
+      }
+    });
+    
+    if (Object.keys(loadedTimers).length > 0) {
+      setActiveTimers(loadedTimers);
+    }
+  }, [student, subjects, completedBlocks]);
 
   // Initialize notification sound
   useEffect(() => {
@@ -256,8 +284,31 @@ const StudentPortal = () => {
     const nextAvailableBlock = getNextAvailableBlock(subject);
     
     if (nextAvailableBlock !== null) {
-      if (window.confirm("Time's up! Would you like to complete the next block now?")) {
+      const message = `Great job! Ready to submit your summary for ${subject.title}?`;
+      
+      if (window.confirm(message)) {
         handleBlockClick(subject, nextAvailableBlock);
+      } else {
+        // Auto-reset the timer for mandatory timer subjects
+        if (subject.require_timer) {
+          const totalSeconds = (subject.block_length || 30) * 60;
+          const timerData = {
+            timeLeft: totalSeconds,
+            isRunning: false,
+            totalSeconds,
+            workingOnBlockIndex: nextAvailableBlock,
+            timestamp: Date.now()
+          };
+          
+          setActiveTimers(prev => ({
+            ...prev,
+            [subjectId]: timerData
+          }));
+          
+          saveTimerToStorage(subjectId, timerData);
+          
+          alert('Timer reset. You can start again when you\'re ready!');
+        }
       }
     } else {
       alert("Time's up! All blocks for this subject are completed.");
@@ -284,37 +335,67 @@ const StudentPortal = () => {
       return;
     }
     
-    const totalSeconds = (subject.block_length || 30) * 60;
+    // Try to load existing timer from localStorage first
+    const storedTimer = loadTimerFromStorage(subject.id);
+    let timerData;
     
-    setActiveTimers(prev => ({
-      ...prev,
-      [subject.id]: {
+    if (storedTimer && storedTimer.workingOnBlockIndex === nextAvailableBlock) {
+      // Resume existing timer
+      timerData = {
+        timeLeft: storedTimer.timeLeft,
+        isRunning: true,
+        totalSeconds: storedTimer.totalSeconds,
+        workingOnBlockIndex: storedTimer.workingOnBlockIndex,
+        timestamp: Date.now()
+      };
+    } else {
+      // Start new timer
+      const totalSeconds = (subject.block_length || 30) * 60;
+      timerData = {
         timeLeft: totalSeconds,
         isRunning: true,
         totalSeconds,
-        workingOnBlockIndex: nextAvailableBlock
-      }
+        workingOnBlockIndex: nextAvailableBlock,
+        timestamp: Date.now()
+      };
+    }
+    
+    setActiveTimers(prev => ({
+      ...prev,
+      [subject.id]: timerData
     }));
+    
+    saveTimerToStorage(subject.id, timerData);
   };
 
   const pauseTimer = (subject) => {
+    const timerData = {
+      ...activeTimers[subject.id],
+      isRunning: false,
+      timestamp: Date.now()
+    };
+    
     setActiveTimers(prev => ({
       ...prev,
-      [subject.id]: {
-        ...prev[subject.id],
-        isRunning: false
-      }
+      [subject.id]: timerData
     }));
+    
+    saveTimerToStorage(subject.id, timerData);
   };
 
   const resumeTimer = (subject) => {
+    const timerData = {
+      ...activeTimers[subject.id],
+      isRunning: true,
+      timestamp: Date.now()
+    };
+    
     setActiveTimers(prev => ({
       ...prev,
-      [subject.id]: {
-        ...prev[subject.id],
-        isRunning: true
-      }
+      [subject.id]: timerData
     }));
+    
+    saveTimerToStorage(subject.id, timerData);
   };
 
   const completeNextBlock = (subject) => {
@@ -333,12 +414,53 @@ const StudentPortal = () => {
       delete updated[subject.id];
       return updated;
     });
+    
+    clearTimerFromStorage(subject.id);
   };
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // localStorage helpers for timer persistence
+  const saveTimerToStorage = (subjectId, timerData) => {
+    try {
+      const key = `timer_${student?.id}_${subjectId}`;
+      localStorage.setItem(key, JSON.stringify(timerData));
+    } catch (error) {
+      console.error('Error saving timer to localStorage:', error);
+    }
+  };
+
+  const loadTimerFromStorage = (subjectId) => {
+    try {
+      const key = `timer_${student?.id}_${subjectId}`;
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        const data = JSON.parse(stored);
+        // Check if the timer is still valid (not too old)
+        const timestamp = data.timestamp;
+        const now = Date.now();
+        // If timer is older than 24 hours, discard it
+        if (now - timestamp < 24 * 60 * 60 * 1000) {
+          return data;
+        }
+      }
+    } catch (error) {
+      console.error('Error loading timer from localStorage:', error);
+    }
+    return null;
+  };
+
+  const clearTimerFromStorage = (subjectId) => {
+    try {
+      const key = `timer_${student?.id}_${subjectId}`;
+      localStorage.removeItem(key);
+    } catch (error) {
+      console.error('Error clearing timer from localStorage:', error);
+    }
   };
 
   const handlePinSubmit = (e) => {
@@ -364,6 +486,16 @@ const StudentPortal = () => {
 
   const handleBlockClick = (subject, blockIndex) => {
     if (isBlockCompleted(subject, blockIndex)) return;
+    
+    // Check if timer is required for this subject
+    if (subject.require_timer) {
+      // Check if there's an active timer that hasn't completed
+      const timer = activeTimers[subject.id];
+      if (!timer || timer.timeLeft > 0) {
+        alert('This subject requires the timer to be completed before submitting blocks.');
+        return;
+      }
+    }
     
     setSelectedSubject(subject);
     setSelectedBlockIndex(blockIndex);
@@ -751,12 +883,21 @@ const StudentPortal = () => {
                           {/* Timer Display */}
                           <div className="text-center mb-4">
                             {activeTimers[subject.id] ? (
-                              <div className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                              <div className={`text-3xl font-bold font-mono ${
+                                subject.require_timer 
+                                  ? 'text-orange-600 dark:text-orange-400' 
+                                  : 'text-indigo-600 dark:text-indigo-400'
+                              }`}>
                                 {formatTime(activeTimers[subject.id].timeLeft)}
                               </div>
                             ) : (
                               <div className="text-2xl font-medium text-slate-400 dark:text-slate-500">
                                 --:--
+                              </div>
+                            )}
+                            {subject.require_timer && (
+                              <div className="text-xs text-orange-600 dark:text-orange-400 mt-1 font-medium">
+                                ⏱ Mandatory Timer Required
                               </div>
                             )}
                           </div>
@@ -797,7 +938,8 @@ const StudentPortal = () => {
                               </>
                             )}
                             
-                            {(activeTimers[subject.id] || !isSubjectLocked(subject)) && (
+                            {/* Only show Complete Next Block if timer is not required OR timer is completed */}
+                            {!subject.require_timer && (activeTimers[subject.id] || !isSubjectLocked(subject)) && (
                               <button
                                 onClick={() => completeNextBlock(subject)}
                                 className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
