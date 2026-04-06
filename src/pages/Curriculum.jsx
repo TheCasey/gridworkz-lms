@@ -42,6 +42,7 @@ const Curriculum = () => {
   const [subjectColor, setSubjectColor] = useState('#3B82F6');
   const [requireSummary, setRequireSummary] = useState(true);
   const [resources, setResources] = useState([{ name: '', url: '' }]);
+  const [customFields, setCustomFields] = useState([]);
   
   const db = getFirestore(app);
 
@@ -108,6 +109,27 @@ const Curriculum = () => {
     setResources(newResources);
   };
 
+  // Custom field handlers
+  const handleAddCustomField = () => {
+    setCustomFields([...customFields, {
+      id: Date.now().toString(),
+      type: 'text',
+      label: '',
+      placeholder: '',
+      required: false
+    }]);
+  };
+
+  const handleRemoveCustomField = (index) => {
+    setCustomFields(customFields.filter((_, i) => i !== index));
+  };
+
+  const handleCustomFieldChange = (index, field, value) => {
+    const updatedFields = [...customFields];
+    updatedFields[index] = { ...updatedFields[index], [field]: value };
+    setCustomFields(updatedFields);
+  };
+
   const resetForm = () => {
     setSelectedStudents([]);
     setSubjectName('');
@@ -116,6 +138,7 @@ const Curriculum = () => {
     setSubjectColor('#3B82F6');
     setRequireSummary(true);
     setResources([{ name: '', url: '' }]);
+    setCustomFields([]);
     setShowAddForm(false);
     setEditingSubject(null);
   };
@@ -140,6 +163,7 @@ const Curriculum = () => {
         color: subjectColor,
         resources: resources.filter(r => r.name.trim()),
         require_input: requireSummary,
+        custom_fields: customFields.filter(field => field.label.trim()),
         is_active: true,
         completed_blocks: 0,
         created_at: serverTimestamp(),
@@ -175,6 +199,7 @@ const Curriculum = () => {
     setSubjectColor(subject.color || '#3B82F6');
     setRequireSummary(subject.require_input !== false);
     setResources(subject.resources || [{ name: '', url: '' }]);
+    setCustomFields(subject.custom_fields || []);
     setEditingSubject(subject);
     setShowAddForm(true);
   };
@@ -406,6 +431,82 @@ const Curriculum = () => {
                   >
                     <Plus className="w-4 h-4" />
                     Add Resource
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom Submission Requirements */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Custom Submission Requirements
+                </label>
+                <p className="text-xs text-slate-500 mb-3">
+                  Add custom fields that students must complete when finishing a block
+                </p>
+                <div className="space-y-3">
+                  {customFields.map((field, index) => (
+                    <div key={field.id} className="border border-slate-200 rounded-lg p-4 bg-slate-50">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">
+                            Field Type
+                          </label>
+                          <select
+                            value={field.type}
+                            onChange={(e) => handleCustomFieldChange(index, 'type', e.target.value)}
+                            className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          >
+                            <option value="text">Text Input</option>
+                            <option value="number">Number Input</option>
+                            <option value="file">File Upload</option>
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={field.required}
+                            onChange={(e) => handleCustomFieldChange(index, 'required', e.target.checked)}
+                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <label className="text-xs font-medium text-slate-600">
+                            Required
+                          </label>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={field.label}
+                          onChange={(e) => handleCustomFieldChange(index, 'label', e.target.value)}
+                          className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder="Field label (e.g., 'Which chapters did you read?')"
+                        />
+                        <input
+                          type="text"
+                          value={field.placeholder}
+                          onChange={(e) => handleCustomFieldChange(index, 'placeholder', e.target.value)}
+                          className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder="Helper text for the student"
+                        />
+                      </div>
+                      {customFields.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCustomField(index)}
+                          className="mt-2 text-xs text-red-600 hover:text-red-700 font-medium"
+                        >
+                          Remove Field
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleAddCustomField}
+                    className="flex items-center gap-2 px-3 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg text-sm font-medium"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Custom Field
                   </button>
                 </div>
               </div>

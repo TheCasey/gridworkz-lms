@@ -35,7 +35,10 @@ const StudentPortal = () => {
   const [submitting, setSubmitting] = useState(false);
   const [completedBlocks, setCompletedBlocks] = useState({}); // { subjectId: [blockIndices] }
   const [viewingSummary, setViewingSummary] = useState(null); // For viewing submission summary
-  const [selectedResources, setSelectedResources] = useState([]); // For resource attribution
+  const [selectedResources, setSelectedResources] = useState([]);
+  const [activeTimers, setActiveTimers] = useState({}); // { subjectId: { timeLeft, isRunning, totalSeconds, workingOnBlockIndex } }
+  const [notificationSound, setNotificationSound] = useState(null);
+  const [customFieldResponses, setCustomFieldResponses] = useState({}); // { fieldId: value } // For resource attribution
   
   const db = getFirestore(app);
 
@@ -190,6 +193,154 @@ const StudentPortal = () => {
     return () => unsubscribers.forEach(unsub => unsub());
   }, [student, subjects, db]);
 
+  // Timer countdown effect
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveTimers(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(subjectId => {
+          if (updated[subjectId].isRunning && updated[subjectId].timeLeft > 0) {
+            updated[subjectId] = {
+              ...updated[subjectId],
+              timeLeft: updated[subjectId].timeLeft - 1
+            };
+          } else if (updated[subjectId].isRunning && updated[subjectId].timeLeft === 0) {
+            // Timer completed
+            updated[subjectId] = { ...updated[subjectId], isRunning: false };
+            handleTimerComplete(subjectId);
+          }
+        });
+        return updated;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Initialize notification sound
+  useEffect(() => {
+    // Create a simple beep sound using Web Audio API
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    setNotificationSound({ audioContext });
+    
+    return () => {
+      if (audioContext) audioContext.close();
+    };
+  }, []);
+
+  const playNotificationSound = () => {
+    if (notificationSound) {
+      const { audioContext } = notificationSound;
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 800;
+      oscillator.type = 'sine';
+      gainNode.gain.value = 0.1;
+      
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.2);
+    }
+  };
+
+  const handleTimerComplete = (subjectId) => {
+    const subject = subjects.find(s => s.id === subjectId);
+    
+    playNotificationSound();
+    
+    // Find the next available block
+    const nextAvailableBlock = getNextAvailableBlock(subject);
+    
+    if (nextAvailableBlock !== null) {
+      if (window.confirm("Time's up! Would you like to complete the next block now?")) {
+        handleBlockClick(subject, nextAvailableBlock);
+      }
+    } else {
+      alert("Time's up! All blocks for this subject are completed.");
+    }
+  };
+
+  const getNextAvailableBlock = (subject) => {
+    const totalBlocks = subject.block_count || 10;
+    const completed = completedBlocks[subject.id] || [];
+    
+    for (let i = 0; i < totalBlocks; i++) {
+      if (!completed.includes(i)) {
+        return i;
+      }
+    }
+    return null; // All blocks completed
+  };
+
+  const startTimer = (subject) => {
+    const nextAvailableBlock = getNextAvailableBlock(subject);
+    
+    if (nextAvailableBlock === null) {
+      alert('All blocks for this subject are completed!');
+      return;
+    }
+    
+    const totalSeconds = (subject.block_length || 30) * 60;
+    
+    setActiveTimers(prev => ({
+      ...prev,
+      [subject.id]: {
+        timeLeft: totalSeconds,
+        isRunning: true,
+        totalSeconds,
+        workingOnBlockIndex: nextAvailableBlock
+      }
+    }));
+  };
+
+  const pauseTimer = (subject) => {
+    setActiveTimers(prev => ({
+      ...prev,
+      [subject.id]: {
+        ...prev[subject.id],
+        isRunning: false
+      }
+    }));
+  };
+
+  const resumeTimer = (subject) => {
+    setActiveTimers(prev => ({
+      ...prev,
+      [subject.id]: {
+        ...prev[subject.id],
+        isRunning: true
+      }
+    }));
+  };
+
+  const completeNextBlock = (subject) => {
+    const nextAvailableBlock = getNextAvailableBlock(subject);
+    
+    if (nextAvailableBlock !== null) {
+      handleBlockClick(subject, nextAvailableBlock);
+    } else {
+      alert('All blocks for this subject are completed!');
+    }
+  };
+
+  const resetTimer = (subject) => {
+    setActiveTimers(prev => {
+      const updated = { ...prev };
+      delete updated[subject.id];
+      return updated;
+    });
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const handlePinSubmit = (e) => {
     e.preventDefault();
     if (student && (!student.access_pin || pin === student.access_pin)) {
@@ -200,6 +351,17 @@ const StudentPortal = () => {
     }
   };
 
+  const handleCustomFieldResponse = (fieldId, value) => {
+    setCustomFieldResponses(prev => ({
+      ...prev,
+      [fieldId]: value
+    }));
+  };
+
+  const resetCustomFieldResponses = () => {
+    setCustomFieldResponses({});
+  };
+
   const handleBlockClick = (subject, blockIndex) => {
     if (isBlockCompleted(subject, blockIndex)) return;
     
@@ -207,6 +369,7 @@ const StudentPortal = () => {
     setSelectedBlockIndex(blockIndex);
     setSummaryText('');
     setSelectedResources([]); // Reset resource selection
+    resetCustomFieldResponses(); // Reset custom field responses
   };
 
   const submitBlock = async (subject, blockIndex, summary) => {
@@ -225,6 +388,7 @@ const StudentPortal = () => {
         block_duration: subject.block_length || 30,
         is_locked: true,
         resources_used: selectedResources,
+        custom_field_responses: customFieldResponses,
         created_at: serverTimestamp()
       });
 
@@ -256,6 +420,7 @@ const StudentPortal = () => {
       setSelectedBlockIndex(null);
       setSummaryText('');
       setSelectedResources([]);
+      resetCustomFieldResponses();
     } catch (error) {
       console.error('Error submitting block:', error);
       setError('Failed to submit block. Please try again.');
@@ -540,20 +705,28 @@ const StudentPortal = () => {
                         <div className="flex gap-2 flex-wrap">
                           {Array.from({ length: subject.block_count || 10 }, (_, index) => {
                             const isCompleted = isBlockCompleted(subject, index);
+                            const timer = activeTimers[subject.id];
+                            const isWorkingOn = timer && timer.workingOnBlockIndex === index && timer.timeLeft > 0;
+                            
                             return (
                               <button
                                 key={index}
                                 onClick={() => handleBlockClick(subject, index)}
                                 disabled={isCompleted || isSubjectLocked(subject)}
-                                className={`w-12 h-12 rounded-lg border-2 font-medium text-sm transition-all ${
+                                className={`w-12 h-12 rounded-lg border-2 font-medium text-sm transition-all relative ${
                                   isCompleted
                                     ? 'bg-green-100 border-green-300 text-green-700 cursor-not-allowed'
                                     : isSubjectLocked(subject)
                                       ? 'bg-slate-100 border-slate-300 text-slate-400 cursor-not-allowed'
-                                      : 'bg-white border-slate-300 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700'
+                                      : isWorkingOn
+                                        ? 'bg-indigo-50 border-indigo-400 text-indigo-700 animate-pulse'
+                                        : 'bg-white border-slate-300 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700'
                                 }`}
                               >
                                 {isCompleted ? '✓' : index + 1}
+                                {isWorkingOn && (
+                                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-indigo-600 rounded-full animate-ping" />
+                                )}
                               </button>
                             );
                           })}
@@ -561,6 +734,79 @@ const StudentPortal = () => {
                         {isSubjectLocked(subject) && (
                           <p className="text-xs text-slate-500 mt-2">All blocks completed this week!</p>
                         )}
+                      </div>
+                      
+                      {/* Timer Control Section */}
+                      <div className="pt-3 border-t border-slate-100">
+                        <div className="bg-slate-50 dark:bg-slate-700 rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">Timer Control</h4>
+                            {activeTimers[subject.id] && (
+                              <span className="text-xs text-slate-500 dark:text-slate-400">
+                                Block {activeTimers[subject.id].workingOnBlockIndex + 1}
+                              </span>
+                            )}
+                          </div>
+                          
+                          {/* Timer Display */}
+                          <div className="text-center mb-4">
+                            {activeTimers[subject.id] ? (
+                              <div className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                                {formatTime(activeTimers[subject.id].timeLeft)}
+                              </div>
+                            ) : (
+                              <div className="text-2xl font-medium text-slate-400 dark:text-slate-500">
+                                --:--
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Control Buttons */}
+                          <div className="flex gap-2">
+                            {!activeTimers[subject.id] ? (
+                              <button
+                                onClick={() => startTimer(subject)}
+                                disabled={isSubjectLocked(subject)}
+                                className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                              >
+                                Start Timer
+                              </button>
+                            ) : (
+                              <>
+                                {activeTimers[subject.id].isRunning ? (
+                                  <button
+                                    onClick={() => pauseTimer(subject)}
+                                    className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors"
+                                  >
+                                    Pause
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => resumeTimer(subject)}
+                                    className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
+                                  >
+                                    Resume
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => resetTimer(subject)}
+                                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
+                                >
+                                  Reset
+                                </button>
+                              </>
+                            )}
+                            
+                            {(activeTimers[subject.id] || !isSubjectLocked(subject)) && (
+                              <button
+                                onClick={() => completeNextBlock(subject)}
+                                className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
+                              >
+                                Complete Next Block
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -585,6 +831,7 @@ const StudentPortal = () => {
                   setSelectedBlockIndex(null);
                   setSummaryText('');
                   setSelectedResources([]);
+                  resetCustomFieldResponses();
                 }}
                 className="text-slate-400 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200"
               >
@@ -630,6 +877,56 @@ const StudentPortal = () => {
                       </label>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Custom Fields */}
+              {selectedSubject.custom_fields && selectedSubject.custom_fields.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Additional Requirements
+                  </h3>
+                  {selectedSubject.custom_fields.map((field) => (
+                    <div key={field.id}>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                        {field.label}
+                        {field.required && <span className="text-red-500 ml-1">*</span>}
+                      </label>
+                      {field.type === 'text' && (
+                        <input
+                          type="text"
+                          value={customFieldResponses[field.id] || ''}
+                          onChange={(e) => handleCustomFieldResponse(field.id, e.target.value)}
+                          placeholder={field.placeholder}
+                          required={field.required}
+                          className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      )}
+                      {field.type === 'number' && (
+                        <input
+                          type="number"
+                          value={customFieldResponses[field.id] || ''}
+                          onChange={(e) => handleCustomFieldResponse(field.id, e.target.value)}
+                          placeholder={field.placeholder}
+                          required={field.required}
+                          className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      )}
+                      {field.type === 'file' && (
+                        <div className="text-sm text-slate-500 dark:text-slate-400">
+                          <p>File upload coming soon! For now, please describe your file:</p>
+                          <input
+                            type="text"
+                            value={customFieldResponses[field.id] || ''}
+                            onChange={(e) => handleCustomFieldResponse(field.id, e.target.value)}
+                            placeholder={`Describe your ${field.placeholder || 'file'}`}
+                            required={field.required}
+                            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
 
