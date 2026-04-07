@@ -36,7 +36,8 @@ import {
   X,
   CheckCircle,
   Sun,
-  Moon
+  Moon,
+  Info
 } from 'lucide-react';
 import StudentCard from '../components/StudentCard';
 import AddStudentModal from '../components/AddStudentModal';
@@ -61,7 +62,7 @@ const ParentDashboard = () => {
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [viewingSummary, setViewingSummary] = useState(null);
   const [finalizingWeek, setFinalizingWeek] = useState(false);
-  
+    
   const db = getFirestore(app);
 
   // Test Firebase connection on mount
@@ -116,12 +117,18 @@ const ParentDashboard = () => {
       console.error('Error fetching subjects:', error);
     });
 
-    // Query submissions for Live Pulse
+    // Query submissions for Live Pulse and Progress - get ALL current week submissions like Student Portal
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - dayOfWeek);
+    weekStart.setHours(0, 0, 0, 0);
+    
     const submissionsQuery = query(
       collection(db, 'submissions'),
       where('parent_id', '==', currentUser.uid),
-      orderBy('timestamp', 'desc'),
-      limit(10)
+      where('timestamp', '>=', weekStart),
+      orderBy('timestamp', 'desc')
     );
 
     const submissionsUnsubscribe = onSnapshot(submissionsQuery, (snapshot) => {
@@ -286,6 +293,7 @@ const ParentDashboard = () => {
     return getStudentProgressForSubject(subjectId).includes(blockIndex);
   };
 
+  
   const handleLogout = async () => {
     const result = await logout();
     if (!result.success) {
@@ -564,7 +572,7 @@ const ParentDashboard = () => {
     }
   };
 
-  // Helper function to get weekly progress
+  // Helper function to get weekly progress - matching Student Portal logic
   const getWeeklyProgress = (studentId, subjectId) => {
     // Get current week's start (Sunday)
     const now = new Date();
@@ -573,22 +581,84 @@ const ParentDashboard = () => {
     weekStart.setDate(now.getDate() - dayOfWeek);
     weekStart.setHours(0, 0, 0, 0);
     
-    const weeklySubmissions = submissions.filter(s => 
+    // Query submissions for this student and subject in current week
+    const subjectSubmissions = submissions.filter(s => 
       s.student_id === studentId && 
       s.subject_id === subjectId && 
       s.timestamp && 
-      s.timestamp.toDate() >= weekStart
+      s.timestamp.toDate() >= weekStart &&
+      s.block_index !== undefined
     );
+    
+    // Get unique block indices (matching Student Portal logic)
+    const blockIndices = subjectSubmissions.map(s => s.block_index).filter(index => index !== undefined);
+    const uniqueBlockIndices = [...new Set(blockIndices)]; // Count unique blocks only
     
     const subject = subjects.find(sub => sub.id === subjectId);
     const totalBlocks = subject?.block_count || 10;
-    const completedBlocks = weeklySubmissions.length;
+    const completedBlocks = uniqueBlockIndices.length;
     
     return {
       completed: completedBlocks,
       total: totalBlocks,
       percentage: Math.round((completedBlocks / totalBlocks) * 100)
     };
+  };
+
+  // Real-time weekly progress calculation using onSnapshot listener - matching Student Portal logic
+  const getRealTimeWeeklyProgress = (studentId) => {
+    const studentSubjects = getStudentSubjects(studentId);
+    
+    if (studentSubjects.length === 0) {
+      return { completed: 0, total: 0, percentage: 0 };
+    }
+    
+    // Get current week's start (Sunday)
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - dayOfWeek);
+    weekStart.setHours(0, 0, 0, 0);
+    
+    // Calculate completed blocks by subject (matching Student Portal logic)
+    const completedBlocksBySubject = {};
+    
+    studentSubjects.forEach(subject => {
+      const subjectSubmissions = submissions.filter(s => 
+        s.student_id === studentId && 
+        s.subject_id === subject.id && 
+        s.timestamp && 
+        s.timestamp.toDate() >= weekStart &&
+        s.block_index !== undefined
+      );
+      
+      // Get unique block indices for this subject (matching Student Portal exactly)
+      const blockIndices = subjectSubmissions.map(s => s.block_index).filter(index => index !== undefined);
+      completedBlocksBySubject[subject.id] = [...new Set(blockIndices)]; // Count unique blocks only
+    });
+    
+    const totalBlocks = studentSubjects.reduce((sum, subject) => sum + (subject.block_count || 10), 0);
+    const completedBlocks = Object.values(completedBlocksBySubject).reduce((sum, blocks) => sum + blocks.length, 0);
+    
+    return {
+      completed: completedBlocks,
+      total: totalBlocks,
+      percentage: totalBlocks > 0 ? Math.round((completedBlocks / totalBlocks) * 100) : 0
+    };
+  };
+
+  // Get current week's submissions for consistency
+  const getCurrentWeekSubmissions = () => {
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - dayOfWeek);
+    weekStart.setHours(0, 0, 0, 0);
+    
+    return submissions.filter(s => 
+      s.timestamp && 
+      s.timestamp.toDate() >= weekStart
+    );
   };
 
   // Helper function to get subjects for a specific student (supporting shared subjects)
@@ -601,6 +671,15 @@ const ParentDashboard = () => {
       // Old schema: single student_id
       return subject.student_id === studentId;
     });
+  };
+
+  // Helper function to map custom field IDs to labels
+  const getCustomFieldLabel = (fieldId, subjectId) => {
+    const subject = subjects.find(s => s.id === subjectId);
+    if (!subject || !subject.custom_fields) return fieldId;
+    
+    const field = subject.custom_fields.find(f => f.id === fieldId);
+    return field ? field.label : fieldId;
   };
 
   const navItems = [
@@ -822,25 +901,18 @@ const ParentDashboard = () => {
                     <h4 className="text-sm font-semibold text-indigo-900 mb-3">Weekly Progress</h4>
                     <div className="space-y-2">
                       {students.map(student => {
-                        const studentSubjects = getStudentSubjects(student.id);
-                        if (studentSubjects.length === 0) return null;
-                        
-                        const totalWeeklyBlocks = studentSubjects.reduce((sum, subject) => sum + (subject.block_count || 10), 0);
-                        const completedWeeklyBlocks = studentSubjects.reduce((sum, subject) => {
-                          const progress = getWeeklyProgress(student.id, subject.id);
-                          return sum + progress.completed;
-                        }, 0);
-                        const weeklyPercentage = totalWeeklyBlocks > 0 ? Math.round((completedWeeklyBlocks / totalWeeklyBlocks) * 100) : 0;
+                        const progress = getRealTimeWeeklyProgress(student.id);
+                        if (progress.total === 0) return null;
                         
                         return (
                           <div key={student.id} className="flex items-center justify-between">
                             <span className="text-sm font-medium text-indigo-700">{student.name}</span>
                             <div className="flex items-center gap-2">
                               <span className="text-sm text-indigo-600">
-                                {completedWeeklyBlocks}/{totalWeeklyBlocks} blocks
+                                {progress.completed}/{progress.total} blocks
                               </span>
                               <span className="text-sm font-semibold text-indigo-800">
-                                ({weeklyPercentage}%)
+                                ({progress.percentage}%)
                               </span>
                             </div>
                           </div>
@@ -849,33 +921,65 @@ const ParentDashboard = () => {
                     </div>
                   </div>
 
-                  {/* Recent Activity */}
+                  {/* Recent Activity - Current Week */}
                   <div>
-                    <h4 className="text-sm font-semibold text-slate-700 mb-3">Recent Activity</h4>
-                    {submissions.slice(0, 5).map((submission) => (
-                      <div key={submission.id} className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg">
-                        <div className="w-2 h-2 rounded-full mt-2 bg-green-500" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-slate-900">
-                            <span className="font-medium">{students.find(s => s.id === submission.student_id)?.name || 'Unknown Student'}</span> completed{' '}
-                            <span className="font-medium text-indigo-600">{submission.subject_name}</span>
-                          </p>
-                          <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {formatTimestamp(submission.timestamp)}
-                          </p>
-                          {submission.summary_text && (
-                            <button 
-                              onClick={() => setViewingSummary(submission)}
-                              className="mt-2 flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700"
-                            >
-                              <Eye className="w-3 h-3" />
-                              View Summary
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                    <h4 className="text-sm font-semibold text-slate-700 mb-3">Recent Activity (This Week)</h4>
+                    <div className="space-y-4 max-h-96 overflow-y-auto">
+                      {(() => {
+                        const currentWeekSubmissions = getCurrentWeekSubmissions();
+                        
+                        if (currentWeekSubmissions.length === 0) {
+                          return (
+                            <div className="text-center py-4">
+                              <p className="text-sm text-slate-500">No submissions this week</p>
+                            </div>
+                          );
+                        }
+                        
+                        return currentWeekSubmissions.map((submission) => {
+                          // Debug: Log submission structure to see if customFields exists
+                          if (submission.subject_name && submission.subject_name.includes('Math')) {
+                            console.log('=== MATH SUBMISSION DEBUG ===');
+                            console.log('Full submission object:', submission);
+                            console.log('Custom field responses:', submission.custom_field_responses);
+                            console.log('All keys:', Object.keys(submission));
+                          }
+                          
+                          return (
+                            <div 
+                            key={submission.id} 
+                            className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors"
+                            onClick={() => setViewingSummary(submission)}
+                          >
+                            <div className="w-2 h-2 rounded-full mt-2 bg-green-500" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm text-slate-900">
+                                  <span className="font-medium">{students.find(s => s.id === submission.student_id)?.name || 'Unknown Student'}</span> completed{' '}
+                                  <span className="font-medium text-indigo-600">{submission.subject_name}</span>
+                                </p>
+                                {submission.custom_field_responses && Object.keys(submission.custom_field_responses).length > 0 && (
+                                  <div className="flex items-center gap-1 px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 rounded-full">
+                                    <Info className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                                    <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400">Extra Details</span>
+                                  </div>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {formatTimestamp(submission.timestamp)}
+                              </p>
+                              {submission.summary_text && (
+                                <div className="mt-2 text-xs text-indigo-600">
+                                  Click to view summary
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          );
+                        });
+                      })()}
+                    </div>
                   </div>
                 </>
               )}
@@ -913,6 +1017,15 @@ const ParentDashboard = () => {
               </button>
             </div>
             <div className="p-6">
+              {/* Debug: Log the viewingSummary structure */}
+              {(() => {
+                console.log('=== SUMMARY MODAL DEBUG ===');
+                console.log('Viewing summary:', viewingSummary);
+                console.log('Custom field responses:', viewingSummary.custom_field_responses);
+                console.log('All keys:', Object.keys(viewingSummary));
+                return null;
+              })()}
+              
               <div className="mb-4">
                 <p className="text-sm text-slate-600">
                   <span className="font-medium">{students.find(s => s.id === viewingSummary.student_id)?.name || 'Unknown Student'}</span>
@@ -926,6 +1039,23 @@ const ParentDashboard = () => {
                   {viewingSummary.summary_text}
                 </p>
               </div>
+              
+              {/* Custom Details Section */}
+              {viewingSummary.custom_field_responses && Object.keys(viewingSummary.custom_field_responses).length > 0 && (
+                <div className="mt-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-indigo-900 dark:text-indigo-300 mb-3">Custom Details</h4>
+                  <div className="space-y-2">
+                    {Object.entries(viewingSummary.custom_field_responses).map(([fieldId, value]) => (
+                      <div key={fieldId} className="flex flex-col">
+                        <span className="font-medium text-xs text-indigo-700 dark:text-indigo-400">
+                          {getCustomFieldLabel(fieldId, viewingSummary.subject_id)}:
+                        </span>
+                        <p className="text-sm text-indigo-900 dark:text-indigo-200">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1086,6 +1216,25 @@ const ParentDashboard = () => {
                     <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
                       {selectedSubmission.summary_text}
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Custom Details Section */}
+              {selectedSubmission.custom_field_responses && Object.keys(selectedSubmission.custom_field_responses).length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Custom Details</h3>
+                  <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4">
+                    <div className="space-y-2">
+                      {Object.entries(selectedSubmission.custom_field_responses).map(([fieldId, value]) => (
+                        <div key={fieldId} className="flex flex-col">
+                          <span className="font-medium text-xs text-indigo-700 dark:text-indigo-400">
+                            {getCustomFieldLabel(fieldId, selectedSubmission.subject_id)}:
+                          </span>
+                          <p className="text-sm text-indigo-900 dark:text-indigo-200">{value}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
