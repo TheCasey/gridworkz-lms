@@ -37,7 +37,8 @@ import {
   CheckCircle,
   Sun,
   Moon,
-  Info
+  Info,
+  Check
 } from 'lucide-react';
 import StudentCard from '../components/StudentCard';
 import AddStudentModal from '../components/AddStudentModal';
@@ -62,6 +63,9 @@ const ParentDashboard = () => {
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [viewingSummary, setViewingSummary] = useState(null);
   const [finalizingWeek, setFinalizingWeek] = useState(false);
+  const [manualCompleteBlock, setManualCompleteBlock] = useState(null);
+  const [parentNote, setParentNote] = useState('');
+  const [showManualConfirm, setShowManualConfirm] = useState(false);
     
   const db = getFirestore(app);
 
@@ -282,6 +286,48 @@ const ParentDashboard = () => {
       console.error('Error resetting block:', error);
       alert('Failed to reset block. Please try again.');
     }
+  };
+
+  const handleManualComplete = (subject, blockIndex) => {
+    setManualCompleteBlock({ subject, blockIndex });
+    setParentNote('');
+    setShowManualConfirm(true);
+  };
+
+  const confirmManualComplete = async () => {
+    if (!manualCompleteBlock) return;
+    
+    try {
+      const submissionData = {
+        student_id: viewingStudentProgress.id,
+        subject_id: manualCompleteBlock.subject.id,
+        subject_name: manualCompleteBlock.subject.title,
+        block_index: manualCompleteBlock.blockIndex,
+        status: 'parent_completed',
+        summary: parentNote || 'Parent-led session',
+        timestamp: serverTimestamp(),
+        manual_override: true,
+        parent_id: currentUser.uid
+      };
+
+      await addDoc(collection(db, 'submissions'), submissionData);
+      
+      // Close modal and reset state
+      setShowManualConfirm(false);
+      setManualCompleteBlock(null);
+      setParentNote('');
+      
+      alert('Block marked as completed successfully!');
+    } catch (error) {
+      console.error('Error marking block complete:', error);
+      alert('Failed to mark block complete. Please try again.');
+    }
+  };
+
+  const cancelManualComplete = () => {
+    setShowManualConfirm(false);
+    setManualCompleteBlock(null);
+    setParentNote('');
   };
 
   const getStudentProgressForSubject = (subjectId) => {
@@ -1149,19 +1195,31 @@ const ParentDashboard = () => {
                                 );
                                 
                                 return (
-                                  <button
-                                    key={index}
-                                    onClick={() => isCompleted && setSelectedSubmission(submission)}
-                                    disabled={!isCompleted}
-                                    className={`w-12 h-12 rounded-lg border-2 font-medium text-sm transition-all ${
-                                      isCompleted
-                                        ? 'bg-green-100 border-green-300 text-green-700 cursor-pointer hover:bg-green-200'
-                                        : 'bg-slate-100 border-slate-300 text-slate-400 cursor-not-allowed'
-                                    }`}
-                                    title={isCompleted ? 'Click to view details' : 'Not completed'}
-                                  >
-                                    {isCompleted ? '✓' : index + 1}
-                                  </button>
+                                  <div key={index} className="flex items-center gap-1">
+                                    <button
+                                      onClick={() => isCompleted && setSelectedSubmission(submission)}
+                                      disabled={!isCompleted}
+                                      className={`w-12 h-12 rounded-lg border-2 font-medium text-sm transition-all ${
+                                        isCompleted
+                                          ? 'bg-green-100 border-green-300 text-green-700 cursor-pointer hover:bg-green-200'
+                                          : 'bg-slate-100 border-slate-300 text-slate-400 cursor-not-allowed'
+                                      }`}
+                                      title={isCompleted ? 'Click to view details' : 'Not completed'}
+                                    >
+                                      {isCompleted ? '✓' : index + 1}
+                                    </button>
+                                    
+                                    {/* Manual Complete Button - Only show if not completed */}
+                                    {!isCompleted && (
+                                      <button
+                                        onClick={() => handleManualComplete(subject, index)}
+                                        className="w-8 h-12 rounded-lg border-2 border-indigo-300 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all flex items-center justify-center"
+                                        title="Mark as complete (Parent-led session)"
+                                      >
+                                        <Check className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                  </div>
                                 );
                               })}
                             </div>
@@ -1268,6 +1326,72 @@ const ParentDashboard = () => {
                   className="flex-1 px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors"
                 >
                   Reset Block
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Complete Confirmation Modal */}
+      {showManualConfirm && manualCompleteBlock && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+                Mark Block {manualCompleteBlock.blockIndex + 1} Complete
+              </h2>
+              <button
+                onClick={cancelManualComplete}
+                className="text-slate-400 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="mb-4">
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  <span className="font-medium">{manualCompleteBlock.subject.title}</span> - Block {manualCompleteBlock.blockIndex + 1}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Parent-led completion (no timer required)
+                </p>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Quick Note (optional)
+                </label>
+                <textarea
+                  value={parentNote}
+                  onChange={(e) => setParentNote(e.target.value)}
+                  placeholder="e.g., Parent-led session, Reviewed material together, etc."
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-slate-700 dark:text-white text-sm"
+                  rows={3}
+                />
+              </div>
+
+              <div className="mb-4">
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Are you sure you want to mark this block as completed manually?
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  This will create a submission entry marked as "parent_completed" and bypass the timer requirement.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={cancelManualComplete}
+                  className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmManualComplete}
+                  className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium"
+                >
+                  Mark Complete
                 </button>
               </div>
             </div>
