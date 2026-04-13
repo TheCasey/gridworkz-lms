@@ -20,6 +20,18 @@ import { app } from '../firebase/firebaseConfig';
 import { Check, Clock, BookOpen, Lock, X, ExternalLink, Sun, Moon } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { getCurrentWeekRange, isTimestampInWeek } from '../utils/weekUtils';
+import { 
+  createTimerConfig, 
+  getRemainingTime, 
+  isTimerCompleted, 
+  saveTimerToStorage, 
+  loadTimerFromStorage, 
+  clearTimerFromStorage, 
+  getTimerKey, 
+  formatRemainingTime, 
+  getTimerProgress, 
+  resumeTimerFromStorage 
+} from '../utils/timerUtils';
 
 const StudentPortal = () => {
   const { slug } = useParams();
@@ -38,9 +50,10 @@ const StudentPortal = () => {
   const [completedBlocks, setCompletedBlocks] = useState({}); // { subjectId: [blockIndices] }
   const [viewingSummary, setViewingSummary] = useState(null); // For viewing submission summary
   const [selectedResources, setSelectedResources] = useState([]);
-  const [activeTimers, setActiveTimers] = useState({}); // { subjectId: { timeLeft, isRunning, totalSeconds, workingOnBlockIndex } }
+  const [activeTimers, setActiveTimers] = useState({}); // { subjectId: timerConfig }
   const [notificationSound, setNotificationSound] = useState(null);
   const [customFieldResponses, setCustomFieldResponses] = useState({}); // { fieldId: value } // For resource attribution
+  const [submissionLocks, setSubmissionLocks] = useState({}); // { subjectId_blockIndex: boolean } // Prevent double submissions
   
   const db = getFirestore(app);
 
@@ -190,49 +203,64 @@ const StudentPortal = () => {
     return () => unsubscribers.forEach(unsub => unsub());
   }, [student, subjects, db]);
 
-  // Timer countdown effect
+  // Background-stable timer countdown effect using Target End Time logic
   useEffect(() => {
     const interval = setInterval(() => {
       setActiveTimers(prev => {
         const updated = { ...prev };
         Object.keys(updated).forEach(subjectId => {
-          if (updated[subjectId].isRunning && updated[subjectId].timeLeft > 0) {
-            updated[subjectId] = {
-              ...updated[subjectId],
-              timeLeft: updated[subjectId].timeLeft - 1
-            };
-            // Save updated state to localStorage
-            saveTimerToStorage(subjectId, updated[subjectId]);
-          } else if (updated[subjectId].isRunning && updated[subjectId].timeLeft === 0) {
-            // Timer completed
-            updated[subjectId] = { ...updated[subjectId], isRunning: false };
-            saveTimerToStorage(subjectId, updated[subjectId]);
-            handleTimerComplete(subjectId);
+          const timer = updated[subjectId];
+          if (timer && timer.isRunning) {
+            const remainingTime = getRemainingTime(timer.targetEndTime);
+            
+            if (remainingTime > 0) {
+              // Timer still running, update UI
+              updated[subjectId] = {
+                ...timer,
+                remainingTime
+              };
+            } else {
+              // Timer completed
+              updated[subjectId] = {
+                ...timer,
+                remainingTime: 0,
+                isRunning: false
+              };
+              handleTimerComplete(subjectId);
+              // Clear from storage when completed
+              clearTimerFromStorage(getTimerKey(student?.id, subjectId));
+            }
           }
         });
         return updated;
       });
-    }, 1000);
+    }, 1000); // Update UI every second
 
     return () => clearInterval(interval);
-  }, []);
+  }, [student?.id]);
 
-  // Load timers from localStorage on component mount and when subjects change
+  // Load timers from localStorage using Target End Time logic
   useEffect(() => {
     if (!student || !subjects.length) return;
     
     const loadedTimers = {};
     
     subjects.forEach(subject => {
-      const storedTimer = loadTimerFromStorage(subject.id);
+      const timerKey = getTimerKey(student.id, subject.id);
+      const storedTimer = loadTimerFromStorage(timerKey);
+      
       if (storedTimer) {
         // Only load if it's for the same block index that's still available
         const nextAvailableBlock = getNextAvailableBlock(subject);
-        if (storedTimer.workingOnBlockIndex === nextAvailableBlock) {
-          loadedTimers[subject.id] = storedTimer;
+        if (storedTimer.blockIndex === nextAvailableBlock) {
+          // Resume timer with current remaining time
+          const resumedTimer = resumeTimerFromStorage(storedTimer);
+          if (resumedTimer) {
+            loadedTimers[subject.id] = resumedTimer;
+          }
         } else {
           // Clear outdated timer
-          clearTimerFromStorage(subject.id);
+          clearTimerFromStorage(timerKey);
         }
       }
     });
@@ -318,67 +346,64 @@ const StudentPortal = () => {
       return;
     }
     
-    // Try to load existing timer from localStorage first
-    const storedTimer = loadTimerFromStorage(subject.id);
-    let timerData;
+    const timerKey = getTimerKey(student.id, subject.id);
     
-    if (storedTimer && storedTimer.workingOnBlockIndex === nextAvailableBlock) {
+    // Try to load existing timer from localStorage first
+    const storedTimer = loadTimerFromStorage(timerKey);
+    let timerConfig;
+    
+    if (storedTimer && storedTimer.blockIndex === nextAvailableBlock) {
       // Resume existing timer
-      timerData = {
-        timeLeft: storedTimer.timeLeft,
-        isRunning: true,
-        totalSeconds: storedTimer.totalSeconds,
-        workingOnBlockIndex: storedTimer.workingOnBlockIndex,
-        timestamp: Date.now()
-      };
+      timerConfig = resumeTimerFromStorage(storedTimer);
+      if (!timerConfig) {
+        // Timer already completed, start fresh
+        timerConfig = createTimerConfig(subject?.block_length || 30);
+        timerConfig.blockIndex = nextAvailableBlock;
+        timerConfig.isRunning = true;
+      }
     } else {
       // Start new timer
-      const totalSeconds = (subject?.block_length || 30) * 60;
-      timerData = {
-        timeLeft: totalSeconds,
-        isRunning: true,
-        totalSeconds,
-        workingOnBlockIndex: nextAvailableBlock,
-        timestamp: Date.now()
-      };
+      timerConfig = createTimerConfig(subject?.block_length || 30);
+      timerConfig.blockIndex = nextAvailableBlock;
+      timerConfig.isRunning = true;
     }
     
     setActiveTimers(prev => ({
       ...prev,
-      [subject.id]: timerData
+      [subject.id]: timerConfig
     }));
     
-    saveTimerToStorage(subject.id, timerData);
+    saveTimerToStorage(timerKey, timerConfig, student.id, subject.id, nextAvailableBlock);
   };
 
   const pauseTimer = (subject) => {
-    const timerData = {
+    const timerConfig = {
       ...activeTimers[subject.id],
-      isRunning: false,
-      timestamp: Date.now()
+      isRunning: false
     };
     
     setActiveTimers(prev => ({
       ...prev,
-      [subject.id]: timerData
+      [subject.id]: timerConfig
     }));
     
-    saveTimerToStorage(subject.id, timerData);
+    const timerKey = getTimerKey(student.id, subject.id);
+    saveTimerToStorage(timerKey, timerConfig, student.id, subject.id, timerConfig.blockIndex);
   };
 
   const resumeTimer = (subject) => {
-    const timerData = {
+    const timerConfig = {
       ...activeTimers[subject.id],
-      isRunning: true,
-      timestamp: Date.now()
+      isRunning: true
     };
     
     setActiveTimers(prev => ({
       ...prev,
-      [subject.id]: timerData
+      [subject.id]: timerConfig
     }));
     
-    saveTimerToStorage(subject.id, timerData);
+    const timerKey = getTimerKey(student.id, subject.id);
+    saveTimerToStorage(timerKey, timerConfig, student.id, subject.id, timerConfig.blockIndex);
   };
 
   const handleCompleteBlock = (subject) => {
@@ -405,52 +430,48 @@ const StudentPortal = () => {
       return updated;
     });
     
-    clearTimerFromStorage(subject.id);
+    const timerKey = getTimerKey(student.id, subject.id);
+    clearTimerFromStorage(timerKey);
   };
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  // Timer storage helpers updated to use timerUtils
+  const saveTimerToLocalStorage = (subjectId, timerData) => {
+    const timerKey = getTimerKey(student?.id, subjectId);
+    saveTimerToStorage(timerKey, timerData, student?.id, subjectId, timerData.blockIndex);
   };
 
-  // localStorage helpers for timer persistence
-  const saveTimerToStorage = (subjectId, timerData) => {
-    try {
-      const key = `timer_${student?.id}_${subjectId}`;
-      localStorage.setItem(key, JSON.stringify(timerData));
-    } catch (error) {
-      console.error('Error saving timer to localStorage:', error);
-    }
+  const loadTimerFromLocalStorage = (subjectId) => {
+    const timerKey = getTimerKey(student?.id, subjectId);
+    return loadTimerFromStorage(timerKey);
   };
 
-  const loadTimerFromStorage = (subjectId) => {
-    try {
-      const key = `timer_${student?.id}_${subjectId}`;
-      const stored = localStorage.getItem(key);
-      if (stored) {
-        const data = JSON.parse(stored);
-        // Check if the timer is still valid (not too old)
-        const timestamp = data.timestamp;
-        const now = Date.now();
-        // If timer is older than 24 hours, discard it
-        if (now - timestamp < 24 * 60 * 60 * 1000) {
-          return data;
-        }
-      }
-    } catch (error) {
-      console.error('Error loading timer from localStorage:', error);
-    }
-    return null;
+  const clearTimerFromLocalStorage = (subjectId) => {
+    const timerKey = getTimerKey(student?.id, subjectId);
+    clearTimerFromStorage(timerKey);
   };
 
-  const clearTimerFromStorage = (subjectId) => {
-    try {
-      const key = `timer_${student?.id}_${subjectId}`;
-      localStorage.removeItem(key);
-    } catch (error) {
-      console.error('Error clearing timer from localStorage:', error);
-    }
+  // Submission lock helpers
+  const getSubmissionLockKey = (subjectId, blockIndex) => {
+    return `${subjectId}_${blockIndex}`;
+  };
+
+  const setSubmissionLock = (subjectId, blockIndex) => {
+    const key = getSubmissionLockKey(subjectId, blockIndex);
+    setSubmissionLocks(prev => ({ ...prev, [key]: true }));
+  };
+
+  const clearSubmissionLock = (subjectId, blockIndex) => {
+    const key = getSubmissionLockKey(subjectId, blockIndex);
+    setSubmissionLocks(prev => {
+      const updated = { ...prev };
+      delete updated[key];
+      return updated;
+    });
+  };
+
+  const isSubmissionLocked = (subjectId, blockIndex) => {
+    const key = getSubmissionLockKey(subjectId, blockIndex);
+    return submissionLocks[key] || false;
   };
 
   const handlePinSubmit = (e) => {
@@ -507,10 +528,12 @@ const StudentPortal = () => {
   };
 
   const submitBlock = async (subject, blockIndex, summary) => {
+    // Set submission lock immediately to prevent double submissions
+    setSubmissionLock(subject.id, blockIndex);
     setSubmitting(true);
     
     try {
-      // Check for ghost submission - prevent duplicate submissions for same block in current week
+      // Enhanced ghost submission prevention - check for existing submissions
       const { weekStart } = getCurrentWeekRange();
       const existingSubmissionQuery = query(
         collection(db, 'submissions'),
@@ -524,6 +547,7 @@ const StudentPortal = () => {
       const existingSnapshot = await getDocs(existingSubmissionQuery);
       if (!existingSnapshot.empty) {
         setError('This block has already been completed this week. Progress is calculated automatically based on weekly submissions.');
+        clearSubmissionLock(subject.id, blockIndex);
         setSubmitting(false);
         return;
       }
@@ -548,25 +572,21 @@ const StudentPortal = () => {
       // No need to update completed_blocks field anymore
 
       // Reset timer for next session after successful submission
-      const totalSeconds = (subject?.block_length || 30) * 60;
       const nextAvailableBlock = getNextAvailableBlock(subject);
       
       if (nextAvailableBlock !== null) {
         // Reset timer for the next block
-        const timerData = {
-          timeLeft: totalSeconds,
-          isRunning: false,
-          totalSeconds,
-          workingOnBlockIndex: nextAvailableBlock,
-          timestamp: Date.now()
-        };
+        const timerConfig = createTimerConfig(subject?.block_length || 30);
+        timerConfig.blockIndex = nextAvailableBlock;
+        timerConfig.isRunning = false;
         
         setActiveTimers(prev => ({
           ...prev,
-          [subject.id]: timerData
+          [subject.id]: timerConfig
         }));
         
-        saveTimerToStorage(subject.id, timerData);
+        const timerKey = getTimerKey(student.id, subject.id);
+        saveTimerToStorage(timerKey, timerConfig, student.id, subject.id, nextAvailableBlock);
       } else {
         // All blocks completed, clear timer
         setActiveTimers(prev => {
@@ -575,7 +595,8 @@ const StudentPortal = () => {
           return updated;
         });
         
-        clearTimerFromStorage(subject.id);
+        const timerKey = getTimerKey(student.id, subject.id);
+        clearTimerFromStorage(timerKey);
       }
 
       setSelectedSubject(null);
@@ -583,9 +604,11 @@ const StudentPortal = () => {
       setSummaryText('');
       setSelectedResources([]);
       resetCustomFieldResponses();
+      clearSubmissionLock(subject.id, blockIndex);
     } catch (error) {
       console.error('Error submitting block:', error);
       setError('Failed to submit block. Please try again.');
+      clearSubmissionLock(subject.id, blockIndex);
     } finally {
       setSubmitting(false);
     }
@@ -854,13 +877,13 @@ const StudentPortal = () => {
                           {Array.from({ length: subject?.block_count || 10 }, (_, index) => {
                             const isCompleted = isBlockCompleted(subject, index);
                             const timer = activeTimers[subject.id];
-                            const isWorkingOn = timer && timer.workingOnBlockIndex === index && timer.timeLeft > 0;
+                            const isWorkingOn = timer && timer.blockIndex === index && timer.isRunning && timer.remainingTime > 0;
                             
                             return (
                               <button
                                 key={index}
                                 onClick={() => handleBlockClick(subject, index)}
-                                disabled={isCompleted || isSubjectLocked(subject)}
+                                disabled={isCompleted || isSubjectLocked(subject) || isSubmissionLocked(subject.id, index)}
                                 className={`w-12 h-12 rounded-lg border-2 font-medium text-sm transition-all relative ${
                                   isCompleted
                                     ? 'bg-green-100 border-green-300 text-green-700 cursor-not-allowed'
@@ -891,7 +914,7 @@ const StudentPortal = () => {
                             <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">Timer Control</h4>
                             {activeTimers[subject.id] && (
                               <span className="text-xs text-slate-500 dark:text-slate-400">
-                                Block {activeTimers[subject.id].workingOnBlockIndex + 1}
+                                Block {activeTimers[subject.id].blockIndex + 1}
                               </span>
                             )}
                           </div>
@@ -900,20 +923,20 @@ const StudentPortal = () => {
                           <div className="text-center mb-4">
                             {activeTimers[subject.id] ? (
                               <div className={`text-3xl font-bold font-mono ${
-                                activeTimers[subject.id].timeLeft === 0
+                                activeTimers[subject.id].remainingTime === 0
                                   ? 'text-green-600 dark:text-green-400 animate-pulse'
                                   : subject.require_timer 
                                     ? 'text-orange-600 dark:text-orange-400' 
                                     : 'text-indigo-600 dark:text-indigo-400'
                               }`}>
-                                {formatTime(activeTimers[subject.id].timeLeft)}
+                                {formatRemainingTime(activeTimers[subject.id].remainingTime)}
                               </div>
                             ) : (
                               <div className="text-2xl font-medium text-slate-400 dark:text-slate-500">
                                 --:--
                               </div>
                             )}
-                            {activeTimers[subject.id]?.timeLeft === 0 ? (
+                            {activeTimers[subject.id]?.remainingTime === 0 ? (
                               <div className="text-sm text-green-600 dark:text-green-400 mt-1 font-medium">
                                 ⏰ Time's Up! Ready to submit?
                               </div>
@@ -936,7 +959,7 @@ const StudentPortal = () => {
                               </button>
                             ) : (
                               <>
-                                {activeTimers[subject.id].timeLeft > 0 ? (
+                                {activeTimers[subject.id].remainingTime > 0 ? (
                                   // Timer is still running - show Pause/Resume and Reset
                                   <>
                                     {activeTimers[subject.id].isRunning ? (
@@ -966,9 +989,17 @@ const StudentPortal = () => {
                                   <>
                                     <button
                                       onClick={() => handleCompleteBlock(subject)}
-                                      className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors animate-pulse"
+                                      disabled={submitting || isSubmissionLocked(subject.id, activeTimers[subject.id]?.blockIndex)}
+                                      className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors animate-pulse flex items-center justify-center gap-2"
                                     >
-                                      Complete Block
+                                      {submitting || isSubmissionLocked(subject.id, activeTimers[subject.id]?.blockIndex) ? (
+                                        <>
+                                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                          Submitting...
+                                        </>
+                                      ) : (
+                                        'Complete Block'
+                                      )}
                                     </button>
                                     <button
                                       onClick={() => resetTimer(subject)}
@@ -982,12 +1013,20 @@ const StudentPortal = () => {
                             )}
                             
                             {/* Only show Complete Next Block if timer is not required OR no active timer */}
-                            {!subject.require_timer && (!activeTimers[subject.id] || activeTimers[subject.id].timeLeft > 0) && !isSubjectLocked(subject) && (
+                            {!subject.require_timer && (!activeTimers[subject.id] || activeTimers[subject.id].remainingTime > 0) && !isSubjectLocked(subject) && (
                               <button
                                 onClick={() => handleCompleteBlock(subject)}
-                                className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
+                                disabled={submitting || isSubmissionLocked(subject.id, getNextAvailableBlock(subject))}
+                                className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
                               >
-                                Complete Next Block
+                                {submitting || isSubmissionLocked(subject.id, getNextAvailableBlock(subject)) ? (
+                                  <>
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    Submitting...
+                                  </>
+                                ) : (
+                                  'Complete Next Block'
+                                )}
                               </button>
                             )}
                           </div>

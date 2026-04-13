@@ -57,6 +57,11 @@ import {
   getWeekPickerOptions,
   isTimestampInWeek 
 } from '../utils/weekUtils';
+import { 
+  findDuplicateSubmissions, 
+  removeDuplicateSubmissions, 
+  getDuplicateReport 
+} from '../utils/deduplicationUtils';
 
 const ParentDashboard = () => {
   const { currentUser, logout } = useAuth();
@@ -78,6 +83,9 @@ const ParentDashboard = () => {
   const [showManualConfirm, setShowManualConfirm] = useState(false);
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0); // 0 = current week
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [isCleaningDuplicates, setIsCleaningDuplicates] = useState(false);
+  const [duplicateReport, setDuplicateReport] = useState(null);
+  const [showDuplicateReport, setShowDuplicateReport] = useState(false);
     
   const db = getFirestore(app);
 
@@ -454,6 +462,70 @@ const ParentDashboard = () => {
       alert('Failed to finalize week. Please try again.');
     } finally {
       setFinalizingWeek(false);
+    }
+  };
+
+  const handleCleanupDuplicates = async () => {
+    if (!window.confirm('This will find and remove duplicate submissions within 60 seconds of each other. This action cannot be undone. Continue?')) {
+      return;
+    }
+
+    setIsCleaningDuplicates(true);
+    
+    try {
+      // First, generate a report of duplicates
+      const report = await getDuplicateReport(currentUser.uid, 60); // 60 second window
+      
+      if (report.summary.totalGroups === 0) {
+        alert('No duplicate submissions found! Your data is already clean.');
+        setIsCleaningDuplicates(false);
+        return;
+      }
+      
+      // Show the report to the user
+      setDuplicateReport(report);
+      setShowDuplicateReport(true);
+      
+    } catch (error) {
+      console.error('Error finding duplicates:', error);
+      alert('Failed to analyze submissions for duplicates. Please try again.');
+    } finally {
+      setIsCleaningDuplicates(false);
+    }
+  };
+
+  const confirmDuplicateCleanup = async () => {
+    if (!duplicateReport) return;
+    
+    setIsCleaningDuplicates(true);
+    
+    try {
+      // Get the duplicate groups
+      const duplicateGroups = await findDuplicateSubmissions(currentUser.uid, 60);
+      
+      // Remove duplicates with progress callback
+      const results = await removeDuplicateSubmissions(duplicateGroups, (progress) => {
+        console.log(`Cleanup progress: ${progress.processed}/${progress.total} groups processed, ${progress.duplicatesRemoved} duplicates removed`);
+      });
+      
+      // Show results
+      const message = `Cleanup completed!\n\n` +
+        `• ${results.processedGroups} duplicate groups processed\n` +
+        `• ${results.duplicatesRemoved} duplicate submissions removed\n` +
+        `• ${results.errors.length} errors encountered\n\n` +
+        (results.errors.length > 0 ? 'Some errors occurred. Check console for details.' : 'All duplicates removed successfully!');
+      
+      alert(message);
+      
+      // Close the report modal
+      setShowDuplicateReport(false);
+      setDuplicateReport(null);
+      
+    } catch (error) {
+      console.error('Error cleaning duplicates:', error);
+      alert('Failed to clean up duplicates. Please try again.');
+    } finally {
+      setIsCleaningDuplicates(false);
     }
   };
 
@@ -911,6 +983,13 @@ const ParentDashboard = () => {
                       className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-colors text-sm"
                     >
                       Migrate Schema
+                    </button>
+                    <button
+                      onClick={handleCleanupDuplicates}
+                      disabled={isCleaningDuplicates}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors text-sm"
+                    >
+                      {isCleaningDuplicates ? 'Finding Duplicates...' : 'Cleanup Duplicates'}
                     </button>
                     <button
                       onClick={handleCleanupDeprecatedFields}
@@ -1495,6 +1574,125 @@ const ParentDashboard = () => {
                   className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium"
                 >
                   Mark Complete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Report Modal */}
+      {showDuplicateReport && duplicateReport && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+                  Duplicate Submissions Found
+                </h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  Review duplicates before cleanup
+                </p>
+              </div>
+              <button
+                onClick={() => setShowDuplicateReport(false)}
+                className="text-slate-400 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-auto max-h-[60vh]">
+              {/* Summary */}
+              <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-700">
+                <h3 className="text-lg font-semibold text-amber-900 dark:text-amber-300 mb-2">Summary</h3>
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <span className="font-medium text-amber-700 dark:text-amber-400">Duplicate Groups:</span>
+                    <p className="text-2xl font-bold text-amber-900 dark:text-amber-200">{duplicateReport.summary.totalGroups}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-amber-700 dark:text-amber-400">Total Duplicates:</span>
+                    <p className="text-2xl font-bold text-amber-900 dark:text-amber-200">{duplicateReport.summary.totalDuplicates}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-amber-700 dark:text-amber-400">Time Window:</span>
+                    <p className="text-2xl font-bold text-amber-900 dark:text-amber-200">{duplicateReport.summary.timeWindow}s</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Duplicate Groups */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Duplicate Details</h3>
+                {duplicateReport.groups.map((group, index) => (
+                  <div key={index} className="bg-slate-50 dark:bg-slate-700 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium text-slate-900 dark:text-white">
+                        Student: {students.find(s => s.id === group.student_id)?.name || 'Unknown'}
+                      </h4>
+                      <span className="text-sm text-amber-600 dark:text-amber-400 font-medium">
+                        {group.duplicateCount} duplicates
+                      </span>
+                    </div>
+                    <div className="text-sm text-slate-600 dark:text-slate-400 mb-2">
+                      Subject: {subjects.find(s => s.id === group.subject_id)?.title || 'Unknown'} - Block {group.block_index + 1}
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                      Time difference: {group.timeDifference.toFixed(1)} seconds
+                    </div>
+                    <div className="space-y-2">
+                      {group.submissions.map((submission, subIndex) => (
+                        <div 
+                          key={subIndex} 
+                          className={`p-2 rounded text-xs ${
+                            subIndex === 0 
+                              ? 'bg-green-50 border border-green-200 text-green-800' 
+                              : 'bg-red-50 border border-red-200 text-red-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">
+                              {subIndex === 0 ? 'KEEP - Earliest' : `REMOVE - Duplicate ${subIndex}`}
+                            </span>
+                            <span>
+                              {submission.timestamp.toLocaleString()}
+                            </span>
+                          </div>
+                          {submission.summary_text && (
+                            <div className="mt-1 italic">
+                              "{submission.summary_text.substring(0, 100)}{submission.summary_text.length > 100 ? '...' : ''}"
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-200 dark:border-slate-700">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDuplicateReport(false)}
+                  className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDuplicateCleanup}
+                  disabled={isCleaningDuplicates}
+                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium flex items-center justify-center gap-2"
+                >
+                  {isCleaningDuplicates ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Cleaning...
+                    </>
+                  ) : (
+                    'Remove Duplicates'
+                  )}
                 </button>
               </div>
             </div>
