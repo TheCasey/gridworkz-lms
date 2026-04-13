@@ -38,7 +38,9 @@ import {
   Sun,
   Moon,
   Info,
-  Check
+  Check,
+  Download,
+  Calendar
 } from 'lucide-react';
 import StudentCard from '../components/StudentCard';
 import AddStudentModal from '../components/AddStudentModal';
@@ -47,6 +49,14 @@ import Curriculum from './Curriculum';
 import Reports from './Reports';
 import { useTheme } from '../contexts/ThemeContext';
 import { testFirebaseConnection, checkEnvironment } from '../utils/firebaseTest';
+import { 
+  getCurrentWeekRange, 
+  getWeekRangeByOffset, 
+  formatWeekRange, 
+  getWeekLabel, 
+  getWeekPickerOptions,
+  isTimestampInWeek 
+} from '../utils/weekUtils';
 
 const ParentDashboard = () => {
   const { currentUser, logout } = useAuth();
@@ -66,6 +76,8 @@ const ParentDashboard = () => {
   const [manualCompleteBlock, setManualCompleteBlock] = useState(null);
   const [parentNote, setParentNote] = useState('');
   const [showManualConfirm, setShowManualConfirm] = useState(false);
+  const [selectedWeekOffset, setSelectedWeekOffset] = useState(0); // 0 = current week
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
     
   const db = getFirestore(app);
 
@@ -121,12 +133,8 @@ const ParentDashboard = () => {
       console.error('Error fetching subjects:', error);
     });
 
-    // Query submissions for Live Pulse and Progress - get ALL current week submissions like Student Portal
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - dayOfWeek);
-    weekStart.setHours(0, 0, 0, 0);
+    // Query submissions for Live Pulse and Progress - get current week submissions using calendar-based logic
+    const { weekStart } = getCurrentWeekRange();
     
     const submissionsQuery = query(
       collection(db, 'submissions'),
@@ -264,21 +272,8 @@ const ParentDashboard = () => {
     try {
       await deleteDoc(doc(db, 'submissions', submissionId));
       
-      // Also update the student's progress count
-      if (viewingStudentProgress) {
-        const progressRef = doc(db, 'subjects', selectedSubmission.subject_id, 'progress', viewingStudentProgress.id);
-        const progressDoc = await getDoc(progressRef);
-        
-        if (progressDoc.exists()) {
-          const currentCount = progressDoc.data().completed_blocks || 0;
-          if (currentCount > 0) {
-            await updateDoc(progressRef, {
-              completed_blocks: currentCount - 1,
-              updated_at: serverTimestamp()
-            });
-          }
-        }
-      }
+      // Progress is now calculated dynamically based on weekly submissions
+      // No need to update completed_blocks field anymore
       
       setSelectedSubmission(null);
       alert('Block reset successfully! The student can now redo this block.');
@@ -331,7 +326,10 @@ const ParentDashboard = () => {
   };
 
   const getStudentProgressForSubject = (subjectId) => {
-    const subjectSubmissions = studentSubmissions.filter(s => s.subject_id === subjectId);
+    const weekSubmissions = getWeekSubmissions(selectedWeekOffset);
+    const subjectSubmissions = weekSubmissions.filter(s => 
+      s.student_id === viewingStudentProgress?.id && s.subject_id === subjectId
+    );
     return subjectSubmissions.map(s => s.block_index);
   };
 
@@ -413,28 +411,8 @@ const ParentDashboard = () => {
               created_at: serverTimestamp()
             });
 
-            // Reset student-specific progress in sub-collection
-            const studentSubjects = getStudentSubjects(student.id);
-            for (const subject of studentSubjects) {
-              // Reset legacy completed_blocks field
-              const subjectRef = doc(db, 'subjects', subject.id);
-              batch.update(subjectRef, {
-                completed_blocks: 0,
-                updated_at: serverTimestamp()
-              });
-              
-              // Reset student-specific progress only if it exists
-              const progressRef = doc(db, 'subjects', subject.id, 'progress', student.id);
-              const progressDoc = await getDoc(progressRef);
-              
-              if (progressDoc.exists()) {
-                batch.update(progressRef, {
-                  completed_blocks: 0,
-                  updated_at: serverTimestamp()
-                });
-              }
-              // If no progress document exists, we don't need to create one for reset
-            }
+            // In calendar-based system, progress is calculated dynamically
+            // No need to reset completed_blocks fields anymore
 
             // Delete current week's submissions to provide clean slate
             weekSubmissions.forEach(submission => {
@@ -618,21 +596,16 @@ const ParentDashboard = () => {
     }
   };
 
-  // Helper function to get weekly progress - matching Student Portal logic
-  const getWeeklyProgress = (studentId, subjectId) => {
-    // Get current week's start (Sunday)
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - dayOfWeek);
-    weekStart.setHours(0, 0, 0, 0);
+  // Helper function to get weekly progress for a specific week offset
+  const getWeeklyProgress = (studentId, subjectId, weekOffset = 0) => {
+    const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset);
     
-    // Query submissions for this student and subject in current week
+    // Query submissions for this student and subject in the specified week
     const subjectSubmissions = submissions.filter(s => 
       s.student_id === studentId && 
       s.subject_id === subjectId && 
       s.timestamp && 
-      s.timestamp.toDate() >= weekStart &&
+      isTimestampInWeek(s.timestamp, weekStart, weekEnd) &&
       s.block_index !== undefined
     );
     
@@ -651,20 +624,15 @@ const ParentDashboard = () => {
     };
   };
 
-  // Real-time weekly progress calculation using onSnapshot listener - matching Student Portal logic
-  const getRealTimeWeeklyProgress = (studentId) => {
+  // Real-time weekly progress calculation using calendar-based week logic
+  const getRealTimeWeeklyProgress = (studentId, weekOffset = 0) => {
     const studentSubjects = getStudentSubjects(studentId);
     
     if (studentSubjects.length === 0) {
       return { completed: 0, total: 0, percentage: 0 };
     }
     
-    // Get current week's start (Sunday)
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - dayOfWeek);
-    weekStart.setHours(0, 0, 0, 0);
+    const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset);
     
     // Calculate completed blocks by subject (matching Student Portal logic)
     const completedBlocksBySubject = {};
@@ -674,7 +642,7 @@ const ParentDashboard = () => {
         s.student_id === studentId && 
         s.subject_id === subject.id && 
         s.timestamp && 
-        s.timestamp.toDate() >= weekStart &&
+        isTimestampInWeek(s.timestamp, weekStart, weekEnd) &&
         s.block_index !== undefined
       );
       
@@ -693,18 +661,82 @@ const ParentDashboard = () => {
     };
   };
 
-  // Get current week's submissions for consistency
-  const getCurrentWeekSubmissions = () => {
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - dayOfWeek);
-    weekStart.setHours(0, 0, 0, 0);
+  // Get submissions for a specific week offset
+  const getWeekSubmissions = (weekOffset = 0) => {
+    const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset);
     
     return submissions.filter(s => 
       s.timestamp && 
-      s.timestamp.toDate() >= weekStart
+      isTimestampInWeek(s.timestamp, weekStart, weekEnd)
     );
+  };
+  
+  // Download weekly report functionality
+  const handleDownloadWeeklyReport = async (weekOffset = 0) => {
+    setIsGeneratingReport(true);
+    
+    try {
+      const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset);
+      const weekLabel = getWeekLabel(weekOffset);
+      const weekRangeText = formatWeekRange(weekStart, weekEnd);
+      
+      let reportContent = `GridWorkz Weekly Report\n`;
+      reportContent += `Week: ${weekRangeText}\n`;
+      reportContent += `Generated: ${new Date().toLocaleString()}\n\n`;
+      
+      // Process each student
+      for (const student of students) {
+        const studentProgress = getRealTimeWeeklyProgress(student.id, weekOffset);
+        const studentSubjects = getStudentSubjects(student.id);
+        
+        reportContent += `═══════════════════════════════════════\n`;
+        reportContent += `Student: ${student.name}\n`;
+        reportContent += `Overall Progress: ${studentProgress.completed}/${studentProgress.total} blocks (${studentProgress.percentage}%)\n\n`;
+        
+        // Process each subject
+        for (const subject of studentSubjects) {
+          const subjectProgress = getWeeklyProgress(student.id, subject.id, weekOffset);
+          const weekSubmissions = getWeekSubmissions(weekOffset).filter(s => 
+            s.student_id === student.id && s.subject_id === subject.id
+          );
+          
+          reportContent += `📚 ${subject.title}\n`;
+          reportContent += `   Progress: ${subjectProgress.completed}/${subjectProgress.total} blocks (${subjectProgress.percentage}%)\n`;
+          
+          if (weekSubmissions.length > 0) {
+            reportContent += `   Block Completions:\n`;
+            weekSubmissions.forEach(submission => {
+              const timestamp = submission.timestamp.toDate();
+              const dateStr = timestamp.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+              const timeStr = timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+              reportContent += `   • Block ${submission.block_index + 1} - ${dateStr} at ${timeStr}\n`;
+              if (submission.summary_text) {
+                reportContent += `     Summary: ${submission.summary_text}\n`;
+              }
+            });
+          }
+          reportContent += `\n`;
+        }
+      }
+      
+      // Create and download the file
+      const blob = new Blob([reportContent], { type: 'text/plain' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `GridWorkz-Weekly-Report-${weekLabel.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      alert(`Weekly report for ${weekRangeText} downloaded successfully!`);
+    } catch (error) {
+      console.error('Error generating weekly report:', error);
+      alert('Failed to generate weekly report. Please try again.');
+    } finally {
+      setIsGeneratingReport(false);
+    }
   };
 
   // Helper function to get subjects for a specific student (supporting shared subjects)
@@ -820,14 +852,45 @@ const ParentDashboard = () => {
                   </button>
                 )}
                 {(activeNav === 'dashboard' || activeNav === 'reports') && (
-                  <button
-                    onClick={handleFinalizeWeek}
-                    disabled={finalizingWeek}
-                    className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    {finalizingWeek ? 'Processing Reports...' : 'Finalize Week'}
-                  </button>
+                  <>
+                    {/* Week Picker */}
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                      <select
+                        value={selectedWeekOffset}
+                        onChange={(e) => setSelectedWeekOffset(parseInt(e.target.value))}
+                        className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        {getWeekPickerOptions().map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label} ({option.displayText})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    {/* Download Report Button */}
+                    <button
+                      onClick={() => handleDownloadWeeklyReport(selectedWeekOffset)}
+                      disabled={isGeneratingReport}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                    >
+                      <Download className="w-4 h-4" />
+                      {isGeneratingReport ? 'Generating...' : 'Download Report'}
+                    </button>
+                    
+                    {/* Legacy Finalize Week Button (hidden for current week, shown for past weeks) */}
+                    {selectedWeekOffset < 0 && (
+                      <button
+                        onClick={handleFinalizeWeek}
+                        disabled={finalizingWeek}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        {finalizingWeek ? 'Processing Reports...' : 'Finalize Week'}
+                      </button>
+                    )}
+                  </>
                 )}
                 
                 {/* Debug button for testing */}
@@ -944,10 +1007,15 @@ const ParentDashboard = () => {
                 <>
                   {/* Weekly Progress Summary */}
                   <div className="mb-6 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
-                    <h4 className="text-sm font-semibold text-indigo-900 mb-3">Weekly Progress</h4>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-semibold text-indigo-900">Weekly Progress</h4>
+                      <span className="text-xs text-indigo-600 font-medium">
+                        {getWeekLabel(selectedWeekOffset)}
+                      </span>
+                    </div>
                     <div className="space-y-2">
                       {students.map(student => {
-                        const progress = getRealTimeWeeklyProgress(student.id);
+                        const progress = getRealTimeWeeklyProgress(student.id, selectedWeekOffset);
                         if (progress.total === 0) return null;
                         
                         return (
@@ -967,22 +1035,24 @@ const ParentDashboard = () => {
                     </div>
                   </div>
 
-                  {/* Recent Activity - Current Week */}
+                  {/* Recent Activity - Selected Week */}
                   <div>
-                    <h4 className="text-sm font-semibold text-slate-700 mb-3">Recent Activity (This Week)</h4>
+                    <h4 className="text-sm font-semibold text-slate-700 mb-3">
+                      Activity - {getWeekLabel(selectedWeekOffset)}
+                    </h4>
                     <div className="space-y-4 max-h-96 overflow-y-auto">
                       {(() => {
-                        const currentWeekSubmissions = getCurrentWeekSubmissions();
+                        const weekSubmissions = getWeekSubmissions(selectedWeekOffset);
                         
-                        if (currentWeekSubmissions.length === 0) {
+                        if (weekSubmissions.length === 0) {
                           return (
                             <div className="text-center py-4">
-                              <p className="text-sm text-slate-500">No submissions this week</p>
+                              <p className="text-sm text-slate-500">No submissions {selectedWeekOffset === 0 ? 'this week' : 'for selected week'}</p>
                             </div>
                           );
                         }
                         
-                        return currentWeekSubmissions.map((submission) => {
+                        return weekSubmissions.map((submission) => {
                           // Debug: Log submission structure to see if customFields exists
                           if (submission.subject_name && submission.subject_name.includes('Math')) {
                             console.log('=== MATH SUBMISSION DEBUG ===');
@@ -1129,6 +1199,32 @@ const ParentDashboard = () => {
             </div>
 
             <div className="p-6 overflow-auto max-h-[70vh]">
+              {/* Week Selector for Student Progress */}
+              <div className="mb-6 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-semibold text-indigo-900 dark:text-indigo-300">Viewing Progress For:</h4>
+                    <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">
+                      {formatWeekRange(...Object.values(getWeekRangeByOffset(selectedWeekOffset)))}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <select
+                      value={selectedWeekOffset}
+                      onChange={(e) => setSelectedWeekOffset(parseInt(e.target.value))}
+                      className="px-2 py-1 text-sm border border-indigo-300 dark:border-indigo-600 rounded bg-white dark:bg-slate-700 text-indigo-900 dark:text-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {getWeekPickerOptions().slice(-8).map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
               {(() => {
                 const studentSubjects = subjects.filter(subject => {
                   // New schema: student_ids array
@@ -1152,9 +1248,10 @@ const ParentDashboard = () => {
                 return (
                   <div className="space-y-6">
                     {studentSubjects.map((subject) => {
-                      const completedBlocks = getStudentProgressForSubject(subject.id);
-                      const totalBlocks = subject.block_count || 10;
-                      const progressPercentage = Math.round((completedBlocks.length / totalBlocks) * 100);
+                      const progress = getWeeklyProgress(viewingStudentProgress.id, subject.id, selectedWeekOffset);
+                      const totalBlocks = progress.total;
+                      const completedBlocks = progress.completed;
+                      const progressPercentage = progress.percentage;
 
                       return (
                         <div key={subject.id} className="bg-white dark:bg-slate-700 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-600 p-6">
@@ -1186,12 +1283,18 @@ const ParentDashboard = () => {
 
                           {/* Blocks Grid */}
                           <div>
-                            <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Weekly Blocks</p>
+                            <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+                              {getWeekLabel(selectedWeekOffset)} Blocks
+                            </p>
                             <div className="flex gap-2 flex-wrap">
                               {Array.from({ length: totalBlocks }, (_, index) => {
                                 const isCompleted = isBlockCompletedForStudent(subject.id, index);
-                                const submission = studentSubmissions.find(s => 
-                                  s.subject_id === subject.id && s.block_index === index
+                                // Get submission for the selected week
+                                const weekSubmissions = getWeekSubmissions(selectedWeekOffset);
+                                const submission = weekSubmissions.find(s => 
+                                  s.student_id === viewingStudentProgress.id &&
+                                  s.subject_id === subject.id && 
+                                  s.block_index === index
                                 );
                                 
                                 return (

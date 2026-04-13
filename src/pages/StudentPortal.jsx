@@ -11,6 +11,7 @@ import {
   limit,
   doc,
   getDoc,
+  getDocs,
   updateDoc,
   setDoc,
   serverTimestamp 
@@ -18,6 +19,7 @@ import {
 import { app } from '../firebase/firebaseConfig';
 import { Check, Clock, BookOpen, Lock, X, ExternalLink, Sun, Moon } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { getCurrentWeekRange, isTimestampInWeek } from '../utils/weekUtils';
 
 const StudentPortal = () => {
   const { slug } = useParams();
@@ -119,12 +121,12 @@ const StudentPortal = () => {
         setLoading(false);
       });
 
-      // Get today's submissions for this student
-      const today = new Date().toISOString().split('T')[0];
+      // Get current week's submissions for this student
+      const { weekStart } = getCurrentWeekRange();
       const submissionsQuery = query(
         collection(db, 'submissions'),
         where('student_id', '==', studentData.id),
-        where('date', '==', today),
+        where('timestamp', '>=', weekStart),
         orderBy('timestamp', 'desc')
       );
 
@@ -157,17 +159,12 @@ const StudentPortal = () => {
     return unsubscribeStudent;
   }, [slug, db]);
 
-  // Load completed blocks from submissions
+  // Load completed blocks from submissions using calendar-based week logic
   useEffect(() => {
     if (!student || subjects.length === 0) return;
 
-    // Get current week's start (Sunday)
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - dayOfWeek);
-    weekStart.setHours(0, 0, 0, 0);
-    
+    // Get current week's start (Monday 00:00 to Sunday 23:59)
+    const { weekStart } = getCurrentWeekRange();
     const completedBlocksData = {};
 
     const unsubscribers = subjects.map(subject => {
@@ -513,6 +510,24 @@ const StudentPortal = () => {
     setSubmitting(true);
     
     try {
+      // Check for ghost submission - prevent duplicate submissions for same block in current week
+      const { weekStart } = getCurrentWeekRange();
+      const existingSubmissionQuery = query(
+        collection(db, 'submissions'),
+        where('student_id', '==', student.id),
+        where('subject_id', '==', subject.id),
+        where('block_index', '==', blockIndex),
+        where('timestamp', '>=', weekStart),
+        limit(1)
+      );
+      
+      const existingSnapshot = await getDocs(existingSubmissionQuery);
+      if (!existingSnapshot.empty) {
+        setError('This block has already been completed this week. Progress is calculated automatically based on weekly submissions.');
+        setSubmitting(false);
+        return;
+      }
+
       // Create submission document
       await addDoc(collection(db, 'submissions'), {
         student_id: student.id,
@@ -529,25 +544,8 @@ const StudentPortal = () => {
         created_at: serverTimestamp()
       });
 
-      // Update student-specific progress in sub-collection
-      const progressRef = doc(db, 'subjects', subject.id, 'progress', student.id);
-      const progressDoc = await getDoc(progressRef);
-      
-      if (progressDoc.exists()) {
-        // Update existing progress
-        await updateDoc(progressRef, {
-          completed_blocks: (progressDoc.data().completed_blocks || 0) + 1,
-          updated_at: serverTimestamp()
-        });
-      } else {
-        // Create new progress document
-        await setDoc(progressRef, {
-          student_id: student.id,
-          completed_blocks: 1,
-          created_at: serverTimestamp(),
-          updated_at: serverTimestamp()
-        });
-      }
+      // Progress is now calculated dynamically based on weekly submissions
+      // No need to update completed_blocks field anymore
 
       // Reset timer for next session after successful submission
       const totalSeconds = (subject?.block_length || 30) * 60;

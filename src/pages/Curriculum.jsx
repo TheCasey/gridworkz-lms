@@ -168,7 +168,6 @@ const Curriculum = () => {
         custom_fields: customFields.filter(field => field.label.trim()),
         require_timer: requireTimer,
         is_active: true,
-        completed_blocks: 0,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp()
       };
