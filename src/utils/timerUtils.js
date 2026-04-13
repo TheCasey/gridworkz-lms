@@ -128,6 +128,11 @@ export const getTimerKey = (studentId, subjectId) => {
  * @returns {string} Formatted time string (MM:SS)
  */
 export const formatRemainingTime = (remainingMs) => {
+  // Handle NaN, undefined, null, or negative values
+  if (isNaN(remainingMs) || remainingMs === null || remainingMs === undefined || remainingMs < 0) {
+    return "00:00";
+  }
+  
   const totalSeconds = Math.ceil(remainingMs / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
@@ -159,9 +164,19 @@ export const resumeTimerFromStorage = (storedData) => {
     return null; // Timer already completed
   }
   
+  // If timer was paused, keep it paused
+  if (storedData.isRunning === false && storedData.pausedAt) {
+    return {
+      ...storedData,
+      remainingTime: remaining
+    };
+  }
+  
+  // Otherwise resume it
   return {
     ...storedData,
     isRunning: true,
-    resumedAt: now
+    resumedAt: now,
+    remainingTime: remaining
   };
 };

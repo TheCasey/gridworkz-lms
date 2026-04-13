@@ -210,7 +210,8 @@ const StudentPortal = () => {
         const updated = { ...prev };
         Object.keys(updated).forEach(subjectId => {
           const timer = updated[subjectId];
-          if (timer && timer.isRunning) {
+          if (timer && timer.isRunning && !timer.pausedAt) {
+            // Only update timers that are actually running (not paused)
             const remainingTime = getRemainingTime(timer.targetEndTime);
             
             if (remainingTime > 0) {
@@ -224,7 +225,8 @@ const StudentPortal = () => {
               updated[subjectId] = {
                 ...timer,
                 remainingTime: 0,
-                isRunning: false
+                isRunning: false,
+                pausedAt: null // Clear pause state on completion
               };
               handleTimerComplete(subjectId);
               // Clear from storage when completed
@@ -379,7 +381,8 @@ const StudentPortal = () => {
   const pauseTimer = (subject) => {
     const timerConfig = {
       ...activeTimers[subject.id],
-      isRunning: false
+      isRunning: false,
+      pausedAt: Date.now() // Record when timer was paused
     };
     
     setActiveTimers(prev => ({
@@ -392,10 +395,33 @@ const StudentPortal = () => {
   };
 
   const resumeTimer = (subject) => {
-    const timerConfig = {
-      ...activeTimers[subject.id],
-      isRunning: true
-    };
+    const currentTimer = activeTimers[subject.id];
+    const now = Date.now();
+    
+    let timerConfig;
+    
+    if (currentTimer.pausedAt) {
+      // Calculate how long the timer was paused
+      const pauseDuration = now - currentTimer.pausedAt;
+      
+      // Adjust the target end time to compensate for the pause
+      const newTargetEndTime = currentTimer.targetEndTime + pauseDuration;
+      
+      timerConfig = {
+        ...currentTimer,
+        isRunning: true,
+        targetEndTime: newTargetEndTime,
+        pausedAt: null, // Clear pause timestamp
+        resumedAt: now
+      };
+    } else {
+      // No pause timestamp found, just resume normally
+      timerConfig = {
+        ...currentTimer,
+        isRunning: true,
+        resumedAt: now
+      };
+    }
     
     setActiveTimers(prev => ({
       ...prev,
@@ -418,6 +444,14 @@ const StudentPortal = () => {
       alert('Subject Complete! All blocks for this subject are already finished.');
       return;
     }
+    
+    // One-and-Done Lock: Set submission lock immediately to prevent double submissions
+    if (isSubmissionLocked(subject.id, nextAvailableBlock)) {
+      setError('Block submission already in progress. Please wait.');
+      return;
+    }
+    
+    setSubmissionLock(subject.id, nextAvailableBlock);
     
     // Open submission modal for the next available block
     handleBlockClick(subject, nextAvailableBlock);
@@ -514,9 +548,25 @@ const StudentPortal = () => {
     if (subject.require_timer) {
       // Check if there's an active timer that hasn't completed
       const timer = activeTimers[subject.id];
-      if (!timer || timer.timeLeft > 0) {
+      if (!timer || timer.remainingTime > 0) {
         alert('This subject requires the timer to be completed before submitting blocks.');
         return;
+      }
+      
+      // State Reset on Open: Immediately set timer to isFinished state when modal opens
+      if (timer && timer.remainingTime === 0) {
+        setActiveTimers(prev => ({
+          ...prev,
+          [subject.id]: {
+            ...timer,
+            isFinished: true,
+            isRunning: false
+          }
+        }));
+        
+        // Clear timer from storage since we're completing this block
+        const timerKey = getTimerKey(student.id, subject.id);
+        clearTimerFromStorage(timerKey);
       }
     }
     
@@ -546,9 +596,15 @@ const StudentPortal = () => {
       
       const existingSnapshot = await getDocs(existingSubmissionQuery);
       if (!existingSnapshot.empty) {
-        setError('This block has already been completed this week. Progress is calculated automatically based on weekly submissions.');
+        setError('Block already completed! This block has already been submitted today.');
         clearSubmissionLock(subject.id, blockIndex);
         setSubmitting(false);
+        // Close modal and reset state
+        setSelectedSubject(null);
+        setSelectedBlockIndex(null);
+        setSummaryText('');
+        setSelectedResources([]);
+        resetCustomFieldResponses();
         return;
       }
 
@@ -571,33 +627,17 @@ const StudentPortal = () => {
       // Progress is now calculated dynamically based on weekly submissions
       // No need to update completed_blocks field anymore
 
-      // Reset timer for next session after successful submission
-      const nextAvailableBlock = getNextAvailableBlock(subject);
+      // Post-Submission Cleanup: Clear timer state entirely after successful submission
+      // This ensures the timer UI is hidden and shows the "Green Checkmark" state
+      setActiveTimers(prev => {
+        const updated = { ...prev };
+        delete updated[subject.id];
+        return updated;
+      });
       
-      if (nextAvailableBlock !== null) {
-        // Reset timer for the next block
-        const timerConfig = createTimerConfig(subject?.block_length || 30);
-        timerConfig.blockIndex = nextAvailableBlock;
-        timerConfig.isRunning = false;
-        
-        setActiveTimers(prev => ({
-          ...prev,
-          [subject.id]: timerConfig
-        }));
-        
-        const timerKey = getTimerKey(student.id, subject.id);
-        saveTimerToStorage(timerKey, timerConfig, student.id, subject.id, nextAvailableBlock);
-      } else {
-        // All blocks completed, clear timer
-        setActiveTimers(prev => {
-          const updated = { ...prev };
-          delete updated[subject.id];
-          return updated;
-        });
-        
-        const timerKey = getTimerKey(student.id, subject.id);
-        clearTimerFromStorage(timerKey);
-      }
+      // Clear timer from storage to prevent resurrection
+      const timerKey = getTimerKey(student.id, subject.id);
+      clearTimerFromStorage(timerKey);
 
       setSelectedSubject(null);
       setSelectedBlockIndex(null);
