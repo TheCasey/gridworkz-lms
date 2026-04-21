@@ -5,13 +5,36 @@ import {
   doc, getDoc, getDocs, serverTimestamp
 } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
-import { Check, Clock, BookOpen, Lock, X, ExternalLink } from 'lucide-react';
+import { Check, Clock, BookOpen, Lock, X, ExternalLink, Bell } from 'lucide-react';
+
 import { getCurrentWeekRange, isTimestampInWeek } from '../utils/weekUtils';
 import {
   createTimerConfig, getRemainingTime, isTimerCompleted, saveTimerToStorage,
   loadTimerFromStorage, clearTimerFromStorage, getTimerKey, formatRemainingTime,
   getTimerProgress, resumeTimerFromStorage
 } from '../utils/timerUtils';
+
+const ALARM_SOUNDS = [
+  { file: 'alarm-clock.mp3', label: 'Alarm Clock' },
+  { file: 'blblblblb.mp3', label: 'Blblblblb' },
+  { file: 'bong-alarm.mp3', label: 'Bong Alarm' },
+  { file: 'car-horn.mp3', label: 'Car Horn' },
+  { file: 'cartoon-alarm.mp3', label: 'Cartoon Alarm' },
+  { file: 'foghorn.mp3', label: 'Foghorn' },
+  { file: 'funny-alarm.mp3', label: 'Funny Alarm' },
+  { file: 'kids-logo.mp3', label: 'Kids Logo' },
+  { file: 'level-complete.mp3', label: 'Level Complete' },
+  { file: 'level-up.mp3', label: 'Level Up' },
+  { file: 'level-up2.mp3', label: 'Level Up 2' },
+  { file: 'malathion.mp3', label: 'Malathion' },
+  { file: 'meow.mp3', label: 'Meow' },
+  { file: 'party-horn.mp3', label: 'Party Horn' },
+  { file: 'rap-jingle.mp3', label: 'Rap Jingle' },
+  { file: 'taiwan-EAS.mp3', label: 'Taiwan EAS' },
+  { file: 'tripod.mp3', label: 'Tripod' },
+  { file: 'war-drums.mp3', label: 'War Drums' },
+  { file: 'yaaaas.mp3', label: 'Yaaaas' },
+];
 
 const FONT = "'Super Sans VF', system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, sans-serif";
 const C = {
@@ -40,9 +63,12 @@ const StudentPortal = () => {
   const [completedBlocks, setCompletedBlocks] = useState({});
   const [selectedResources, setSelectedResources] = useState([]);
   const [activeTimers, setActiveTimers] = useState({});
-  const [notificationSound, setNotificationSound] = useState(null);
+  const [alarmSound, setAlarmSound] = useState(ALARM_SOUNDS[0].file);
   const [customFieldResponses, setCustomFieldResponses] = useState({});
   const submissionLocksRef = useRef({});
+  const alarmAudioRef = useRef(null);
+  const alarmStopTimerRef = useRef(null);
+  const alarmSoundRef = useRef(ALARM_SOUNDS[0].file);
   const [pinAttempts, setPinAttempts] = useState(0);
   const [pinLockoutUntil, setPinLockoutUntil] = useState(null);
   const oldSubjectUnsubRef = useRef(null);
@@ -153,19 +179,34 @@ const StudentPortal = () => {
   }, [student, subjects, completedBlocks]);
 
   useEffect(() => {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    setNotificationSound({ audioContext: ctx });
-    return () => ctx.close();
-  }, []);
+    if (!student) return;
+    const saved = localStorage.getItem(`alarm_sound_${student.id}`);
+    if (saved && ALARM_SOUNDS.some(s => s.file === saved)) {
+      setAlarmSound(saved);
+      alarmSoundRef.current = saved;
+    }
+  }, [student?.id]);
+
+  const handleAlarmChange = (file) => {
+    setAlarmSound(file);
+    alarmSoundRef.current = file;
+    if (student) localStorage.setItem(`alarm_sound_${student.id}`, file);
+    const audio = new Audio(`/sounds/${file}`);
+    audio.play().catch(() => {});
+  };
+
+  const stopAlarm = () => {
+    if (alarmStopTimerRef.current) { clearTimeout(alarmStopTimerRef.current); alarmStopTimerRef.current = null; }
+    if (alarmAudioRef.current) { alarmAudioRef.current.loop = false; alarmAudioRef.current.pause(); alarmAudioRef.current.currentTime = 0; alarmAudioRef.current = null; }
+  };
 
   const playNotificationSound = () => {
-    if (!notificationSound) return;
-    const { audioContext: ctx } = notificationSound;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.frequency.value = 800; osc.type = 'sine'; gain.gain.value = 0.1;
-    osc.start(); osc.stop(ctx.currentTime + 0.2);
+    stopAlarm();
+    const audio = new Audio(`/sounds/${alarmSoundRef.current}`);
+    audio.loop = true;
+    alarmAudioRef.current = audio;
+    audio.play().catch(() => {});
+    alarmStopTimerRef.current = setTimeout(stopAlarm, 20_000);
   };
 
   const handleTimerComplete = (subjectId) => {
@@ -182,6 +223,8 @@ const StudentPortal = () => {
 
   const startTimer = (subject) => {
     if (!subject) return;
+    const otherRunning = Object.keys(activeTimers).some(id => id !== subject.id);
+    if (otherRunning) return;
     const nextBlock = getNextAvailableBlock(subject);
     if (nextBlock === null) { alert('All blocks completed!'); return; }
     const key = getTimerKey(student.id, subject.id);
@@ -404,6 +447,22 @@ const StudentPortal = () => {
             <h1 style={{ fontSize: 16, fontWeight: 540, color: C.charcoal }}>My Learning</h1>
             <div className="flex items-center gap-4">
               <span style={{ fontSize: 14, color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>{student.name}</span>
+              <div className="flex items-center gap-1.5">
+                <Bell className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'rgba(41,40,39,0.35)' }} />
+                <select
+                  value={alarmSound}
+                  onChange={(e) => handleAlarmChange(e.target.value)}
+                  style={{
+                    fontSize: 13, color: C.charcoal, fontWeight: 460, fontFamily: FONT,
+                    border: `1px solid ${C.parchment}`, borderRadius: 6, padding: '3px 6px',
+                    backgroundColor: '#fff', cursor: 'pointer', outline: 'none', maxWidth: 140,
+                  }}
+                >
+                  {ALARM_SOUNDS.map(s => (
+                    <option key={s.file} value={s.file}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
               <button onClick={() => setIsAuthenticated(false)}
                 style={{ fontSize: 13, color: C.amethyst, fontWeight: 460, textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', fontFamily: FONT }}>
                 Sign Out
@@ -574,7 +633,7 @@ const StudentPortal = () => {
 
                       <div className="flex gap-2">
                         {!activeTimers[subject.id] ? (
-                          <button onClick={() => startTimer(subject)} disabled={locked}
+                          <button onClick={() => startTimer(subject)} disabled={locked || Object.keys(activeTimers).some(id => id !== subject.id)}
                             className="flex-1 px-3 py-2 rounded-lg text-[13px] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                             style={{ backgroundColor: C.cream, color: C.charcoal, fontWeight: 700, fontFamily: FONT }}
                             onMouseEnter={e => { if (!locked) e.currentTarget.style.backgroundColor = C.parchment; }}

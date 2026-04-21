@@ -32,6 +32,13 @@ const inputFocusStyle = { border: `1px solid ${C.charcoal}` };
 
 const labelCls = 'block text-[13px] font-label uppercase tracking-wider text-charcoal-ink/50 mb-2';
 
+const STEPS = [
+  { label: 'Basics', description: 'Name, students & color' },
+  { label: 'Schedule', description: 'Blocks & time settings' },
+  { label: 'Resources & Feedback', description: 'Links & custom fields (optional)' },
+  { label: 'Block Objectives', description: 'Per-block instructions (optional)' },
+];
+
 const Toggle = ({ value, onChange }) => (
   <button
     type="button"
@@ -63,6 +70,7 @@ const Curriculum = () => {
   const [blockObjectives, setBlockObjectives] = useState({});
   const [expandedObjectiveBlock, setExpandedObjectiveBlock] = useState(null);
   const [expandedStudentOverrides, setExpandedStudentOverrides] = useState({});
+  const [currentStep, setCurrentStep] = useState(1);
 
   const db = getFirestore(app);
 
@@ -209,15 +217,24 @@ const Curriculum = () => {
     }));
   };
 
+  const handleNext = () => {
+    if (currentStep === 1) {
+      if (!selectedStudents.length) { alert('Please select at least one student.'); return; }
+      if (!subjectName.trim()) { alert('Please enter a subject name.'); return; }
+    }
+    setCurrentStep(s => Math.min(s + 1, STEPS.length));
+  };
+
   const resetForm = () => {
     setSelectedStudents([]); setSubjectName(''); setTotalBlocks(10); setBlockLength(30);
     setSubjectColor('#3B82F6'); setRequireSummary(true); setResources([{ name: '', url: '' }]);
-    setCustomFields([]); setRequireTimer(false); setBlockObjectives({}); setExpandedObjectiveBlock(null); setExpandedStudentOverrides({});
-    setShowAddForm(false); setEditingSubject(null);
+    setCustomFields([]); setRequireTimer(false); setBlockObjectives({}); setExpandedObjectiveBlock(null);
+    setExpandedStudentOverrides({}); setCurrentStep(1); setShowAddForm(false); setEditingSubject(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (currentStep < STEPS.length) { handleNext(); return; }
     if (!selectedStudents.length || !subjectName.trim()) {
       alert('Please select at least one student and enter a subject name');
       return;
@@ -330,273 +347,277 @@ const Curriculum = () => {
       {showAddForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" style={{ border: `1px solid ${C.parchment}` }}>
-            <div className="flex items-center justify-between p-6 sticky top-0 bg-white z-10" style={{ borderBottom: `1px solid ${C.parchment}` }}>
-              <h2 className="text-[18px] font-display text-charcoal-ink">
-                {editingSubject ? 'Edit Subject' : 'Add New Subject'}
-              </h2>
-              <button onClick={resetForm} className="text-charcoal-ink/30 hover:text-charcoal-ink transition-colors">
-                <X className="w-5 h-5" />
-              </button>
+
+            {/* Sticky header + step indicator */}
+            <div className="sticky top-0 bg-white z-10" style={{ borderBottom: `1px solid ${C.parchment}` }}>
+              <div className="flex items-center justify-between px-6 pt-6 pb-3">
+                <div>
+                  <h2 className="text-[18px] font-display text-charcoal-ink">
+                    {editingSubject ? 'Edit Subject' : 'Add New Subject'}
+                  </h2>
+                  <p className="text-[12px] text-charcoal-ink/40 font-body mt-0.5">
+                    {STEPS[currentStep - 1].description}
+                  </p>
+                </div>
+                <button onClick={resetForm} className="text-charcoal-ink/30 hover:text-charcoal-ink transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              {/* Step indicator */}
+              <div className="flex items-start px-6 pb-5">
+                {STEPS.map((step, idx) => {
+                  const n = idx + 1;
+                  const active = n === currentStep;
+                  const done = n < currentStep;
+                  return (
+                    <React.Fragment key={n}>
+                      <div className="flex flex-col items-center flex-shrink-0" style={{ width: 56 }}>
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center transition-colors"
+                          style={{
+                            backgroundColor: done ? C.charcoal : active ? C.lavender : 'transparent',
+                            border: `1.5px solid ${done ? C.charcoal : active ? C.lavender : C.parchment}`,
+                            color: done ? '#fff' : active ? C.charcoal : 'rgba(41,40,39,0.25)',
+                            fontSize: 11, fontWeight: 700
+                          }}>
+                          {done ? '✓' : n}
+                        </div>
+                        <span style={{ fontSize: 9, marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: active ? 700 : 400, color: active ? C.charcoal : 'rgba(41,40,39,0.35)', textAlign: 'center', lineHeight: 1.3 }}>
+                          {step.label}
+                        </span>
+                      </div>
+                      {idx < STEPS.length - 1 && (
+                        <div style={{ flex: 1, height: 1.5, marginTop: 11, backgroundColor: n < currentStep ? C.charcoal : C.parchment }} />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* Students */}
-              <div>
-                <label className={labelCls}>Students *</label>
-                <div className="rounded-lg overflow-hidden max-h-48 overflow-y-auto" style={{ border: `1px solid ${C.parchment}` }}>
-                  {students.map((s) => (
-                    <label
-                      key={s.id}
-                      className="flex items-center gap-3 px-4 py-2.5 cursor-pointer"
-                      style={{ borderBottom: `1px solid ${C.parchment}` }}
-                      onMouseEnter={e => e.currentTarget.style.backgroundColor = C.cream}
-                      onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedStudents.includes(s.id)}
-                        onChange={(e) => setSelectedStudents(e.target.checked
-                          ? [...selectedStudents, s.id]
-                          : selectedStudents.filter(id => id !== s.id)
-                        )}
-                        className="w-4 h-4 accent-amethyst-link"
-                      />
-                      <span className="text-[14px] text-charcoal-ink font-body">{s.name}</span>
-                    </label>
-                  ))}
-                </div>
-                {selectedStudents.length === 0 && (
-                  <p className="text-[12px] text-amethyst-link mt-1.5">Please select at least one student</p>
-                )}
-                {selectedStudents.length > 0 && (
-                  <p className="text-[12px] text-charcoal-ink/40 mt-1.5">
-                    {selectedStudents.length} student{selectedStudents.length > 1 ? 's' : ''} selected
-                  </p>
-                )}
-              </div>
 
-              {/* Subject Name */}
-              <div>
-                <label className={labelCls}>Subject Name *</label>
-                <input
-                  type="text"
-                  value={subjectName}
-                  onChange={(e) => setSubjectName(e.target.value)}
-                  className={inputCls}
-                  style={inputStyle}
-                  onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                  onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                  placeholder="e.g., 6th Grade Math"
-                  required
-                />
-              </div>
-
-              {/* Blocks & Length */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* Step 1: Basics */}
+              {currentStep === 1 && (<>
                 <div>
-                  <label className={labelCls}>Blocks per Week</label>
-                  <input type="number" min="1" max="20" value={totalBlocks}
-                    onChange={(e) => setTotalBlocks(parseInt(e.target.value))}
-                    className={inputCls} style={inputStyle}
-                    onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                    onBlur={e => Object.assign(e.currentTarget.style, inputStyle)} />
+                  <label className={labelCls}>Assign Students *</label>
+                  <div className="rounded-lg overflow-hidden max-h-48 overflow-y-auto" style={{ border: `1px solid ${C.parchment}` }}>
+                    {students.map((s) => (
+                      <label key={s.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer"
+                        style={{ borderBottom: `1px solid ${C.parchment}` }}
+                        onMouseEnter={e => e.currentTarget.style.backgroundColor = C.cream}
+                        onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}>
+                        <input type="checkbox" checked={selectedStudents.includes(s.id)}
+                          onChange={(e) => setSelectedStudents(e.target.checked ? [...selectedStudents, s.id] : selectedStudents.filter(id => id !== s.id))}
+                          className="w-4 h-4 accent-amethyst-link" />
+                        <span className="text-[14px] text-charcoal-ink font-body">{s.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {selectedStudents.length === 0
+                    ? <p className="text-[12px] text-amethyst-link mt-1.5">Select at least one student</p>
+                    : <p className="text-[12px] text-charcoal-ink/40 mt-1.5">{selectedStudents.length} student{selectedStudents.length > 1 ? 's' : ''} selected</p>}
                 </div>
                 <div>
-                  <label className={labelCls}>Block Length (min)</label>
-                  <input type="number" min="5" max="120" step="5" value={blockLength}
-                    onChange={(e) => setBlockLength(parseInt(e.target.value))}
+                  <label className={labelCls}>Subject Name *</label>
+                  <input type="text" value={subjectName} onChange={(e) => setSubjectName(e.target.value)}
                     className={inputCls} style={inputStyle}
                     onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                    onBlur={e => Object.assign(e.currentTarget.style, inputStyle)} />
+                    onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                    placeholder="e.g., Chess Curriculum" autoFocus />
                 </div>
-              </div>
-
-              {/* Color */}
-              <div>
-                <label className={labelCls}>Subject Color</label>
-                <div className="flex items-center gap-3">
-                  <input type="color" value={subjectColor}
-                    onChange={(e) => setSubjectColor(e.target.value)}
-                    className="w-14 h-10 rounded-lg cursor-pointer p-0.5 bg-white"
-                    style={{ border: `1px solid ${C.parchment}` }} />
-                  <span className="text-[13px] text-charcoal-ink/50 font-mono">{subjectColor}</span>
-                </div>
-              </div>
-
-              {/* Toggles */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[14px] font-body text-charcoal-ink">Require Summary</p>
-                    <p className="text-[12px] text-charcoal-ink/40 mt-0.5">
-                      {requireSummary ? 'Students must write a summary' : 'No summary required'}
-                    </p>
+                <div>
+                  <label className={labelCls}>Subject Color</label>
+                  <div className="flex items-center gap-3">
+                    <input type="color" value={subjectColor} onChange={(e) => setSubjectColor(e.target.value)}
+                      className="w-14 h-10 rounded-lg cursor-pointer p-0.5 bg-white" style={{ border: `1px solid ${C.parchment}` }} />
+                    <span className="text-[13px] text-charcoal-ink/50 font-mono">{subjectColor}</span>
                   </div>
-                  <Toggle value={requireSummary} onChange={setRequireSummary} />
                 </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[14px] font-body text-charcoal-ink">Require Timer</p>
-                    <p className="text-[12px] text-charcoal-ink/40 mt-0.5">
-                      {requireTimer ? 'Timer must complete before submitting' : 'Timer is optional'}
-                    </p>
-                  </div>
-                  <Toggle value={requireTimer} onChange={setRequireTimer} />
-                </div>
-              </div>
+              </>)}
 
-              {/* Resources */}
-              <div>
-                <label className={labelCls}>Resource Links</label>
-                <div className="space-y-2.5">
-                  {resources.map((resource, i) => (
-                    <div key={i} className="flex gap-2">
-                      <input type="text" value={resource.name}
-                        onChange={(e) => handleResourceChange(i, 'name', e.target.value)}
-                        className={inputCls} style={inputStyle}
-                        onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                        onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                        placeholder="Resource name" />
-                      <input type="url" value={resource.url}
-                        onChange={(e) => handleResourceChange(i, 'url', e.target.value)}
-                        className={inputCls} style={inputStyle}
-                        onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                        onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                        placeholder="https://..." />
-                      {resources.length > 1 && (
-                        <button type="button" onClick={() => handleRemoveResource(i)}
-                          className="p-2 text-charcoal-ink/30 hover:text-charcoal-ink transition-colors">
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
+              {/* Step 2: Schedule */}
+              {currentStep === 2 && (<>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelCls}>Blocks per Week</label>
+                    <input type="number" min="1" max="20" value={totalBlocks}
+                      onChange={(e) => setTotalBlocks(parseInt(e.target.value))}
+                      className={inputCls} style={inputStyle}
+                      onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                      onBlur={e => Object.assign(e.currentTarget.style, inputStyle)} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Block Length (min)</label>
+                    <input type="number" min="5" max="120" step="5" value={blockLength}
+                      onChange={(e) => setBlockLength(parseInt(e.target.value))}
+                      className={inputCls} style={inputStyle}
+                      onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                      onBlur={e => Object.assign(e.currentTarget.style, inputStyle)} />
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[14px] font-body text-charcoal-ink">Require Summary</p>
+                      <p className="text-[12px] text-charcoal-ink/40 mt-0.5">
+                        {requireSummary ? 'Students must write a summary (min. 150 characters)' : 'No summary required'}
+                      </p>
                     </div>
-                  ))}
-                  <button type="button" onClick={handleAddResource}
-                    className="flex items-center gap-2 text-[13px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
-                    <Plus className="w-4 h-4" /> Add Resource
-                  </button>
+                    <Toggle value={requireSummary} onChange={setRequireSummary} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[14px] font-body text-charcoal-ink">Require Timer</p>
+                      <p className="text-[12px] text-charcoal-ink/40 mt-0.5">
+                        {requireTimer ? 'Timer must complete before submitting' : 'Timer is optional'}
+                      </p>
+                    </div>
+                    <Toggle value={requireTimer} onChange={setRequireTimer} />
+                  </div>
                 </div>
-              </div>
+              </>)}
 
-              {/* Custom Fields */}
-              <div>
-                <label className={labelCls}>Custom Submission Fields</label>
-                <p className="text-[12px] text-charcoal-ink/40 mb-3 font-body">Add fields students must complete when finishing a block</p>
-                <div className="space-y-3">
-                  {customFields.map((field, i) => (
-                    <div key={field.id} className="rounded-lg p-4 bg-[#faf9f8]" style={{ border: `1px solid ${C.parchment}` }}>
-                      <div className="grid grid-cols-2 gap-3 mb-3">
-                        <div>
-                          <label className={labelCls}>Field Type</label>
-                          <select value={field.type}
-                            onChange={(e) => handleCustomFieldChange(i, 'type', e.target.value)}
+              {/* Step 3: Resources & Feedback */}
+              {currentStep === 3 && (<>
+                <div>
+                  <label className={labelCls}>Resource Links</label>
+                  <p className="text-[12px] text-charcoal-ink/40 mb-3 font-body">Links or materials students can reference during a block</p>
+                  <div className="space-y-2.5">
+                    {resources.map((resource, i) => (
+                      <div key={i} className="flex gap-2">
+                        <input type="text" value={resource.name}
+                          onChange={(e) => handleResourceChange(i, 'name', e.target.value)}
+                          className={inputCls} style={inputStyle}
+                          onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                          onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                          placeholder="Resource name" />
+                        <input type="url" value={resource.url}
+                          onChange={(e) => handleResourceChange(i, 'url', e.target.value)}
+                          className={inputCls} style={inputStyle}
+                          onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                          onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                          placeholder="https://..." />
+                        {resources.length > 1 && (
+                          <button type="button" onClick={() => handleRemoveResource(i)}
+                            className="p-2 text-charcoal-ink/30 hover:text-charcoal-ink transition-colors">
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button type="button" onClick={handleAddResource}
+                      className="flex items-center gap-2 text-[13px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                      <Plus className="w-4 h-4" /> Add Resource
+                    </button>
+                  </div>
+                </div>
+                <div style={{ borderTop: `1px solid ${C.parchment}` }} />
+                <div>
+                  <label className={labelCls}>Custom Submission Fields</label>
+                  <p className="text-[12px] text-charcoal-ink/40 mb-3 font-body">Extra info requested from students on every block completion for this subject</p>
+                  <div className="space-y-3">
+                    {customFields.map((field, i) => (
+                      <div key={field.id} className="rounded-lg p-4 bg-[#faf9f8]" style={{ border: `1px solid ${C.parchment}` }}>
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                          <div>
+                            <label className={labelCls}>Field Type</label>
+                            <select value={field.type} onChange={(e) => handleCustomFieldChange(i, 'type', e.target.value)}
+                              className={inputCls} style={inputStyle}
+                              onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                              onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}>
+                              <option value="text">Text Input</option>
+                              <option value="number">Number Input</option>
+                              <option value="file">File Upload</option>
+                            </select>
+                          </div>
+                          <div className="flex items-center gap-2 mt-6">
+                            <input type="checkbox" checked={field.required}
+                              onChange={(e) => handleCustomFieldChange(i, 'required', e.target.checked)}
+                              className="w-4 h-4 accent-amethyst-link" />
+                            <label className="text-[13px] text-charcoal-ink/60 font-body">Required</label>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <input type="text" value={field.label} onChange={(e) => handleCustomFieldChange(i, 'label', e.target.value)}
                             className={inputCls} style={inputStyle}
                             onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                            onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}>
-                            <option value="text">Text Input</option>
-                            <option value="number">Number Input</option>
-                            <option value="file">File Upload</option>
-                          </select>
+                            onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                            placeholder="Field label (e.g., 'Which chapters did you read?')" />
+                          <input type="text" value={field.placeholder} onChange={(e) => handleCustomFieldChange(i, 'placeholder', e.target.value)}
+                            className={inputCls} style={inputStyle}
+                            onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                            onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                            placeholder="Helper text for the student" />
                         </div>
-                        <div className="flex items-center gap-2 mt-6">
-                          <input type="checkbox" checked={field.required}
-                            onChange={(e) => handleCustomFieldChange(i, 'required', e.target.checked)}
-                            className="w-4 h-4 accent-amethyst-link" />
-                          <label className="text-[13px] text-charcoal-ink/60 font-body">Required</label>
-                        </div>
+                        <button type="button" onClick={() => handleRemoveCustomField(i)}
+                          className="mt-3 text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">
+                          Remove Field
+                        </button>
                       </div>
-                      <div className="space-y-2">
-                        <input type="text" value={field.label}
-                          onChange={(e) => handleCustomFieldChange(i, 'label', e.target.value)}
-                          className={inputCls} style={inputStyle}
-                          onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                          onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                          placeholder="Field label (e.g., 'Which chapters did you read?')" />
-                        <input type="text" value={field.placeholder}
-                          onChange={(e) => handleCustomFieldChange(i, 'placeholder', e.target.value)}
-                          className={inputCls} style={inputStyle}
-                          onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                          onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                          placeholder="Helper text for the student" />
-                      </div>
-                      <button type="button" onClick={() => handleRemoveCustomField(i)}
-                        className="mt-3 text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">
-                        Remove Field
-                      </button>
-                    </div>
-                  ))}
-                  <button type="button" onClick={handleAddCustomField}
-                    className="flex items-center gap-2 text-[13px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
-                    <Plus className="w-4 h-4" /> Add Custom Field
-                  </button>
+                    ))}
+                    <button type="button" onClick={handleAddCustomField}
+                      className="flex items-center gap-2 text-[13px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                      <Plus className="w-4 h-4" /> Add Custom Field
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </>)}
 
-              {/* Block Objectives */}
-              <div>
-                <label className={labelCls}>Block Objectives</label>
-                <p className="text-[12px] text-charcoal-ink/40 mb-3 font-body">
-                  Attach specific instructions to individual blocks. Students see these as guided blocks.
-                </p>
-                <div className="space-y-2">
-                  {Array.from({ length: totalBlocks }, (_, i) => {
-                    const obj = blockObjectives[i];
-                    const isExpanded = expandedObjectiveBlock === i;
-                    return (
-                      <div key={i} className="rounded-lg overflow-hidden" style={{ border: `1px solid ${obj ? C.lavender : C.parchment}` }}>
-                        <div className="flex items-center justify-between px-4 py-2.5"
-                          style={{ backgroundColor: obj ? `${C.lavender}22` : '#faf9f8', cursor: obj ? 'pointer' : 'default' }}
-                          onClick={() => { if (obj) setExpandedObjectiveBlock(isExpanded ? null : i); }}>
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="text-[13px] font-body flex-shrink-0" style={{ color: C.charcoal }}>Block {i + 1}</span>
-                            {obj && (
-                              <span className="text-[11px] px-2 py-0.5 rounded-full font-label flex-shrink-0"
-                                style={{ backgroundColor: C.lavender, color: C.charcoal }}>Guided</span>
-                            )}
-                            {obj?.instruction && (
-                              <span className="text-[12px] text-charcoal-ink/40 font-body truncate">{obj.instruction}</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0 ml-3" onClick={e => e.stopPropagation()}>
-                            {obj ? (
-                              <button type="button" onClick={() => handleToggleObjective(i)}
-                                className="text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">
-                                Remove
-                              </button>
-                            ) : (
-                              <button type="button" onClick={() => handleToggleObjective(i)}
-                                className="flex items-center gap-1 text-[12px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
-                                <Plus className="w-3.5 h-3.5" /> Add Objective
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        {obj && isExpanded && (
-                          <div className="p-4 space-y-4" style={{ borderTop: `1px solid ${C.lavender}44` }}>
-                            <div>
-                              <label className={labelCls}>Instruction</label>
-                              <textarea
-                                value={obj.instruction}
-                                onChange={(e) => handleObjectiveChange(i, e.target.value)}
-                                className="w-full px-3 py-2.5 rounded-lg text-[14px] focus:outline-none transition-colors resize-none bg-white font-body"
-                                style={{ border: `1px solid ${C.parchment}`, color: C.charcoal }}
-                                onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                                onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                                rows={2}
-                                placeholder="e.g., Play a chess game with your brother" />
+              {/* Step 4: Block Objectives */}
+              {currentStep === 4 && (
+                <div>
+                  <p className="text-[13px] text-charcoal-ink/50 font-body mb-4">
+                    Attach specific instructions to individual blocks. Students see these as guided blocks with a dot indicator. Leave blocks blank for independent learning.
+                  </p>
+                  <div className="space-y-2">
+                    {Array.from({ length: totalBlocks }, (_, i) => {
+                      const obj = blockObjectives[i];
+                      const isExpanded = expandedObjectiveBlock === i;
+                      return (
+                        <div key={i} className="rounded-lg overflow-hidden" style={{ border: `1px solid ${obj ? C.lavender : C.parchment}` }}>
+                          <div className="flex items-center justify-between px-4 py-2.5"
+                            style={{ backgroundColor: obj ? `${C.lavender}22` : '#faf9f8', cursor: obj ? 'pointer' : 'default' }}
+                            onClick={() => { if (obj) setExpandedObjectiveBlock(isExpanded ? null : i); }}>
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="text-[13px] font-body flex-shrink-0" style={{ color: C.charcoal }}>Block {i + 1}</span>
+                              {obj && <span className="text-[11px] px-2 py-0.5 rounded-full font-label flex-shrink-0" style={{ backgroundColor: C.lavender, color: C.charcoal }}>Guided</span>}
+                              {obj?.instruction && <span className="text-[12px] text-charcoal-ink/40 font-body truncate">{obj.instruction}</span>}
+                              {obj && !obj.instruction && Object.keys(obj.student_overrides || {}).length > 0 && (
+                                <span className="text-[12px] text-charcoal-ink/40 font-body">{Object.keys(obj.student_overrides).length} student override{Object.keys(obj.student_overrides).length > 1 ? 's' : ''}</span>
+                              )}
                             </div>
-                            <div>
-                              <label className={labelCls}>Block-Specific Feedback Fields</label>
-                              <p className="text-[11px] text-charcoal-ink/40 mb-2.5 font-body">
-                                If set, these replace the subject-level fields for this block only.
-                              </p>
-                              <div className="space-y-2">
-                                {(obj.custom_fields || []).map((field) => (
-                                  <div key={field.id} className="rounded-lg p-3 bg-white" style={{ border: `1px solid ${C.parchment}` }}>
-                                    <div className="grid grid-cols-2 gap-2 mb-2">
-                                      <div>
-                                        <select value={field.type}
-                                          onChange={(e) => handleObjectiveCustomFieldChange(i, field.id, 'type', e.target.value)}
+                            <div className="flex items-center gap-2 flex-shrink-0 ml-3" onClick={e => e.stopPropagation()}>
+                              {obj ? (
+                                <button type="button" onClick={() => handleToggleObjective(i)}
+                                  className="text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">Remove</button>
+                              ) : (
+                                <button type="button" onClick={() => handleToggleObjective(i)}
+                                  className="flex items-center gap-1 text-[12px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                                  <Plus className="w-3.5 h-3.5" /> Add Objective
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {obj && isExpanded && (
+                            <div className="p-4 space-y-4" style={{ borderTop: `1px solid ${C.lavender}44` }}>
+                              <div>
+                                <label className={labelCls}>Shared Instruction</label>
+                                <p className="text-[11px] text-charcoal-ink/40 mb-2 font-body">Applies to all assigned students unless overridden below</p>
+                                <textarea value={obj.instruction} onChange={(e) => handleObjectiveChange(i, e.target.value)}
+                                  className="w-full px-3 py-2.5 rounded-lg text-[14px] focus:outline-none transition-colors resize-none bg-white font-body"
+                                  style={{ border: `1px solid ${C.parchment}`, color: C.charcoal }}
+                                  onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                  onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                                  rows={2} placeholder="e.g., Play a chess game with your sibling" />
+                              </div>
+                              <div>
+                                <label className={labelCls}>Block-Specific Feedback Fields</label>
+                                <p className="text-[11px] text-charcoal-ink/40 mb-2.5 font-body">If set, replaces subject-level fields for this block.</p>
+                                <div className="space-y-2">
+                                  {(obj.custom_fields || []).map((field) => (
+                                    <div key={field.id} className="rounded-lg p-3 bg-white" style={{ border: `1px solid ${C.parchment}` }}>
+                                      <div className="grid grid-cols-2 gap-2 mb-2">
+                                        <select value={field.type} onChange={(e) => handleObjectiveCustomFieldChange(i, field.id, 'type', e.target.value)}
                                           className={inputCls} style={inputStyle}
                                           onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
                                           onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}>
@@ -604,180 +625,158 @@ const Curriculum = () => {
                                           <option value="number">Number Input</option>
                                           <option value="file">File Upload</option>
                                         </select>
-                                      </div>
-                                      <div className="flex items-center gap-2 mt-2">
-                                        <input type="checkbox" checked={field.required}
-                                          onChange={(e) => handleObjectiveCustomFieldChange(i, field.id, 'required', e.target.checked)}
-                                          className="w-4 h-4 accent-amethyst-link" />
-                                        <label className="text-[13px] text-charcoal-ink/60 font-body">Required</label>
-                                      </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <input type="text" value={field.label}
-                                        onChange={(e) => handleObjectiveCustomFieldChange(i, field.id, 'label', e.target.value)}
-                                        className={inputCls} style={inputStyle}
-                                        onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                                        onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                                        placeholder="Field label (e.g., 'Describe your opponent's strategy')" />
-                                      <input type="text" value={field.placeholder}
-                                        onChange={(e) => handleObjectiveCustomFieldChange(i, field.id, 'placeholder', e.target.value)}
-                                        className={inputCls} style={inputStyle}
-                                        onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                                        onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                                        placeholder="Helper text for the student" />
-                                    </div>
-                                    <button type="button"
-                                      onClick={() => handleRemoveObjectiveCustomField(i, field.id)}
-                                      className="mt-2 text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">
-                                      Remove Field
-                                    </button>
-                                  </div>
-                                ))}
-                                <button type="button" onClick={() => handleAddObjectiveCustomField(i)}
-                                  className="flex items-center gap-1.5 text-[12px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
-                                  <Plus className="w-3.5 h-3.5" /> Add Feedback Field
-                                </button>
-                              </div>
-                            </div>
-                            {/* Student Overrides — only when multiple students assigned */}
-                            {selectedStudents.length > 1 && (
-                              <div>
-                                <label className={labelCls}>Per-Student Overrides</label>
-                                <p className="text-[11px] text-charcoal-ink/40 mb-2.5 font-body">
-                                  Replace this block's instruction for a specific student.
-                                </p>
-                                <div className="space-y-2">
-                                  {selectedStudents.map(studentId => {
-                                    const st = students.find(s => s.id === studentId);
-                                    if (!st) return null;
-                                    const override = obj.student_overrides?.[studentId];
-                                    const overrideExpanded = expandedStudentOverrides[`${i}_${studentId}`];
-                                    return (
-                                      <div key={studentId} className="rounded-lg overflow-hidden"
-                                        style={{ border: `1px solid ${override ? C.amethyst + '55' : C.parchment}` }}>
-                                        <div className="flex items-center justify-between px-3 py-2"
-                                          style={{ backgroundColor: override ? `${C.amethyst}0d` : '#faf9f8', cursor: override ? 'pointer' : 'default' }}
-                                          onClick={() => { if (override) setExpandedStudentOverrides(prev => ({ ...prev, [`${i}_${studentId}`]: !prev[`${i}_${studentId}`] })); }}>
-                                          <div className="flex items-center gap-2 min-w-0">
-                                            <span className="text-[13px] font-body flex-shrink-0" style={{ color: C.charcoal }}>{st.name}</span>
-                                            {override && (
-                                              <span className="text-[11px] px-1.5 py-0.5 rounded-full font-label flex-shrink-0"
-                                                style={{ backgroundColor: `${C.amethyst}22`, color: C.amethyst }}>Override</span>
-                                            )}
-                                            {override?.instruction && (
-                                              <span className="text-[12px] text-charcoal-ink/40 font-body truncate">{override.instruction}</span>
-                                            )}
-                                          </div>
-                                          <div onClick={e => e.stopPropagation()}>
-                                            {override ? (
-                                              <button type="button" onClick={() => handleToggleStudentOverride(i, studentId)}
-                                                className="text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">
-                                                Remove
-                                              </button>
-                                            ) : (
-                                              <button type="button" onClick={() => handleToggleStudentOverride(i, studentId)}
-                                                className="flex items-center gap-1 text-[12px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
-                                                <Plus className="w-3 h-3" /> Override
-                                              </button>
-                                            )}
-                                          </div>
+                                        <div className="flex items-center gap-2 mt-2">
+                                          <input type="checkbox" checked={field.required}
+                                            onChange={(e) => handleObjectiveCustomFieldChange(i, field.id, 'required', e.target.checked)}
+                                            className="w-4 h-4 accent-amethyst-link" />
+                                          <label className="text-[13px] text-charcoal-ink/60 font-body">Required</label>
                                         </div>
-                                        {override && overrideExpanded && (
-                                          <div className="p-3 space-y-3" style={{ borderTop: `1px solid ${C.amethyst}22` }}>
-                                            <div>
-                                              <label className={labelCls}>Instruction for {st.name}</label>
-                                              <textarea
-                                                value={override.instruction}
-                                                onChange={(e) => handleStudentOverrideChange(i, studentId, e.target.value)}
-                                                className="w-full px-3 py-2.5 rounded-lg text-[14px] focus:outline-none transition-colors resize-none bg-white font-body"
-                                                style={{ border: `1px solid ${C.parchment}`, color: C.charcoal }}
-                                                onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                                                onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                                                rows={2}
-                                                placeholder={`Specific instruction for ${st.name}...`} />
-                                            </div>
-                                            <div>
-                                              <label className={labelCls}>Feedback Fields for {st.name}</label>
-                                              <p className="text-[11px] text-charcoal-ink/40 mb-2 font-body">
-                                                If set, overrides block-level fields for {st.name} only.
-                                              </p>
-                                              <div className="space-y-2">
-                                                {(override.custom_fields || []).map((field) => (
-                                                  <div key={field.id} className="rounded-lg p-3 bg-white" style={{ border: `1px solid ${C.parchment}` }}>
-                                                    <div className="grid grid-cols-2 gap-2 mb-2">
-                                                      <select value={field.type}
-                                                        onChange={(e) => handleStudentOverrideCustomFieldChange(i, studentId, field.id, 'type', e.target.value)}
-                                                        className={inputCls} style={inputStyle}
-                                                        onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                                                        onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}>
-                                                        <option value="text">Text Input</option>
-                                                        <option value="number">Number Input</option>
-                                                        <option value="file">File Upload</option>
-                                                      </select>
-                                                      <div className="flex items-center gap-2 mt-2">
-                                                        <input type="checkbox" checked={field.required}
-                                                          onChange={(e) => handleStudentOverrideCustomFieldChange(i, studentId, field.id, 'required', e.target.checked)}
-                                                          className="w-4 h-4 accent-amethyst-link" />
-                                                        <label className="text-[13px] text-charcoal-ink/60 font-body">Required</label>
-                                                      </div>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                      <input type="text" value={field.label}
-                                                        onChange={(e) => handleStudentOverrideCustomFieldChange(i, studentId, field.id, 'label', e.target.value)}
-                                                        className={inputCls} style={inputStyle}
-                                                        onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                                                        onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                                                        placeholder="Field label" />
-                                                      <input type="text" value={field.placeholder}
-                                                        onChange={(e) => handleStudentOverrideCustomFieldChange(i, studentId, field.id, 'placeholder', e.target.value)}
-                                                        className={inputCls} style={inputStyle}
-                                                        onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                                                        onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                                                        placeholder="Helper text for the student" />
-                                                    </div>
-                                                    <button type="button"
-                                                      onClick={() => handleRemoveStudentOverrideCustomField(i, studentId, field.id)}
-                                                      className="mt-2 text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">
-                                                      Remove Field
-                                                    </button>
-                                                  </div>
-                                                ))}
-                                                <button type="button" onClick={() => handleAddStudentOverrideCustomField(i, studentId)}
-                                                  className="flex items-center gap-1.5 text-[12px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
-                                                  <Plus className="w-3.5 h-3.5" /> Add Field
-                                                </button>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        )}
                                       </div>
-                                    );
-                                  })}
+                                      <div className="space-y-2">
+                                        <input type="text" value={field.label} onChange={(e) => handleObjectiveCustomFieldChange(i, field.id, 'label', e.target.value)}
+                                          className={inputCls} style={inputStyle}
+                                          onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                          onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                                          placeholder="Field label" />
+                                        <input type="text" value={field.placeholder} onChange={(e) => handleObjectiveCustomFieldChange(i, field.id, 'placeholder', e.target.value)}
+                                          className={inputCls} style={inputStyle}
+                                          onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                          onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                                          placeholder="Helper text for the student" />
+                                      </div>
+                                      <button type="button" onClick={() => handleRemoveObjectiveCustomField(i, field.id)}
+                                        className="mt-2 text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">Remove Field</button>
+                                    </div>
+                                  ))}
+                                  <button type="button" onClick={() => handleAddObjectiveCustomField(i)}
+                                    className="flex items-center gap-1.5 text-[12px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                                    <Plus className="w-3.5 h-3.5" /> Add Feedback Field
+                                  </button>
                                 </div>
                               </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                              {selectedStudents.length > 1 && (
+                                <div>
+                                  <label className={labelCls}>Per-Student Overrides</label>
+                                  <p className="text-[11px] text-charcoal-ink/40 mb-2.5 font-body">Replace this block's instruction for a specific student.</p>
+                                  <div className="space-y-2">
+                                    {selectedStudents.map(studentId => {
+                                      const st = students.find(s => s.id === studentId);
+                                      if (!st) return null;
+                                      const override = obj.student_overrides?.[studentId];
+                                      const overrideExpanded = expandedStudentOverrides[`${i}_${studentId}`];
+                                      return (
+                                        <div key={studentId} className="rounded-lg overflow-hidden"
+                                          style={{ border: `1px solid ${override ? C.amethyst + '55' : C.parchment}` }}>
+                                          <div className="flex items-center justify-between px-3 py-2"
+                                            style={{ backgroundColor: override ? `${C.amethyst}0d` : '#faf9f8', cursor: override ? 'pointer' : 'default' }}
+                                            onClick={() => { if (override) setExpandedStudentOverrides(prev => ({ ...prev, [`${i}_${studentId}`]: !prev[`${i}_${studentId}`] })); }}>
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              <span className="text-[13px] font-body flex-shrink-0" style={{ color: C.charcoal }}>{st.name}</span>
+                                              {override && <span className="text-[11px] px-1.5 py-0.5 rounded-full font-label flex-shrink-0" style={{ backgroundColor: `${C.amethyst}22`, color: C.amethyst }}>Override</span>}
+                                              {override?.instruction && <span className="text-[12px] text-charcoal-ink/40 font-body truncate">{override.instruction}</span>}
+                                            </div>
+                                            <div onClick={e => e.stopPropagation()}>
+                                              {override ? (
+                                                <button type="button" onClick={() => handleToggleStudentOverride(i, studentId)}
+                                                  className="text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">Remove</button>
+                                              ) : (
+                                                <button type="button" onClick={() => handleToggleStudentOverride(i, studentId)}
+                                                  className="flex items-center gap-1 text-[12px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                                                  <Plus className="w-3 h-3" /> Override
+                                                </button>
+                                              )}
+                                            </div>
+                                          </div>
+                                          {override && overrideExpanded && (
+                                            <div className="p-3 space-y-3" style={{ borderTop: `1px solid ${C.amethyst}22` }}>
+                                              <div>
+                                                <label className={labelCls}>Instruction for {st.name}</label>
+                                                <textarea value={override.instruction} onChange={(e) => handleStudentOverrideChange(i, studentId, e.target.value)}
+                                                  className="w-full px-3 py-2.5 rounded-lg text-[14px] focus:outline-none transition-colors resize-none bg-white font-body"
+                                                  style={{ border: `1px solid ${C.parchment}`, color: C.charcoal }}
+                                                  onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                                  onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                                                  rows={2} placeholder={`Specific instruction for ${st.name}...`} />
+                                              </div>
+                                              <div>
+                                                <label className={labelCls}>Feedback Fields for {st.name}</label>
+                                                <p className="text-[11px] text-charcoal-ink/40 mb-2 font-body">If set, overrides block-level fields for {st.name} only.</p>
+                                                <div className="space-y-2">
+                                                  {(override.custom_fields || []).map((field) => (
+                                                    <div key={field.id} className="rounded-lg p-3 bg-white" style={{ border: `1px solid ${C.parchment}` }}>
+                                                      <div className="grid grid-cols-2 gap-2 mb-2">
+                                                        <select value={field.type} onChange={(e) => handleStudentOverrideCustomFieldChange(i, studentId, field.id, 'type', e.target.value)}
+                                                          className={inputCls} style={inputStyle}
+                                                          onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                                          onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}>
+                                                          <option value="text">Text Input</option>
+                                                          <option value="number">Number Input</option>
+                                                          <option value="file">File Upload</option>
+                                                        </select>
+                                                        <div className="flex items-center gap-2 mt-2">
+                                                          <input type="checkbox" checked={field.required}
+                                                            onChange={(e) => handleStudentOverrideCustomFieldChange(i, studentId, field.id, 'required', e.target.checked)}
+                                                            className="w-4 h-4 accent-amethyst-link" />
+                                                          <label className="text-[13px] text-charcoal-ink/60 font-body">Required</label>
+                                                        </div>
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <input type="text" value={field.label} onChange={(e) => handleStudentOverrideCustomFieldChange(i, studentId, field.id, 'label', e.target.value)}
+                                                          className={inputCls} style={inputStyle}
+                                                          onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                                          onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                                                          placeholder="Field label" />
+                                                        <input type="text" value={field.placeholder} onChange={(e) => handleStudentOverrideCustomFieldChange(i, studentId, field.id, 'placeholder', e.target.value)}
+                                                          className={inputCls} style={inputStyle}
+                                                          onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                                          onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                                                          placeholder="Helper text for the student" />
+                                                      </div>
+                                                      <button type="button" onClick={() => handleRemoveStudentOverrideCustomField(i, studentId, field.id)}
+                                                        className="mt-2 text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">Remove Field</button>
+                                                    </div>
+                                                  ))}
+                                                  <button type="button" onClick={() => handleAddStudentOverrideCustomField(i, studentId)}
+                                                    className="flex items-center gap-1.5 text-[12px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                                                    <Plus className="w-3.5 h-3.5" /> Add Field
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={resetForm}
+              {/* Step navigation */}
+              <div className="flex gap-3 pt-2" style={{ borderTop: `1px solid ${C.parchment}` }}>
+                <button type="button"
+                  onClick={currentStep === 1 ? resetForm : () => setCurrentStep(s => s - 1)}
                   className="flex-1 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
                   style={{ backgroundColor: C.cream, color: C.charcoal }}
                   onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
                   onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
-                  Cancel
+                  {currentStep === 1 ? 'Cancel' : '← Back'}
                 </button>
-                <button type="submit"
+                <button
+                  type={currentStep === STEPS.length ? 'submit' : 'button'}
+                  onClick={currentStep === STEPS.length ? undefined : handleNext}
                   className="flex-1 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
                   style={{ backgroundColor: C.charcoal, color: '#ffffff' }}
                   onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
                   onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}>
-                  {editingSubject ? 'Update Subject' : 'Add Subject'}
+                  {currentStep === STEPS.length ? (editingSubject ? 'Update Subject' : 'Add Subject') : 'Next →'}
                 </button>
               </div>
             </form>

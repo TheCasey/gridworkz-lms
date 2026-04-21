@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /Users/caseyburesh/caseyrepo/gridworkz-lms/public)",
+      "Bash(mv /Users/caseyburesh/caseyrepo/gridworkz-lms/sounds /Users/caseyburesh/caseyrepo/gridworkz-lms/public/sounds)"
+    ]
+  }
+}
