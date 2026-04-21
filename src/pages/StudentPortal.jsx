@@ -515,20 +515,26 @@ const StudentPortal = () => {
                         const blockCompleted = isBlockCompleted(subject, i);
                         const timer = activeTimers[subject.id];
                         const isWorkingOn = timer && timer.blockIndex === i && timer.isRunning && timer.remainingTime > 0;
+                        const hasObjective = !!(subject.block_objectives?.[i]?.student_overrides?.[student?.id]?.instruction || subject.block_objectives?.[i]?.instruction);
                         return (
                           <button key={i}
                             onClick={() => handleBlockClick(subject, i)}
                             disabled={blockCompleted || isSubjectLocked(subject) || isSubmissionLocked(subject.id, i)}
                             className={`w-10 h-10 rounded-lg text-[12px] transition-all relative ${isWorkingOn ? 'animate-pulse' : ''}`}
+                            title={hasObjective ? 'Guided block — has specific instructions' : undefined}
                             style={{
                               backgroundColor: blockCompleted ? C.lavenderTint : isSubjectLocked(subject) ? C.cream : isWorkingOn ? 'rgba(203,183,251,0.2)' : '#ffffff',
-                              border: `1px solid ${blockCompleted ? C.lavender : isWorkingOn ? C.lavender : C.parchment}`,
+                              border: `1px solid ${blockCompleted ? C.lavender : isWorkingOn ? C.lavender : hasObjective ? `${C.lavender}99` : C.parchment}`,
                               color: blockCompleted ? C.amethyst : isSubjectLocked(subject) ? 'rgba(41,40,39,0.3)' : isWorkingOn ? C.amethyst : 'rgba(41,40,39,0.5)',
                               cursor: blockCompleted || isSubjectLocked(subject) ? 'not-allowed' : 'pointer',
                               fontWeight: 460,
                             }}
                           >
                             {blockCompleted ? '✓' : i + 1}
+                            {hasObjective && !blockCompleted && (
+                              <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full"
+                                style={{ backgroundColor: C.amethyst }} />
+                            )}
                             {isWorkingOn && (
                               <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full animate-ping"
                                 style={{ backgroundColor: C.lavender }} />
@@ -660,6 +666,18 @@ const StudentPortal = () => {
             <form onSubmit={(e) => { e.preventDefault(); submitBlock(selectedSubject, selectedBlockIndex, summaryText); }}
               className="p-6 space-y-5" autoComplete="off">
 
+              {/* Objective instruction banner — student override takes priority over shared */}
+              {(() => {
+                const blockObj = selectedSubject.block_objectives?.[selectedBlockIndex];
+                const effectiveInstruction = blockObj?.student_overrides?.[student?.id]?.instruction || blockObj?.instruction || null;
+                return effectiveInstruction ? (
+                  <div className="rounded-lg p-3" style={{ backgroundColor: `${C.lavender}26`, borderLeft: `3px solid ${C.lavender}` }}>
+                    <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: C.amethyst, fontWeight: 700 }}>This block requires:</p>
+                    <p className="text-[14px]" style={{ color: C.charcoal, fontWeight: 460 }}>{effectiveInstruction}</p>
+                  </div>
+                ) : null;
+              })()}
+
               {/* Resources */}
               {selectedSubject.resources?.length > 0 && (
                 <div>
@@ -679,11 +697,18 @@ const StudentPortal = () => {
                 </div>
               )}
 
-              {/* Custom Fields */}
-              {selectedSubject.custom_fields?.length > 0 && (
+              {/* Custom Fields — student override → block-level → subject-level */}
+              {(() => {
+                const blockObj = selectedSubject.block_objectives?.[selectedBlockIndex];
+                const studentOverride = blockObj?.student_overrides?.[student?.id];
+                const activeFields =
+                  (studentOverride?.custom_fields?.length > 0 ? studentOverride.custom_fields : null) ||
+                  (blockObj?.custom_fields?.length > 0 ? blockObj.custom_fields : null) ||
+                  selectedSubject.custom_fields || [];
+                return activeFields.length > 0 ? (
                 <div className="space-y-4">
                   <p className="text-[11px] uppercase tracking-wider" style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 700 }}>Additional Requirements</p>
-                  {selectedSubject.custom_fields.map((field) => (
+                  {activeFields.map((field) => (
                     <div key={field.id}>
                       <label className="block text-[13px] mb-1.5" style={{ color: 'rgba(41,40,39,0.7)', fontWeight: 460 }}>
                         {field.label}{field.required && <span style={{ color: C.amethyst }} className="ml-1">*</span>}
@@ -702,7 +727,8 @@ const StudentPortal = () => {
                     </div>
                   ))}
                 </div>
-              )}
+                ) : null;
+              })()}
 
               {/* Summary */}
               {selectedSubject.require_input !== false ? (

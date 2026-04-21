@@ -60,6 +60,9 @@ const Curriculum = () => {
   const [resources, setResources] = useState([{ name: '', url: '' }]);
   const [customFields, setCustomFields] = useState([]);
   const [requireTimer, setRequireTimer] = useState(false);
+  const [blockObjectives, setBlockObjectives] = useState({});
+  const [expandedObjectiveBlock, setExpandedObjectiveBlock] = useState(null);
+  const [expandedStudentOverrides, setExpandedStudentOverrides] = useState({});
 
   const db = getFirestore(app);
 
@@ -96,10 +99,121 @@ const Curriculum = () => {
     setCustomFields(updated);
   };
 
+  const handleToggleObjective = (blockIndex) => {
+    if (blockObjectives[blockIndex]) {
+      setBlockObjectives(prev => { const next = { ...prev }; delete next[blockIndex]; return next; });
+      if (expandedObjectiveBlock === blockIndex) setExpandedObjectiveBlock(null);
+    } else {
+      setBlockObjectives(prev => ({ ...prev, [blockIndex]: { instruction: '', custom_fields: [] } }));
+      setExpandedObjectiveBlock(blockIndex);
+    }
+  };
+  const handleObjectiveChange = (blockIndex, value) => {
+    setBlockObjectives(prev => ({ ...prev, [blockIndex]: { ...prev[blockIndex], instruction: value } }));
+  };
+  const handleAddObjectiveCustomField = (blockIndex) => {
+    setBlockObjectives(prev => ({
+      ...prev, [blockIndex]: {
+        ...prev[blockIndex],
+        custom_fields: [...(prev[blockIndex].custom_fields || []), { id: Date.now().toString(), type: 'text', label: '', placeholder: '', required: false }]
+      }
+    }));
+  };
+  const handleRemoveObjectiveCustomField = (blockIndex, fieldId) => {
+    setBlockObjectives(prev => ({
+      ...prev, [blockIndex]: { ...prev[blockIndex], custom_fields: prev[blockIndex].custom_fields.filter(f => f.id !== fieldId) }
+    }));
+  };
+  const handleObjectiveCustomFieldChange = (blockIndex, fieldId, key, value) => {
+    setBlockObjectives(prev => ({
+      ...prev, [blockIndex]: {
+        ...prev[blockIndex],
+        custom_fields: prev[blockIndex].custom_fields.map(f => f.id === fieldId ? { ...f, [key]: value } : f)
+      }
+    }));
+  };
+
+  const handleToggleStudentOverride = (blockIndex, studentId) => {
+    const overrideKey = `${blockIndex}_${studentId}`;
+    if (blockObjectives[blockIndex]?.student_overrides?.[studentId]) {
+      setBlockObjectives(prev => {
+        const overrides = { ...(prev[blockIndex].student_overrides || {}) };
+        delete overrides[studentId];
+        return { ...prev, [blockIndex]: { ...prev[blockIndex], student_overrides: overrides } };
+      });
+      setExpandedStudentOverrides(prev => { const next = { ...prev }; delete next[overrideKey]; return next; });
+    } else {
+      setBlockObjectives(prev => ({
+        ...prev, [blockIndex]: {
+          ...prev[blockIndex],
+          student_overrides: { ...(prev[blockIndex].student_overrides || {}), [studentId]: { instruction: '', custom_fields: [] } }
+        }
+      }));
+      setExpandedStudentOverrides(prev => ({ ...prev, [overrideKey]: true }));
+    }
+  };
+  const handleStudentOverrideChange = (blockIndex, studentId, value) => {
+    setBlockObjectives(prev => ({
+      ...prev, [blockIndex]: {
+        ...prev[blockIndex],
+        student_overrides: {
+          ...(prev[blockIndex].student_overrides || {}),
+          [studentId]: { ...(prev[blockIndex].student_overrides?.[studentId] || {}), instruction: value }
+        }
+      }
+    }));
+  };
+  const handleAddStudentOverrideCustomField = (blockIndex, studentId) => {
+    setBlockObjectives(prev => ({
+      ...prev, [blockIndex]: {
+        ...prev[blockIndex],
+        student_overrides: {
+          ...(prev[blockIndex].student_overrides || {}),
+          [studentId]: {
+            ...(prev[blockIndex].student_overrides?.[studentId] || {}),
+            custom_fields: [
+              ...(prev[blockIndex].student_overrides?.[studentId]?.custom_fields || []),
+              { id: Date.now().toString(), type: 'text', label: '', placeholder: '', required: false }
+            ]
+          }
+        }
+      }
+    }));
+  };
+  const handleRemoveStudentOverrideCustomField = (blockIndex, studentId, fieldId) => {
+    setBlockObjectives(prev => ({
+      ...prev, [blockIndex]: {
+        ...prev[blockIndex],
+        student_overrides: {
+          ...(prev[blockIndex].student_overrides || {}),
+          [studentId]: {
+            ...(prev[blockIndex].student_overrides?.[studentId] || {}),
+            custom_fields: (prev[blockIndex].student_overrides?.[studentId]?.custom_fields || []).filter(f => f.id !== fieldId)
+          }
+        }
+      }
+    }));
+  };
+  const handleStudentOverrideCustomFieldChange = (blockIndex, studentId, fieldId, key, value) => {
+    setBlockObjectives(prev => ({
+      ...prev, [blockIndex]: {
+        ...prev[blockIndex],
+        student_overrides: {
+          ...(prev[blockIndex].student_overrides || {}),
+          [studentId]: {
+            ...(prev[blockIndex].student_overrides?.[studentId] || {}),
+            custom_fields: (prev[blockIndex].student_overrides?.[studentId]?.custom_fields || []).map(f => f.id === fieldId ? { ...f, [key]: value } : f)
+          }
+        }
+      }
+    }));
+  };
+
   const resetForm = () => {
     setSelectedStudents([]); setSubjectName(''); setTotalBlocks(10); setBlockLength(30);
     setSubjectColor('#3B82F6'); setRequireSummary(true); setResources([{ name: '', url: '' }]);
-    setCustomFields([]); setRequireTimer(false); setShowAddForm(false); setEditingSubject(null);
+    setCustomFields([]); setRequireTimer(false); setBlockObjectives({}); setExpandedObjectiveBlock(null); setExpandedStudentOverrides({});
+    setShowAddForm(false); setEditingSubject(null);
   };
 
   const handleSubmit = async (e) => {
@@ -120,6 +234,25 @@ const Curriculum = () => {
         require_input: requireSummary,
         custom_fields: customFields.filter(f => f.label.trim()),
         require_timer: requireTimer,
+        block_objectives: Object.fromEntries(
+          Object.entries(blockObjectives)
+            .filter(([, obj]) => {
+              if (obj.instruction.trim()) return true;
+              return Object.values(obj.student_overrides || {}).some(ov => ov.instruction.trim());
+            })
+            .map(([k, obj]) => {
+              const cleanedOverrides = Object.fromEntries(
+                Object.entries(obj.student_overrides || {})
+                  .filter(([, ov]) => ov.instruction.trim())
+                  .map(([sid, ov]) => [sid, { instruction: ov.instruction, custom_fields: (ov.custom_fields || []).filter(f => f.label.trim()) }])
+              );
+              return [k, {
+                instruction: obj.instruction,
+                custom_fields: (obj.custom_fields || []).filter(f => f.label.trim()),
+                student_overrides: cleanedOverrides
+              }];
+            })
+        ),
         is_active: true,
         updated_at: serverTimestamp()
       };
@@ -146,6 +279,8 @@ const Curriculum = () => {
     setResources(subject.resources?.length ? subject.resources : [{ name: '', url: '' }]);
     setCustomFields(subject.custom_fields || []);
     setRequireTimer(subject.require_timer || false);
+    setBlockObjectives(subject.block_objectives || {});
+    setExpandedObjectiveBlock(null);
     setEditingSubject(subject);
     setShowAddForm(true);
   };
@@ -394,6 +529,238 @@ const Curriculum = () => {
                     className="flex items-center gap-2 text-[13px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
                     <Plus className="w-4 h-4" /> Add Custom Field
                   </button>
+                </div>
+              </div>
+
+              {/* Block Objectives */}
+              <div>
+                <label className={labelCls}>Block Objectives</label>
+                <p className="text-[12px] text-charcoal-ink/40 mb-3 font-body">
+                  Attach specific instructions to individual blocks. Students see these as guided blocks.
+                </p>
+                <div className="space-y-2">
+                  {Array.from({ length: totalBlocks }, (_, i) => {
+                    const obj = blockObjectives[i];
+                    const isExpanded = expandedObjectiveBlock === i;
+                    return (
+                      <div key={i} className="rounded-lg overflow-hidden" style={{ border: `1px solid ${obj ? C.lavender : C.parchment}` }}>
+                        <div className="flex items-center justify-between px-4 py-2.5"
+                          style={{ backgroundColor: obj ? `${C.lavender}22` : '#faf9f8', cursor: obj ? 'pointer' : 'default' }}
+                          onClick={() => { if (obj) setExpandedObjectiveBlock(isExpanded ? null : i); }}>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="text-[13px] font-body flex-shrink-0" style={{ color: C.charcoal }}>Block {i + 1}</span>
+                            {obj && (
+                              <span className="text-[11px] px-2 py-0.5 rounded-full font-label flex-shrink-0"
+                                style={{ backgroundColor: C.lavender, color: C.charcoal }}>Guided</span>
+                            )}
+                            {obj?.instruction && (
+                              <span className="text-[12px] text-charcoal-ink/40 font-body truncate">{obj.instruction}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0 ml-3" onClick={e => e.stopPropagation()}>
+                            {obj ? (
+                              <button type="button" onClick={() => handleToggleObjective(i)}
+                                className="text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">
+                                Remove
+                              </button>
+                            ) : (
+                              <button type="button" onClick={() => handleToggleObjective(i)}
+                                className="flex items-center gap-1 text-[12px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                                <Plus className="w-3.5 h-3.5" /> Add Objective
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {obj && isExpanded && (
+                          <div className="p-4 space-y-4" style={{ borderTop: `1px solid ${C.lavender}44` }}>
+                            <div>
+                              <label className={labelCls}>Instruction</label>
+                              <textarea
+                                value={obj.instruction}
+                                onChange={(e) => handleObjectiveChange(i, e.target.value)}
+                                className="w-full px-3 py-2.5 rounded-lg text-[14px] focus:outline-none transition-colors resize-none bg-white font-body"
+                                style={{ border: `1px solid ${C.parchment}`, color: C.charcoal }}
+                                onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                                rows={2}
+                                placeholder="e.g., Play a chess game with your brother" />
+                            </div>
+                            <div>
+                              <label className={labelCls}>Block-Specific Feedback Fields</label>
+                              <p className="text-[11px] text-charcoal-ink/40 mb-2.5 font-body">
+                                If set, these replace the subject-level fields for this block only.
+                              </p>
+                              <div className="space-y-2">
+                                {(obj.custom_fields || []).map((field) => (
+                                  <div key={field.id} className="rounded-lg p-3 bg-white" style={{ border: `1px solid ${C.parchment}` }}>
+                                    <div className="grid grid-cols-2 gap-2 mb-2">
+                                      <div>
+                                        <select value={field.type}
+                                          onChange={(e) => handleObjectiveCustomFieldChange(i, field.id, 'type', e.target.value)}
+                                          className={inputCls} style={inputStyle}
+                                          onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                          onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}>
+                                          <option value="text">Text Input</option>
+                                          <option value="number">Number Input</option>
+                                          <option value="file">File Upload</option>
+                                        </select>
+                                      </div>
+                                      <div className="flex items-center gap-2 mt-2">
+                                        <input type="checkbox" checked={field.required}
+                                          onChange={(e) => handleObjectiveCustomFieldChange(i, field.id, 'required', e.target.checked)}
+                                          className="w-4 h-4 accent-amethyst-link" />
+                                        <label className="text-[13px] text-charcoal-ink/60 font-body">Required</label>
+                                      </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                      <input type="text" value={field.label}
+                                        onChange={(e) => handleObjectiveCustomFieldChange(i, field.id, 'label', e.target.value)}
+                                        className={inputCls} style={inputStyle}
+                                        onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                        onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                                        placeholder="Field label (e.g., 'Describe your opponent's strategy')" />
+                                      <input type="text" value={field.placeholder}
+                                        onChange={(e) => handleObjectiveCustomFieldChange(i, field.id, 'placeholder', e.target.value)}
+                                        className={inputCls} style={inputStyle}
+                                        onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                        onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                                        placeholder="Helper text for the student" />
+                                    </div>
+                                    <button type="button"
+                                      onClick={() => handleRemoveObjectiveCustomField(i, field.id)}
+                                      className="mt-2 text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">
+                                      Remove Field
+                                    </button>
+                                  </div>
+                                ))}
+                                <button type="button" onClick={() => handleAddObjectiveCustomField(i)}
+                                  className="flex items-center gap-1.5 text-[12px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                                  <Plus className="w-3.5 h-3.5" /> Add Feedback Field
+                                </button>
+                              </div>
+                            </div>
+                            {/* Student Overrides — only when multiple students assigned */}
+                            {selectedStudents.length > 1 && (
+                              <div>
+                                <label className={labelCls}>Per-Student Overrides</label>
+                                <p className="text-[11px] text-charcoal-ink/40 mb-2.5 font-body">
+                                  Replace this block's instruction for a specific student.
+                                </p>
+                                <div className="space-y-2">
+                                  {selectedStudents.map(studentId => {
+                                    const st = students.find(s => s.id === studentId);
+                                    if (!st) return null;
+                                    const override = obj.student_overrides?.[studentId];
+                                    const overrideExpanded = expandedStudentOverrides[`${i}_${studentId}`];
+                                    return (
+                                      <div key={studentId} className="rounded-lg overflow-hidden"
+                                        style={{ border: `1px solid ${override ? C.amethyst + '55' : C.parchment}` }}>
+                                        <div className="flex items-center justify-between px-3 py-2"
+                                          style={{ backgroundColor: override ? `${C.amethyst}0d` : '#faf9f8', cursor: override ? 'pointer' : 'default' }}
+                                          onClick={() => { if (override) setExpandedStudentOverrides(prev => ({ ...prev, [`${i}_${studentId}`]: !prev[`${i}_${studentId}`] })); }}>
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            <span className="text-[13px] font-body flex-shrink-0" style={{ color: C.charcoal }}>{st.name}</span>
+                                            {override && (
+                                              <span className="text-[11px] px-1.5 py-0.5 rounded-full font-label flex-shrink-0"
+                                                style={{ backgroundColor: `${C.amethyst}22`, color: C.amethyst }}>Override</span>
+                                            )}
+                                            {override?.instruction && (
+                                              <span className="text-[12px] text-charcoal-ink/40 font-body truncate">{override.instruction}</span>
+                                            )}
+                                          </div>
+                                          <div onClick={e => e.stopPropagation()}>
+                                            {override ? (
+                                              <button type="button" onClick={() => handleToggleStudentOverride(i, studentId)}
+                                                className="text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">
+                                                Remove
+                                              </button>
+                                            ) : (
+                                              <button type="button" onClick={() => handleToggleStudentOverride(i, studentId)}
+                                                className="flex items-center gap-1 text-[12px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                                                <Plus className="w-3 h-3" /> Override
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                        {override && overrideExpanded && (
+                                          <div className="p-3 space-y-3" style={{ borderTop: `1px solid ${C.amethyst}22` }}>
+                                            <div>
+                                              <label className={labelCls}>Instruction for {st.name}</label>
+                                              <textarea
+                                                value={override.instruction}
+                                                onChange={(e) => handleStudentOverrideChange(i, studentId, e.target.value)}
+                                                className="w-full px-3 py-2.5 rounded-lg text-[14px] focus:outline-none transition-colors resize-none bg-white font-body"
+                                                style={{ border: `1px solid ${C.parchment}`, color: C.charcoal }}
+                                                onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                                onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                                                rows={2}
+                                                placeholder={`Specific instruction for ${st.name}...`} />
+                                            </div>
+                                            <div>
+                                              <label className={labelCls}>Feedback Fields for {st.name}</label>
+                                              <p className="text-[11px] text-charcoal-ink/40 mb-2 font-body">
+                                                If set, overrides block-level fields for {st.name} only.
+                                              </p>
+                                              <div className="space-y-2">
+                                                {(override.custom_fields || []).map((field) => (
+                                                  <div key={field.id} className="rounded-lg p-3 bg-white" style={{ border: `1px solid ${C.parchment}` }}>
+                                                    <div className="grid grid-cols-2 gap-2 mb-2">
+                                                      <select value={field.type}
+                                                        onChange={(e) => handleStudentOverrideCustomFieldChange(i, studentId, field.id, 'type', e.target.value)}
+                                                        className={inputCls} style={inputStyle}
+                                                        onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                                        onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}>
+                                                        <option value="text">Text Input</option>
+                                                        <option value="number">Number Input</option>
+                                                        <option value="file">File Upload</option>
+                                                      </select>
+                                                      <div className="flex items-center gap-2 mt-2">
+                                                        <input type="checkbox" checked={field.required}
+                                                          onChange={(e) => handleStudentOverrideCustomFieldChange(i, studentId, field.id, 'required', e.target.checked)}
+                                                          className="w-4 h-4 accent-amethyst-link" />
+                                                        <label className="text-[13px] text-charcoal-ink/60 font-body">Required</label>
+                                                      </div>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                      <input type="text" value={field.label}
+                                                        onChange={(e) => handleStudentOverrideCustomFieldChange(i, studentId, field.id, 'label', e.target.value)}
+                                                        className={inputCls} style={inputStyle}
+                                                        onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                                        onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                                                        placeholder="Field label" />
+                                                      <input type="text" value={field.placeholder}
+                                                        onChange={(e) => handleStudentOverrideCustomFieldChange(i, studentId, field.id, 'placeholder', e.target.value)}
+                                                        className={inputCls} style={inputStyle}
+                                                        onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                                                        onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                                                        placeholder="Helper text for the student" />
+                                                    </div>
+                                                    <button type="button"
+                                                      onClick={() => handleRemoveStudentOverrideCustomField(i, studentId, field.id)}
+                                                      className="mt-2 text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">
+                                                      Remove Field
+                                                    </button>
+                                                  </div>
+                                                ))}
+                                                <button type="button" onClick={() => handleAddStudentOverrideCustomField(i, studentId)}
+                                                  className="flex items-center gap-1.5 text-[12px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                                                  <Plus className="w-3.5 h-3.5" /> Add Field
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

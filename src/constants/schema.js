@@ -35,9 +35,18 @@ export const SubjectSchema = {
   block_duration: "number", // Duration of each block in minutes
   require_input: "boolean", // Whether student input is required on completion
   resources: "array", // Array of resource objects (links, text instructions)
+  custom_fields: "array", // Subject-level custom feedback fields (see below)
+  block_objectives: "object", // Map of blockIndex (string) → BlockObjectiveSchema; absent keys = free blocks
   is_active: "boolean", // Whether subject is currently active
   created_at: "timestamp",
   updated_at: "timestamp"
+};
+
+// Block Objective Schema (nested in block_objectives map on Subject)
+export const BlockObjectiveSchema = {
+  instruction: "string",     // Shared instruction for all students (may be empty if only overrides exist)
+  custom_fields: "array",    // Optional; if non-empty, replaces subject.custom_fields for this block
+  student_overrides: "object" // Map of studentId → { instruction, custom_fields }; takes priority over shared
 };
 
 // Resource Schema (nested in Subject)
