@@ -1,30 +1,47 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  getFirestore, 
-  collection, 
-  addDoc, 
-  query, 
-  where, 
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  query,
+  where,
   onSnapshot,
   orderBy,
   doc,
   deleteDoc,
   updateDoc,
-  serverTimestamp 
+  serverTimestamp
 } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
-import { 
-  BookOpen, 
-  Plus, 
-  Trash2, 
-  Archive, 
-  Edit, 
-  ExternalLink, 
-  Save,
-  X,
-  Palette
-} from 'lucide-react';
+import { BookOpen, Plus, Trash2, Archive, Edit, ExternalLink, X } from 'lucide-react';
+
+const C = {
+  mysteria: '#1b1938',
+  lavender: '#cbb7fb',
+  charcoal: '#292827',
+  amethyst: '#714cb6',
+  cream: '#e9e5dd',
+  parchment: '#dcd7d3',
+  lavenderTint: '#f0eaff',
+};
+
+const inputCls = 'w-full px-3 py-2.5 rounded-lg placeholder:text-[#292827]/30 focus:outline-none text-[15px] font-body transition-colors bg-white';
+const inputStyle = { border: `1px solid ${C.parchment}`, color: C.charcoal };
+const inputFocusStyle = { border: `1px solid ${C.charcoal}` };
+
+const labelCls = 'block text-[13px] font-label uppercase tracking-wider text-charcoal-ink/50 mb-2';
+
+const Toggle = ({ value, onChange }) => (
+  <button
+    type="button"
+    onClick={() => onChange(!value)}
+    className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+    style={{ backgroundColor: value ? C.lavender : C.parchment }}
+  >
+    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${value ? 'translate-x-6' : 'translate-x-1'}`} />
+  </button>
+);
 
 const Curriculum = () => {
   const { currentUser } = useAuth();
@@ -33,8 +50,7 @@ const Curriculum = () => {
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingSubject, setEditingSubject] = useState(null);
-  
-  // Form state
+
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [subjectName, setSubjectName] = useState('');
   const [totalBlocks, setTotalBlocks] = useState(10);
@@ -44,119 +60,56 @@ const Curriculum = () => {
   const [resources, setResources] = useState([{ name: '', url: '' }]);
   const [customFields, setCustomFields] = useState([]);
   const [requireTimer, setRequireTimer] = useState(false);
-  
+
   const db = getFirestore(app);
 
-  // Fetch students
   useEffect(() => {
     if (!currentUser) return;
-
-    const studentsQuery = query(
-      collection(db, 'students'),
-      where('parent_id', '==', currentUser.uid),
-      orderBy('name')
-    );
-
-    const unsubscribeStudents = onSnapshot(studentsQuery, (snapshot) => {
-      const studentsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setStudents(studentsData);
-    }, (error) => {
-      console.error('Error fetching students:', error);
-    });
-
-    return unsubscribeStudents;
+    const q = query(collection(db, 'students'), where('parent_id', '==', currentUser.uid), orderBy('name'));
+    const unsub = onSnapshot(q, (snap) => setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    return unsub;
   }, [currentUser, db]);
 
-  // Fetch subjects
   useEffect(() => {
     if (!currentUser) return;
-
-    const subjectsQuery = query(
-      collection(db, 'subjects'),
-      where('parent_id', '==', currentUser.uid),
-      orderBy('title')
-    );
-
-    const unsubscribeSubjects = onSnapshot(subjectsQuery, (snapshot) => {
-      const subjectsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setSubjects(subjectsData);
+    const q = query(collection(db, 'subjects'), where('parent_id', '==', currentUser.uid), orderBy('title'));
+    const unsub = onSnapshot(q, (snap) => {
+      setSubjects(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
-    }, (error) => {
-      console.error('Error fetching subjects:', error);
-      setLoading(false);
-    });
-
-    return unsubscribeSubjects;
+    }, () => setLoading(false));
+    return unsub;
   }, [currentUser, db]);
 
-  const handleAddResource = () => {
-    setResources([...resources, { name: '', url: '' }]);
+  const handleAddResource = () => setResources([...resources, { name: '', url: '' }]);
+  const handleRemoveResource = (i) => setResources(resources.filter((_, idx) => idx !== i));
+  const handleResourceChange = (i, field, value) => {
+    const updated = [...resources];
+    updated[i][field] = value;
+    setResources(updated);
   };
 
-  const handleRemoveResource = (index) => {
-    const newResources = resources.filter((_, i) => i !== index);
-    setResources(newResources);
-  };
-
-  const handleResourceChange = (index, field, value) => {
-    const newResources = [...resources];
-    newResources[index][field] = value;
-    setResources(newResources);
-  };
-
-  // Custom field handlers
-  const handleAddCustomField = () => {
-    setCustomFields([...customFields, {
-      id: Date.now().toString(),
-      type: 'text',
-      label: '',
-      placeholder: '',
-      required: false
-    }]);
-  };
-
-  const handleRemoveCustomField = (index) => {
-    setCustomFields(customFields.filter((_, i) => i !== index));
-  };
-
-  const handleCustomFieldChange = (index, field, value) => {
-    const updatedFields = [...customFields];
-    updatedFields[index] = { ...updatedFields[index], [field]: value };
-    setCustomFields(updatedFields);
+  const handleAddCustomField = () => setCustomFields([...customFields, { id: Date.now().toString(), type: 'text', label: '', placeholder: '', required: false }]);
+  const handleRemoveCustomField = (i) => setCustomFields(customFields.filter((_, idx) => idx !== i));
+  const handleCustomFieldChange = (i, field, value) => {
+    const updated = [...customFields];
+    updated[i] = { ...updated[i], [field]: value };
+    setCustomFields(updated);
   };
 
   const resetForm = () => {
-    setSelectedStudents([]);
-    setSubjectName('');
-    setTotalBlocks(10);
-    setBlockLength(30);
-    setSubjectColor('#3B82F6');
-    setRequireSummary(true);
-    setResources([{ name: '', url: '' }]);
-    setCustomFields([]);
-    setRequireTimer(false);
-    setShowAddForm(false);
-    setEditingSubject(null);
+    setSelectedStudents([]); setSubjectName(''); setTotalBlocks(10); setBlockLength(30);
+    setSubjectColor('#3B82F6'); setRequireSummary(true); setResources([{ name: '', url: '' }]);
+    setCustomFields([]); setRequireTimer(false); setShowAddForm(false); setEditingSubject(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     if (!selectedStudents.length || !subjectName.trim()) {
       alert('Please select at least one student and enter a subject name');
       return;
     }
-
-    const selectedStudentsData = students.filter(s => selectedStudents.includes(s.id));
-    
     try {
-      const subjectData = {
+      const data = {
         student_ids: selectedStudents,
         parent_id: currentUser.uid,
         title: subjectName.trim(),
@@ -165,34 +118,24 @@ const Curriculum = () => {
         color: subjectColor,
         resources: resources.filter(r => r.name.trim()),
         require_input: requireSummary,
-        custom_fields: customFields.filter(field => field.label.trim()),
+        custom_fields: customFields.filter(f => f.label.trim()),
         require_timer: requireTimer,
         is_active: true,
-        created_at: serverTimestamp(),
         updated_at: serverTimestamp()
       };
-
       if (editingSubject) {
-        // Update existing subject
-        const subjectRef = doc(db, 'subjects', editingSubject.id);
-        await updateDoc(subjectRef, {
-          ...subjectData,
-          updated_at: serverTimestamp()
-        });
+        await updateDoc(doc(db, 'subjects', editingSubject.id), data);
       } else {
-        // Create new subject
-        await addDoc(collection(db, 'subjects'), subjectData);
+        await addDoc(collection(db, 'subjects'), { ...data, created_at: serverTimestamp() });
       }
-
       resetForm();
-    } catch (error) {
-      console.error('Error saving subject:', error);
+    } catch (err) {
+      console.error('Error saving subject:', err);
       alert('Failed to save subject. Please try again.');
     }
   };
 
   const handleEdit = (subject) => {
-    // Handle both old schema (student_id) and new schema (student_ids)
     const studentIds = subject.student_ids || [subject.student_id].filter(Boolean);
     setSelectedStudents(studentIds);
     setSubjectName(subject.title);
@@ -200,107 +143,98 @@ const Curriculum = () => {
     setBlockLength(subject.block_length || 30);
     setSubjectColor(subject.color || '#3B82F6');
     setRequireSummary(subject.require_input !== false);
-    setResources(subject.resources || [{ name: '', url: '' }]);
+    setResources(subject.resources?.length ? subject.resources : [{ name: '', url: '' }]);
     setCustomFields(subject.custom_fields || []);
     setRequireTimer(subject.require_timer || false);
     setEditingSubject(subject);
     setShowAddForm(true);
   };
 
-  const handleDelete = async (subjectId) => {
+  const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to delete this subject?')) {
-      try {
-        await deleteDoc(doc(db, 'subjects', subjectId));
-      } catch (error) {
-        console.error('Error deleting subject:', error);
-        alert('Failed to delete subject. Please try again.');
-      }
+      try { await deleteDoc(doc(db, 'subjects', id)); }
+      catch (err) { alert('Failed to delete subject.'); }
     }
   };
 
-  const handleArchive = async (subjectId) => {
-    try {
-      const subjectRef = doc(db, 'subjects', subjectId);
-      await updateDoc(subjectRef, {
-        is_active: false,
-        updated_at: serverTimestamp()
-      });
-    } catch (error) {
-      console.error('Error archiving subject:', error);
-      alert('Failed to archive subject. Please try again.');
-    }
+  const handleArchive = async (id) => {
+    try { await updateDoc(doc(db, 'subjects', id), { is_active: false, updated_at: serverTimestamp() }); }
+    catch (err) { alert('Failed to archive subject.'); }
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        <div className="animate-spin rounded-full h-7 w-7 border-b-2" style={{ borderColor: C.lavender }} />
       </div>
     );
   }
+
+  const activeSubjects = subjects.filter(s => s.is_active);
 
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">Curriculum Management</h2>
-          <p className="text-sm text-slate-500 mt-1">Manage subjects and learning resources for your students</p>
+          <h2 className="text-[26px] font-display text-charcoal-ink" style={{ lineHeight: 1.1, letterSpacing: '-0.5px' }}>Curriculum</h2>
+          <p className="text-[14px] text-charcoal-ink/50 font-body mt-1">Manage subjects and learning resources</p>
         </div>
         <button
           onClick={() => setShowAddForm(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
+          style={{ backgroundColor: C.charcoal, color: '#ffffff' }}
+          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
+          onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}
         >
           <Plus className="w-4 h-4" />
           Add Subject
         </button>
       </div>
 
-      {/* Add/Edit Subject Form */}
+      {/* Add/Edit Modal */}
       {showAddForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-slate-200">
-              <h2 className="text-xl font-semibold text-slate-900">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" style={{ border: `1px solid ${C.parchment}` }}>
+            <div className="flex items-center justify-between p-6 sticky top-0 bg-white z-10" style={{ borderBottom: `1px solid ${C.parchment}` }}>
+              <h2 className="text-[18px] font-display text-charcoal-ink">
                 {editingSubject ? 'Edit Subject' : 'Add New Subject'}
               </h2>
-              <button
-                onClick={resetForm}
-                className="text-slate-400 hover:text-slate-600"
-              >
+              <button onClick={resetForm} className="text-charcoal-ink/30 hover:text-charcoal-ink transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* Student Selection */}
+              {/* Students */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Students *
-                </label>
-                <div className="space-y-2 max-h-48 overflow-y-auto border border-slate-300 rounded-lg p-3">
-                  {students.map((student) => (
-                    <label key={student.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-2 rounded">
+                <label className={labelCls}>Students *</label>
+                <div className="rounded-lg overflow-hidden max-h-48 overflow-y-auto" style={{ border: `1px solid ${C.parchment}` }}>
+                  {students.map((s) => (
+                    <label
+                      key={s.id}
+                      className="flex items-center gap-3 px-4 py-2.5 cursor-pointer"
+                      style={{ borderBottom: `1px solid ${C.parchment}` }}
+                      onMouseEnter={e => e.currentTarget.style.backgroundColor = C.cream}
+                      onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}
+                    >
                       <input
                         type="checkbox"
-                        checked={selectedStudents.includes(student.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedStudents([...selectedStudents, student.id]);
-                          } else {
-                            setSelectedStudents(selectedStudents.filter(id => id !== student.id));
-                          }
-                        }}
-                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        checked={selectedStudents.includes(s.id)}
+                        onChange={(e) => setSelectedStudents(e.target.checked
+                          ? [...selectedStudents, s.id]
+                          : selectedStudents.filter(id => id !== s.id)
+                        )}
+                        className="w-4 h-4 accent-amethyst-link"
                       />
-                      <span className="text-sm text-slate-700">{student.name}</span>
+                      <span className="text-[14px] text-charcoal-ink font-body">{s.name}</span>
                     </label>
                   ))}
                 </div>
                 {selectedStudents.length === 0 && (
-                  <p className="text-xs text-red-500 mt-1">Please select at least one student</p>
+                  <p className="text-[12px] text-amethyst-link mt-1.5">Please select at least one student</p>
                 )}
                 {selectedStudents.length > 0 && (
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-[12px] text-charcoal-ink/40 mt-1.5">
                     {selectedStudents.length} student{selectedStudents.length > 1 ? 's' : ''} selected
                   </p>
                 )}
@@ -308,261 +242,175 @@ const Curriculum = () => {
 
               {/* Subject Name */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Subject Name *
-                </label>
+                <label className={labelCls}>Subject Name *</label>
                 <input
                   type="text"
                   value={subjectName}
                   onChange={(e) => setSubjectName(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className={inputCls}
+                  style={inputStyle}
+                  onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                  onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
                   placeholder="e.g., 6th Grade Math"
                   required
                 />
               </div>
 
-              {/* Total Blocks per Week */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Total Blocks per Week
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={totalBlocks}
-                  onChange={(e) => setTotalBlocks(parseInt(e.target.value))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              {/* Block Length */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Block Length (minutes)
-                </label>
-                <input
-                  type="number"
-                  min="5"
-                  max="120"
-                  step="5"
-                  value={blockLength}
-                  onChange={(e) => setBlockLength(parseInt(e.target.value))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              {/* Color Picker */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Subject Color
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={subjectColor}
-                    onChange={(e) => setSubjectColor(e.target.value)}
-                    className="w-16 h-10 border border-slate-300 rounded cursor-pointer"
-                  />
-                  <span className="text-sm text-slate-600">{subjectColor}</span>
+              {/* Blocks & Length */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>Blocks per Week</label>
+                  <input type="number" min="1" max="20" value={totalBlocks}
+                    onChange={(e) => setTotalBlocks(parseInt(e.target.value))}
+                    className={inputCls} style={inputStyle}
+                    onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                    onBlur={e => Object.assign(e.currentTarget.style, inputStyle)} />
+                </div>
+                <div>
+                  <label className={labelCls}>Block Length (min)</label>
+                  <input type="number" min="5" max="120" step="5" value={blockLength}
+                    onChange={(e) => setBlockLength(parseInt(e.target.value))}
+                    className={inputCls} style={inputStyle}
+                    onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                    onBlur={e => Object.assign(e.currentTarget.style, inputStyle)} />
                 </div>
               </div>
 
-              {/* Require Summary Toggle */}
+              {/* Color */}
               <div>
-                <label className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-slate-700">Require Summary</span>
-                  <button
-                    type="button"
-                    onClick={() => setRequireSummary(!requireSummary)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      requireSummary ? 'bg-indigo-600' : 'bg-slate-200'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        requireSummary ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                </label>
-                <p className="text-xs text-slate-500 mt-1">
-                  {requireSummary 
-                    ? 'Students must write a summary for each block' 
-                    : 'Students can complete blocks without a summary'
-                  }
-                </p>
+                <label className={labelCls}>Subject Color</label>
+                <div className="flex items-center gap-3">
+                  <input type="color" value={subjectColor}
+                    onChange={(e) => setSubjectColor(e.target.value)}
+                    className="w-14 h-10 rounded-lg cursor-pointer p-0.5 bg-white"
+                    style={{ border: `1px solid ${C.parchment}` }} />
+                  <span className="text-[13px] text-charcoal-ink/50 font-mono">{subjectColor}</span>
+                </div>
               </div>
 
-              {/* Require Timer Toggle */}
-              <div>
-                <label className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-slate-700">Require Timer for Completion</span>
-                  <button
-                    type="button"
-                    onClick={() => setRequireTimer(!requireTimer)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      requireTimer ? 'bg-orange-600' : 'bg-slate-200'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        requireTimer ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                </label>
-                <p className="text-xs text-slate-500 mt-1">
-                  {requireTimer 
-                    ? 'Students must complete the timer before submitting blocks' 
-                    : 'Students can complete blocks without using the timer'
-                  }
-                </p>
+              {/* Toggles */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[14px] font-body text-charcoal-ink">Require Summary</p>
+                    <p className="text-[12px] text-charcoal-ink/40 mt-0.5">
+                      {requireSummary ? 'Students must write a summary' : 'No summary required'}
+                    </p>
+                  </div>
+                  <Toggle value={requireSummary} onChange={setRequireSummary} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[14px] font-body text-charcoal-ink">Require Timer</p>
+                    <p className="text-[12px] text-charcoal-ink/40 mt-0.5">
+                      {requireTimer ? 'Timer must complete before submitting' : 'Timer is optional'}
+                    </p>
+                  </div>
+                  <Toggle value={requireTimer} onChange={setRequireTimer} />
+                </div>
               </div>
 
               {/* Resources */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Resource Links
-                </label>
-                <div className="space-y-3">
-                  {resources.map((resource, index) => (
-                    <div key={index} className="flex gap-2">
-                      <input
-                        type="text"
-                        value={resource.name}
-                        onChange={(e) => handleResourceChange(index, 'name', e.target.value)}
-                        className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="Resource name (e.g., Math Login)"
-                      />
-                      <input
-                        type="url"
-                        value={resource.url}
-                        onChange={(e) => handleResourceChange(index, 'url', e.target.value)}
-                        className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="https://example.com"
-                      />
+                <label className={labelCls}>Resource Links</label>
+                <div className="space-y-2.5">
+                  {resources.map((resource, i) => (
+                    <div key={i} className="flex gap-2">
+                      <input type="text" value={resource.name}
+                        onChange={(e) => handleResourceChange(i, 'name', e.target.value)}
+                        className={inputCls} style={inputStyle}
+                        onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                        onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                        placeholder="Resource name" />
+                      <input type="url" value={resource.url}
+                        onChange={(e) => handleResourceChange(i, 'url', e.target.value)}
+                        className={inputCls} style={inputStyle}
+                        onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                        onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                        placeholder="https://..." />
                       {resources.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveResource(index)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                        >
+                        <button type="button" onClick={() => handleRemoveResource(i)}
+                          className="p-2 text-charcoal-ink/30 hover:text-charcoal-ink transition-colors">
                           <X className="w-4 h-4" />
                         </button>
                       )}
                     </div>
                   ))}
-                  <button
-                    type="button"
-                    onClick={handleAddResource}
-                    className="flex items-center gap-2 px-3 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg text-sm font-medium"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Resource
+                  <button type="button" onClick={handleAddResource}
+                    className="flex items-center gap-2 text-[13px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                    <Plus className="w-4 h-4" /> Add Resource
                   </button>
                 </div>
               </div>
 
-              {/* Custom Submission Requirements */}
+              {/* Custom Fields */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Custom Submission Requirements
-                </label>
-                <p className="text-xs text-slate-500 mb-3">
-                  Add custom fields that students must complete when finishing a block
-                </p>
+                <label className={labelCls}>Custom Submission Fields</label>
+                <p className="text-[12px] text-charcoal-ink/40 mb-3 font-body">Add fields students must complete when finishing a block</p>
                 <div className="space-y-3">
-                  {customFields.map((field, index) => (
-                    <div key={field.id} className="border border-slate-200 rounded-lg p-4 bg-slate-50">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                  {customFields.map((field, i) => (
+                    <div key={field.id} className="rounded-lg p-4 bg-[#faf9f8]" style={{ border: `1px solid ${C.parchment}` }}>
+                      <div className="grid grid-cols-2 gap-3 mb-3">
                         <div>
-                          <label className="block text-xs font-medium text-slate-600 mb-1">
-                            Field Type
-                          </label>
-                          <select
-                            value={field.type}
-                            onChange={(e) => handleCustomFieldChange(index, 'type', e.target.value)}
-                            className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          >
+                          <label className={labelCls}>Field Type</label>
+                          <select value={field.type}
+                            onChange={(e) => handleCustomFieldChange(i, 'type', e.target.value)}
+                            className={inputCls} style={inputStyle}
+                            onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                            onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}>
                             <option value="text">Text Input</option>
                             <option value="number">Number Input</option>
                             <option value="file">File Upload</option>
                           </select>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={field.required}
-                            onChange={(e) => handleCustomFieldChange(index, 'required', e.target.checked)}
-                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <label className="text-xs font-medium text-slate-600">
-                            Required
-                          </label>
+                        <div className="flex items-center gap-2 mt-6">
+                          <input type="checkbox" checked={field.required}
+                            onChange={(e) => handleCustomFieldChange(i, 'required', e.target.checked)}
+                            className="w-4 h-4 accent-amethyst-link" />
+                          <label className="text-[13px] text-charcoal-ink/60 font-body">Required</label>
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <input
-                          type="text"
-                          value={field.label}
-                          onChange={(e) => handleCustomFieldChange(index, 'label', e.target.value)}
-                          className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          placeholder="Field label (e.g., 'Which chapters did you read?')"
-                        />
-                        <input
-                          type="text"
-                          value={field.placeholder}
-                          onChange={(e) => handleCustomFieldChange(index, 'placeholder', e.target.value)}
-                          className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          placeholder="Helper text for the student"
-                        />
+                        <input type="text" value={field.label}
+                          onChange={(e) => handleCustomFieldChange(i, 'label', e.target.value)}
+                          className={inputCls} style={inputStyle}
+                          onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                          onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                          placeholder="Field label (e.g., 'Which chapters did you read?')" />
+                        <input type="text" value={field.placeholder}
+                          onChange={(e) => handleCustomFieldChange(i, 'placeholder', e.target.value)}
+                          className={inputCls} style={inputStyle}
+                          onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
+                          onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
+                          placeholder="Helper text for the student" />
                       </div>
-                      {customFields.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveCustomField(index)}
-                          className="mt-2 text-xs text-red-600 hover:text-red-700 font-medium"
-                        >
-                          Remove Field
-                        </button>
-                      )}
+                      <button type="button" onClick={() => handleRemoveCustomField(i)}
+                        className="mt-3 text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">
+                        Remove Field
+                      </button>
                     </div>
                   ))}
-                  <button
-                    type="button"
-                    onClick={handleAddCustomField}
-                    className="flex items-center gap-2 px-3 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg text-sm font-medium"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Custom Field
+                  <button type="button" onClick={handleAddCustomField}
+                    className="flex items-center gap-2 text-[13px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                    <Plus className="w-4 h-4" /> Add Custom Field
                   </button>
                 </div>
               </div>
 
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="flex-1 px-4 py-2 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium transition-colors"
-                >
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={resetForm}
+                  className="flex-1 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
+                  style={{ backgroundColor: C.cream, color: C.charcoal }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg font-medium transition-colors"
-                >
-                  {editingSubject ? (
-                    <>
-                      <Save className="w-4 h-4 inline mr-2" />
-                      Update Subject
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="w-4 h-4 inline mr-2" />
-                      Add Subject
-                    </>
-                  )}
+                <button type="submit"
+                  className="flex-1 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
+                  style={{ backgroundColor: C.charcoal, color: '#ffffff' }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}>
+                  {editingSubject ? 'Update Subject' : 'Add Subject'}
                 </button>
               </div>
             </form>
@@ -570,100 +418,82 @@ const Curriculum = () => {
         </div>
       )}
 
-      {/* Subjects List */}
-      {subjects.length === 0 ? (
-        <div className="text-center py-12">
-          <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-slate-900 mb-2">No subjects yet</h3>
-          <p className="text-slate-500 mb-6">Add your first subject to get started with curriculum management</p>
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Your First Subject
+      {/* Subjects Grid */}
+      {activeSubjects.length === 0 ? (
+        <div className="text-center py-16">
+          <BookOpen className="w-10 h-10 text-charcoal-ink/20 mx-auto mb-4" />
+          <h3 className="text-[18px] font-display text-charcoal-ink mb-2">No subjects yet</h3>
+          <p className="text-[14px] text-charcoal-ink/40 font-body mb-6">Add your first subject to get started</p>
+          <button onClick={() => setShowAddForm(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
+            style={{ backgroundColor: C.charcoal, color: '#ffffff' }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}>
+            <Plus className="w-4 h-4" /> Add Your First Subject
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {subjects.filter(subject => subject.is_active).map((subject) => (
-            <div key={subject.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div 
-                      className="w-4 h-4 rounded-full"
-                      style={{ backgroundColor: subject.color || '#3B82F6' }}
-                    />
-                    <h3 className="text-lg font-semibold text-slate-900">
-                      {subject.title}
-                    </h3>
-                  </div>
-                  <p className="text-sm text-slate-500">
-                    {(() => {
-                      const studentIds = subject.student_ids || [subject.student_id].filter(Boolean);
-                      const studentNames = studentIds.map(id => {
-                        const student = students.find(s => s.id === id);
-                        return student ? student.name : 'Unknown';
-                      }).join(', ');
-                      return studentNames || 'Unknown students';
-                    })()}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleEdit(subject)}
-                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleArchive(subject.id)}
-                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg"
-                  >
-                    <Archive className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(subject.id)}
-                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {activeSubjects.map((subject) => {
+            const studentIds = subject.student_ids || [subject.student_id].filter(Boolean);
+            const studentNames = studentIds.map(id => students.find(s => s.id === id)?.name || 'Unknown').join(', ');
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-600">Weekly Blocks</span>
-                  <span className="font-medium">{subject.block_count || 10}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-600">Block Length</span>
-                  <span className="font-medium">{subject.block_length || 30} min</span>
-                </div>
-
-                {subject.resources && subject.resources.length > 0 && (
-                  <div className="pt-3 border-t border-slate-100">
-                    <p className="text-sm font-medium text-slate-700 mb-2">Resources</p>
-                    <div className="space-y-2">
-                      {subject.resources.map((resource, index) => (
-                        <a
-                          key={index}
-                          href={resource.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          {resource.name}
-                        </a>
-                      ))}
+            return (
+              <div key={subject.id} className="bg-white rounded-2xl p-6 hover:shadow-sm transition-shadow" style={{ border: `1px solid ${C.parchment}` }}>
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: subject.color || '#3B82F6' }} />
+                      <h3 className="text-[16px] font-display text-charcoal-ink truncate" style={{ lineHeight: 1.2 }}>
+                        {subject.title}
+                      </h3>
                     </div>
+                    <p className="text-[13px] text-charcoal-ink/40 font-body truncate">{studentNames || 'Unknown students'}</p>
                   </div>
-                )}
+                  <div className="flex gap-1 ml-2 flex-shrink-0">
+                    <button onClick={() => handleEdit(subject)}
+                      className="p-1.5 text-charcoal-ink/30 hover:text-charcoal-ink transition-colors" title="Edit">
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleArchive(subject.id)}
+                      className="p-1.5 text-charcoal-ink/30 hover:text-charcoal-ink transition-colors" title="Archive">
+                      <Archive className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleDelete(subject.id)}
+                      className="p-1.5 text-charcoal-ink/30 hover:text-red-500 transition-colors" title="Delete">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[13px] text-charcoal-ink/50 font-body">Weekly Blocks</span>
+                    <span className="text-[13px] font-display text-charcoal-ink">{subject.block_count || 10}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[13px] text-charcoal-ink/50 font-body">Block Length</span>
+                    <span className="text-[13px] font-display text-charcoal-ink">{subject.block_length || 30} min</span>
+                  </div>
+
+                  {subject.resources && subject.resources.length > 0 && (
+                    <div className="pt-3" style={{ borderTop: `1px solid ${C.parchment}` }}>
+                      <p className="text-[11px] font-label uppercase tracking-wider text-charcoal-ink/40 mb-2">Resources</p>
+                      <div className="space-y-1.5">
+                        {subject.resources.map((r, i) => (
+                          <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 text-[13px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                            <ExternalLink className="w-3 h-3" />
+                            {r.name}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

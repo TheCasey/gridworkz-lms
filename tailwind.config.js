@@ -7,7 +7,17 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Super Sans VF', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'sans-serif'],
+      },
+      fontWeight: {
+        body: '460',
+        display: '540',
+        ui: '600',
+        label: '700',
+      },
       colors: {
+        // Legacy colors (used by pages not yet refactored)
         slate: {
           50: '#f8fafc',
           100: '#f1f5f9',
@@ -31,9 +41,22 @@ export default {
           700: '#4338ca',
           800: '#3730a3',
           900: '#312e81',
-        }
-      }
+        },
+        // Superhuman design system
+        'mysteria':      '#1b1938',
+        'lavender-glow': '#cbb7fb',
+        'charcoal-ink':  '#292827',
+        'amethyst-link': '#714cb6',
+        'warm-cream':    '#e9e5dd',
+        'parchment':     '#dcd7d3',
+      },
     },
   },
+  safelist: [
+    {
+      pattern: /^(bg|text|border|ring|fill|stroke)-(charcoal-ink|lavender-glow|parchment|warm-cream|mysteria|amethyst-link)(\/\d+)?$/,
+      variants: ['hover', 'focus', 'active', 'dark'],
+    },
+  ],
   plugins: [],
 }

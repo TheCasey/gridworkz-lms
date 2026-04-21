@@ -2,9 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Design system color tokens — defined as RGB channels so Tailwind opacity modifiers work */
+:root {
+  --color-mysteria:      27 25 56;
+  --color-lavender-glow: 203 183 251;
+  --color-charcoal-ink:  41 40 39;
+  --color-amethyst-link: 113 76 182;
+  --color-warm-cream:    233 229 221;
+  --color-parchment:     220 215 211;
+}
+
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-white text-[#292827];
   }
 }
 

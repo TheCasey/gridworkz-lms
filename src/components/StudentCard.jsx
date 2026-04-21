@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { Copy, Check, Trash2, Archive, Eye } from 'lucide-react';
+import { Copy, Check, Trash2, Eye } from 'lucide-react';
 
 const StudentCard = ({ student, onDelete, onViewProgress }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopyMagicLink = async () => {
     const magicLink = `${window.location.origin}/student/${student.slug}`;
-    
     try {
       await navigator.clipboard.writeText(magicLink);
       setCopied(true);
@@ -16,77 +15,63 @@ const StudentCard = ({ student, onDelete, onViewProgress }) => {
     }
   };
 
-  const handleViewProgress = () => {
-    if (onViewProgress) {
-      onViewProgress(student);
-    }
-  };
-
-  const handleDelete = () => {
-    if (onDelete) {
-      onDelete(student.id);
-    }
-  };
-
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 hover:shadow-md transition-shadow dark:hover:bg-slate-750">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex-1">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">
-            {student.name}
-          </h3>
-          {student.access_pin && (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              PIN Protected
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {onDelete && (
-            <button
-              onClick={handleDelete}
-              className="p-2 text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-              title="Delete student"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
-          <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center">
-            <span className="text-indigo-600 dark:text-indigo-300 font-semibold text-lg">
+    <div className="bg-white rounded-2xl border border-parchment p-6 hover:shadow-sm transition-shadow">
+      <div className="flex items-start justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 bg-[#f0eaff] rounded-full flex items-center justify-center flex-shrink-0">
+            <span className="text-amethyst-link font-display text-[17px]">
               {student.name.charAt(0).toUpperCase()}
             </span>
           </div>
+          <div>
+            <h3 className="text-[16px] font-display text-charcoal-ink" style={{ lineHeight: 1.2 }}>
+              {student.name}
+            </h3>
+            {student.access_pin && (
+              <p className="text-[12px] text-charcoal-ink/40 font-body mt-0.5">PIN protected</p>
+            )}
+          </div>
         </div>
+        {onDelete && (
+          <button
+            onClick={() => onDelete(student.id)}
+            className="p-1.5 text-charcoal-ink/30 hover:text-red-500 transition-colors"
+            title="Delete student"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
-      <div className="space-y-3">
-        <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
-          <span className="font-medium">Slug:</span>
-          <span className="ml-2 font-mono text-xs bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">
-            {student.slug}
-          </span>
-        </div>
+      <div className="mb-4">
+        <p className="text-[11px] font-label uppercase tracking-wider text-charcoal-ink/40 mb-1">Portal URL</p>
+        <span className="text-[12px] font-mono text-charcoal-ink/50 bg-warm-cream px-2 py-1 rounded">
+          /student/{student.slug}
+        </span>
+      </div>
 
+      <div className="space-y-2.5">
         <button
           onClick={handleCopyMagicLink}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white rounded-lg font-medium transition-colors"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
+          style={{ backgroundColor: '#e9e5dd', color: '#292827' }}
+          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#ddd7cf'}
+          onMouseLeave={e => e.currentTarget.style.backgroundColor = '#e9e5dd'}
         >
           {copied ? (
-            <>
-              <Check className="w-4 h-4" />
-              Copied!
-            </>
+            <><Check className="w-4 h-4" />Copied!</>
           ) : (
-            <>
-              <Copy className="w-4 h-4" />
-              Copy Magic Link
-            </>
+            <><Copy className="w-4 h-4" />Copy Magic Link</>
           )}
         </button>
 
         <button
-          onClick={handleViewProgress}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white rounded-lg font-medium transition-colors"
+          onClick={() => onViewProgress?.(student)}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
+          style={{ backgroundColor: '#292827', color: '#ffffff' }}
+          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
+          onMouseLeave={e => e.currentTarget.style.backgroundColor = '#292827'}
         >
           <Eye className="w-4 h-4" />
           View Progress

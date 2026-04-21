@@ -1,31 +1,51 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // 1. Allow the Student Portal to find a student by their slug
-    match /students/{studentId} {
-      allow read: if true; 
-      allow write: if request.auth != null;
+
+    // Helpers
+    function isAuth() {
+      return request.auth != null;
+    }
+    function isOwner(parentId) {
+      return isAuth() && request.auth.uid == parentId;
     }
 
-    // 2. Allow the Student Portal to see subjects and make submissions
+    // Students: parents own their records; portal reads by document ID only (no list)
+    match /students/{studentId} {
+      allow get: if true;
+      allow list: if isAuth();
+      allow create: if isOwner(request.resource.data.parent_id);
+      allow update, delete: if isOwner(resource.data.parent_id);
+    }
+
+    // Subjects: parents own their records; students need read access for the portal
     match /subjects/{subjectId} {
       allow read: if true;
-      allow write: if true; // Temporary so students can click 'Done'
+      allow create: if isOwner(request.resource.data.parent_id);
+      allow update, delete: if isOwner(resource.data.parent_id);
     }
 
+    // Submissions: students write (portal is unauthenticated), parents read their own
     match /submissions/{submissionId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if isAuth();
     }
 
-    // 3. Keep Parent documents private to the logged-in Parent
+    // Weekly reports: parent-scoped only
+    match /weeklyReports/{reportId} {
+      allow read, write: if isAuth() && request.auth.uid == resource.data.parent_id;
+      allow create: if isOwner(request.resource.data.parent_id);
+    }
+
+    // Parent profiles: owner only
     match /parents/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isAuth() && request.auth.uid == userId;
     }
 
-    // 4. Default for everything else (Reports, Logs)
+    // Everything else (dailyLogs, etc.): authenticated only
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAuth();
     }
   }
 }

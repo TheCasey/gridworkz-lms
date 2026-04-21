@@ -1,38 +1,230 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  getFirestore, 
-  collection, 
-  query, 
-  where, 
-  onSnapshot,
-  orderBy,
-  doc,
-  updateDoc,
-  deleteDoc,
-  serverTimestamp,
-  addDoc,
-  writeBatch,
-  getDoc,
-  setDoc
+import {
+  getFirestore, collection, query, where, onSnapshot, orderBy,
+  doc, deleteDoc, serverTimestamp, writeBatch
 } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
-import { 
-  FileText, 
-  Download, 
-  Calendar,
-  Clock,
-  User,
-  BookOpen,
-  Paperclip,
-  Plus,
-  X,
-  CheckCircle,
-  Trash2,
-  Settings,
-  Printer
-} from 'lucide-react';
+import { FileText, Calendar, BookOpen, X, Archive, Trash2, Printer, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  getCurrentWeekRange,
+  getWeekRangeByOffset,
+  formatWeekRange,
+  getWeekLabel,
+  getWeekPickerOptions,
+  isTimestampInWeek
+} from '../utils/weekUtils';
 
+const C = {
+  mysteria: '#1b1938',
+  lavender: '#cbb7fb',
+  charcoal: '#292827',
+  amethyst: '#714cb6',
+  cream: '#e9e5dd',
+  parchment: '#dcd7d3',
+  lavenderTint: '#f0eaff',
+};
+
+// ---------------------------------------------------------------------------
+// Print template — called with computed week data, opens browser print dialog
+// ---------------------------------------------------------------------------
+const printWeekReport = (students, weekStart, weekEnd, studentDataMap) => {
+  const weekRangeText = formatWeekRange(weekStart, weekEnd);
+  const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  const studentSections = students.map(student => {
+    const data = studentDataMap[student.id];
+    if (!data) return '';
+    const pct = data.goalBlocks > 0 ? Math.round((data.totalBlocks / data.goalBlocks) * 100) : 0;
+    const hours = Math.round(data.totalMinutes / 60 * 10) / 10;
+
+    const subjectSections = data.subjectData.map(({ subject, blocks, completedCount, totalCount, totalMinutes: subMins }) => {
+      const blockEntries = blocks.map(b => {
+        const date = b.timestamp?.toDate?.() || new Date(b.timestamp);
+        const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        const duration = b.block_duration || 30;
+        return `
+          <div class="block-entry">
+            <div class="block-entry-header">
+              <span class="block-label">Block ${(b.block_index ?? 0) + 1}</span>
+              <span class="block-meta">${dateStr} at ${timeStr} &bull; ${duration} min</span>
+            </div>
+            ${b.summary_text ? `<p class="block-summary">${b.summary_text}</p>` : ''}
+            ${b.manual_override ? `<p class="block-note">Parent-led session</p>` : ''}
+          </div>`;
+      }).join('');
+
+      return `
+        <div class="subject-section">
+          <div class="subject-header">
+            <span class="subject-dot" style="background:${subject.color || '#cbb7fb'}"></span>
+            <span class="subject-title">${subject.title}</span>
+            <span class="subject-stats">${completedCount}/${totalCount} blocks &bull; ${Math.round(subMins / 60 * 10) / 10}h</span>
+          </div>
+          ${completedCount === 0
+            ? '<p class="no-entries">No blocks completed this week</p>'
+            : blockEntries}
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="student-section">
+        <div class="student-header">
+          <div class="student-initial">${student.name.charAt(0).toUpperCase()}</div>
+          <div>
+            <h2 class="student-name">${student.name}</h2>
+            <p class="student-sub">${data.totalBlocks} of ${data.goalBlocks} blocks completed</p>
+          </div>
+          <div class="student-pct">${pct}%</div>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" style="width:${Math.min(pct, 100)}%"></div>
+        </div>
+        <div class="metrics">
+          <div class="metric"><div class="metric-value">${data.totalBlocks}</div><div class="metric-label">Blocks Completed</div></div>
+          <div class="metric"><div class="metric-value">${data.goalBlocks}</div><div class="metric-label">Weekly Goal</div></div>
+          <div class="metric"><div class="metric-value">${hours}h</div><div class="metric-label">Time Spent</div></div>
+          <div class="metric"><div class="metric-value">${pct}%</div><div class="metric-label">Progress</div></div>
+        </div>
+        <div class="subjects">${subjectSections}</div>
+      </div>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>GridWorkz — Weekly Report — ${weekRangeText}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Georgia, 'Times New Roman', serif; color: #292827; background: #fff; padding: 48px; font-size: 13px; line-height: 1.6; }
+    .report-header { text-align: center; margin-bottom: 48px; padding-bottom: 24px; border-bottom: 2px solid #292827; }
+    .report-logo { font-family: Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #714cb6; margin-bottom: 8px; }
+    .report-title { font-size: 26px; font-weight: bold; color: #292827; margin-bottom: 6px; }
+    .report-week { font-size: 15px; color: #714cb6; margin-bottom: 4px; }
+    .report-generated { font-size: 11px; color: #9a9591; }
+    .student-section { margin-bottom: 48px; padding-bottom: 40px; border-bottom: 1px solid #dcd7d3; }
+    .student-section:last-child { border-bottom: none; margin-bottom: 0; }
+    .student-header { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+    .student-initial { width: 44px; height: 44px; border-radius: 50%; background: #f0eaff; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; color: #714cb6; flex-shrink: 0; font-family: Arial, sans-serif; }
+    .student-name { font-size: 20px; font-weight: bold; color: #292827; font-family: Arial, sans-serif; }
+    .student-sub { font-size: 12px; color: #9a9591; font-family: Arial, sans-serif; }
+    .student-pct { margin-left: auto; font-size: 28px; font-weight: bold; color: #714cb6; font-family: Arial, sans-serif; }
+    .progress-bar-wrap { height: 6px; background: #dcd7d3; border-radius: 3px; margin-bottom: 20px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; background: #cbb7fb; border-radius: 3px; }
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
+    .metric { background: #f8f6ff; border: 1px solid #e4dcff; border-radius: 8px; padding: 14px; text-align: center; }
+    .metric-value { font-size: 22px; font-weight: bold; color: #714cb6; font-family: Arial, sans-serif; }
+    .metric-label { font-size: 11px; color: #9a9591; margin-top: 3px; font-family: Arial, sans-serif; text-transform: uppercase; letter-spacing: 0.5px; }
+    .subjects { }
+    .subject-section { margin-bottom: 20px; }
+    .subject-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #e9e5dd; font-family: Arial, sans-serif; }
+    .subject-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .subject-title { font-size: 14px; font-weight: bold; color: #292827; }
+    .subject-stats { margin-left: auto; font-size: 11px; color: #9a9591; }
+    .block-entry { margin-bottom: 8px; padding: 10px 14px; background: #faf9f8; border-left: 3px solid #cbb7fb; border-radius: 0 6px 6px 0; }
+    .block-entry-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; font-family: Arial, sans-serif; }
+    .block-label { font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; color: #714cb6; }
+    .block-meta { font-size: 11px; color: #9a9591; }
+    .block-summary { font-size: 13px; color: #504e4d; line-height: 1.5; }
+    .block-note { font-size: 11px; color: #9a9591; font-style: italic; }
+    .no-entries { font-size: 12px; color: #b0aba7; font-style: italic; padding: 4px 0; }
+    @media print {
+      body { padding: 24px; }
+      .student-section { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="report-header">
+    <div class="report-logo">GridWorkz LMS</div>
+    <div class="report-title">Weekly Progress Report</div>
+    <div class="report-week">${weekRangeText}</div>
+    <div class="report-generated">Generated ${generatedDate}</div>
+  </div>
+  ${studentSections}
+</body>
+</html>`;
+
+  const pw = window.open('', '_blank');
+  if (pw) {
+    pw.document.write(html);
+    pw.document.close();
+    setTimeout(() => pw.print(), 400);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Subject row — collapsible block entries
+// ---------------------------------------------------------------------------
+const SubjectRow = ({ subjectDatum }) => {
+  const { subject, blocks, completedCount, totalCount, totalMinutes } = subjectDatum;
+  const [open, setOpen] = useState(false);
+  const hours = Math.round(totalMinutes / 60 * 10) / 10;
+  const pct = Math.round((completedCount / totalCount) * 100);
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.parchment}` }}>
+      <button
+        className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
+        style={{ backgroundColor: completedCount > 0 ? `${C.lavenderTint}` : '#faf9f8' }}
+        onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+        onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+        onClick={() => blocks.length > 0 && setOpen(o => !o)}
+      >
+        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: subject.color || C.lavender }} />
+        <span className="text-[14px] flex-1 min-w-0 truncate" style={{ color: C.charcoal, fontWeight: 540 }}>{subject.title}</span>
+        <span className="text-[12px] flex-shrink-0" style={{ color: 'rgba(41,40,39,0.45)', fontWeight: 460 }}>
+          {completedCount}/{totalCount} blocks
+          {totalMinutes > 0 && <> &bull; {hours}h</>}
+        </span>
+        <div className="w-16 rounded-full h-1.5 overflow-hidden flex-shrink-0 mx-2" style={{ backgroundColor: C.parchment }}>
+          <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: C.lavender }} />
+        </div>
+        {blocks.length > 0
+          ? open
+            ? <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'rgba(41,40,39,0.3)' }} />
+            : <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'rgba(41,40,39,0.3)' }} />
+          : <div className="w-3.5" />}
+      </button>
+
+      {open && blocks.length > 0 && (
+        <div className="divide-y" style={{ borderTop: `1px solid ${C.parchment}` }}>
+          {blocks.map((b, i) => {
+            const date = b.timestamp?.toDate?.() || new Date(b.timestamp);
+            const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+            const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            return (
+              <div key={b.id || i} className="px-4 py-3 bg-white">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[10px] uppercase tracking-wider font-label" style={{ color: C.amethyst }}>
+                    Block {(b.block_index ?? i) + 1}
+                  </span>
+                  {b.manual_override && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: C.cream, color: 'rgba(41,40,39,0.5)', fontWeight: 700 }}>
+                      Parent-led
+                    </span>
+                  )}
+                  <span className="ml-auto text-[11px]" style={{ color: 'rgba(41,40,39,0.35)', fontWeight: 460 }}>
+                    {dateStr} at {timeStr} &bull; {b.block_duration || 30} min
+                  </span>
+                </div>
+                {b.summary_text
+                  ? <p className="text-[13px] leading-relaxed" style={{ color: 'rgba(41,40,39,0.65)', fontWeight: 460 }}>{b.summary_text}</p>
+                  : <p className="text-[12px] italic" style={{ color: 'rgba(41,40,39,0.3)', fontWeight: 460 }}>No summary written</p>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 const Reports = () => {
   const { currentUser } = useAuth();
   const [students, setStudents] = useState([]);
@@ -40,990 +232,439 @@ const Reports = () => {
   const [submissions, setSubmissions] = useState([]);
   const [weeklyReports, setWeeklyReports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedReport, setSelectedReport] = useState(null);
-  const [showAttachModal, setShowAttachModal] = useState(false);
-  const [attachments, setAttachments] = useState([]);
-  const [showCustomModal, setShowCustomModal] = useState(false);
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate] = useState('');
-  const [selectedStudents, setSelectedStudents] = useState([]);
-  const [customReport, setCustomReport] = useState(null);
-  const [exportingReport, setExportingReport] = useState(null);
-  const [finalizingWeek, setFinalizingWeek] = useState(false);
-  
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [savingRecord, setSavingRecord] = useState(false);
+  const [showRecords, setShowRecords] = useState(false);
   const db = getFirestore(app);
 
-  // Fetch students
   useEffect(() => {
     if (!currentUser) return;
-
-    const studentsQuery = query(
-      collection(db, 'students'),
-      where('parent_id', '==', currentUser.uid),
-      orderBy('name')
-    );
-
-    const unsubscribeStudents = onSnapshot(studentsQuery, (snapshot) => {
-      const studentsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setStudents(studentsData);
-    });
-
-    return unsubscribeStudents;
+    const q = query(collection(db, 'students'), where('parent_id', '==', currentUser.uid), orderBy('name'));
+    return onSnapshot(q, snap => setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
   }, [currentUser, db]);
 
-  // Fetch subjects
   useEffect(() => {
     if (!currentUser) return;
-
-    const subjectsQuery = query(
-      collection(db, 'subjects'),
-      where('parent_id', '==', currentUser.uid),
-      where('is_active', '==', true),
-      orderBy('title')
-    );
-
-    const unsubscribeSubjects = onSnapshot(subjectsQuery, (snapshot) => {
-      const subjectsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setSubjects(subjectsData);
-    });
-
-    return unsubscribeSubjects;
+    const q = query(collection(db, 'subjects'), where('parent_id', '==', currentUser.uid), where('is_active', '==', true), orderBy('title'));
+    return onSnapshot(q, snap => setSubjects(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
   }, [currentUser, db]);
 
-  // Fetch submissions and generate weekly reports
   useEffect(() => {
     if (!currentUser) return;
-
-    const submissionsQuery = query(
-      collection(db, 'submissions'),
-      where('parent_id', '==', currentUser.uid),
-      orderBy('timestamp', 'desc')
-    );
-
-    const unsubscribeSubmissions = onSnapshot(submissionsQuery, (snapshot) => {
-      const submissionsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setSubmissions(submissionsData);
-      generateWeeklyReports(submissionsData);
+    // Load ALL submissions — no date filter — so any week is queryable
+    const q = query(collection(db, 'submissions'), where('parent_id', '==', currentUser.uid), orderBy('timestamp', 'desc'));
+    return onSnapshot(q, snap => {
+      setSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
-    });
-
-    return unsubscribeSubmissions;
+    }, () => setLoading(false));
   }, [currentUser, db]);
 
-  // Fetch existing weekly reports
   useEffect(() => {
     if (!currentUser) return;
-
-    const reportsQuery = query(
-      collection(db, 'weeklyReports'),
-      where('parent_id', '==', currentUser.uid),
-      orderBy('week_ending', 'desc')
-    );
-
-    const unsubscribeReports = onSnapshot(reportsQuery, (snapshot) => {
-      const reportsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setWeeklyReports(reportsData);
-    });
-
-    return unsubscribeReports;
+    const q = query(collection(db, 'weeklyReports'), where('parent_id', '==', currentUser.uid), orderBy('week_ending', 'desc'));
+    return onSnapshot(q, snap => setWeeklyReports(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
   }, [currentUser, db]);
 
-  const generateWeeklyReports = (submissionsData) => {
-    const reports = {};
-    
-    // Group submissions by student and week
-    submissionsData.forEach(submission => {
-      if (!submission.timestamp) return;
-      
-      const timestamp = submission.timestamp.toDate();
-      const weekStart = new Date(timestamp);
-      const dayOfWeek = weekStart.getDay();
-      weekStart.setDate(timestamp.getDate() - dayOfWeek);
-      weekStart.setHours(0, 0, 0, 0);
-      
-      const weekEnding = new Date(weekStart);
-      weekEnding.setDate(weekStart.getDate() + 6);
-      weekEnding.setHours(23, 59, 59, 999);
-      
-      const studentId = submission.student_id;
-      const weekKey = `${studentId}-${weekStart.toISOString()}`;
-      
-      if (!reports[weekKey]) {
-        reports[weekKey] = {
-          studentId,
-          weekStart,
-          weekEnding,
-          submissions: [],
-          totalHours: 0,
-          totalBlocks: 0,
-          subjectsData: {} // For grouping by subject
-        };
-      }
-      
-      reports[weekKey].submissions.push(submission);
-      reports[weekKey].totalBlocks += 1;
-      reports[weekKey].totalHours += (submission.block_duration || 30) / 60;
-      
-      // Group by subject for organized reporting
-      const subjectName = submission.subject_name || 'Unknown Subject';
-      if (!reports[weekKey].subjectsData[subjectName]) {
-        reports[weekKey].subjectsData[subjectName] = {
-          subjectTitle: subjectName,
-          summaries: [],
-          totalBlocks: 0
-        };
-      }
-      
-      reports[weekKey].subjectsData[subjectName].summaries.push({
-        text: submission.summary_text,
-        date: timestamp,
-        blockNumber: submission.block_index + 1,
-        resources: submission.resources_used || [],
-        duration: submission.block_duration || 30
-      });
-      reports[weekKey].subjectsData[subjectName].totalBlocks += 1;
-    });
-    
-    return Object.values(reports);
-  };
+  // Derive selected week range
+  const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset);
 
-  const getWeeklyGoal = (studentId) => {
-    const studentSubjects = subjects.filter(s => {
-      // New schema: student_ids array
-      if (s.student_ids && Array.isArray(s.student_ids)) {
-        return s.student_ids.includes(studentId);
-      }
-      // Old schema: single student_id
-      return s.student_id === studentId;
-    });
-    return studentSubjects.reduce((sum, subject) => sum + (subject.block_count || 10), 0);
-  };
+  // Build per-student data for the selected week
+  const getStudentSubjects = (studentId) =>
+    subjects.filter(s => s.student_ids?.includes(studentId) || s.student_id === studentId);
 
-  const getWeekRange = (weekStart, weekEnding) => {
-    const options = { month: 'short', day: 'numeric' };
-    return `${weekStart.toLocaleDateString('en-US', options)} - ${weekEnding.toLocaleDateString('en-US', options)}`;
-  };
+  const buildStudentData = (student) => {
+    const studentSubjects = getStudentSubjects(student.id);
+    const weekSubs = submissions.filter(s =>
+      s.student_id === student.id && s.timestamp && isTimestampInWeek(s.timestamp, weekStart, weekEnd)
+    );
 
-  const handleFinalizeWeek = async () => {
-    if (!window.confirm('This will generate weekly reports for all students and reset their progress. Continue?')) {
-      return;
-    }
-
-    setFinalizingWeek(true);
-    
-    try {
-      const now = new Date();
-      const dayOfWeek = now.getDay();
-      const weekStart = new Date(now);
-      weekStart.setDate(now.getDate() - dayOfWeek);
-      weekStart.setHours(0, 0, 0, 0);
-      
-      const weekEnding = new Date(weekStart);
-      weekEnding.setDate(weekStart.getDate() + 6);
-      weekEnding.setHours(23, 59, 59, 999);
-
-      // Process each student individually to avoid one failure stopping others
-      const results = await Promise.allSettled(
-        students.map(async (student) => {
-          try {
-            const weeklyGoal = getWeeklyGoal(student.id);
-            const weekSubmissions = submissions.filter(s => {
-              if (!s.timestamp || s.student_id !== student.id) return false;
-              const timestamp = s.timestamp.toDate();
-              return timestamp >= weekStart && timestamp <= weekEnding;
-            });
-
-            const totalBlocks = weekSubmissions.length;
-            const totalHours = weekSubmissions.reduce((sum, s) => sum + (s.block_duration || 30) / 60, 0);
-            
-            // Group summaries by subject with metadata
-            const subjectsData = {};
-            weekSubmissions.forEach(submission => {
-              const subjectName = submission.subject_name || 'Unknown Subject';
-              if (!subjectsData[subjectName]) {
-                subjectsData[subjectName] = {
-                  subjectTitle: subjectName,
-                  summaries: [],
-                  totalBlocks: 0
-                };
-              }
-              
-              if (submission.summary_text) {
-                subjectsData[subjectName].summaries.push({
-                  text: submission.summary_text,
-                  date: submission.timestamp.toDate(),
-                  blockNumber: submission.block_index + 1,
-                  resources: submission.resources_used || [],
-                  duration: submission.block_duration || 30
-                });
-              }
-              subjectsData[subjectName].totalBlocks += 1;
-            });
-
-            // Create atomic batch: report creation + subject reset + submission cleanup
-            const batch = writeBatch(db);
-            
-            // Add weekly report to batch
-            const reportRef = doc(collection(db, 'weeklyReports'));
-            batch.set(reportRef, {
-              student_id: student.id,
-              student_name: student.name,
-              parent_id: currentUser.uid,
-              week_start: weekStart,
-              week_ending: weekEnding,
-              weekly_goal: weeklyGoal,
-              total_blocks: totalBlocks,
-              total_hours: Math.round(totalHours * 10) / 10,
-              subjects_data: subjectsData, // New structured data
-              summaries: weekSubmissions.map(s => s.summary_text).filter(Boolean), // Keep for backward compatibility
-              attachments: [],
-              created_at: serverTimestamp()
-            });
-
-            // Reset student-specific progress in sub-collection
-            const studentSubjects = subjects.filter(s => {
-              // New schema: student_ids array
-              if (s.student_ids && Array.isArray(s.student_ids)) {
-                return s.student_ids.includes(student.id);
-              }
-              // Old schema: single student_id
-              return s.student_id === student.id;
-            });
-            
-            for (const subject of studentSubjects) {
-              // Reset legacy completed_blocks field
-              const subjectRef = doc(db, 'subjects', subject.id);
-              batch.update(subjectRef, {
-                completed_blocks: 0,
-                updated_at: serverTimestamp()
-              });
-              
-              // Reset student-specific progress only if it exists
-              const progressRef = doc(db, 'subjects', subject.id, 'progress', student.id);
-              const progressDoc = await getDoc(progressRef);
-              
-              if (progressDoc.exists()) {
-                batch.update(progressRef, {
-                  completed_blocks: 0,
-                  updated_at: serverTimestamp()
-                });
-              }
-              // If no progress document exists, we don't need to create one for reset
-            }
-
-            // Delete current week's submissions to provide clean slate
-            weekSubmissions.forEach(submission => {
-              const submissionRef = doc(db, 'submissions', submission.id);
-              batch.delete(submissionRef);
-            });
-
-            // Commit atomic batch - report creation, subject reset, and submission cleanup happen together
-            await batch.commit();
-
-            return { success: true, student: student.name, error: null };
-          } catch (error) {
-            console.error(`Error finalizing week for ${student.name}:`, error);
-            return { success: false, student: student.name, error: error.message };
-          }
-        })
-      );
-
-      // Check results and provide appropriate feedback
-      const successful = results.filter(r => r.status === 'fulfilled' && r.value.success);
-      const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success));
-
-      if (successful.length > 0) {
-        const successMessage = successful.length === students.length 
-          ? 'Weekly reports generated successfully! Student progress has been reset for all students.'
-          : `Weekly reports generated for ${successful.length} student(s).`;
-        
-        alert(successMessage);
-      }
-
-      if (failed.length > 0) {
-        const failedNames = failed.map(r => r.reason?.student || 'Unknown').join(', ');
-        console.error('Failed students:', failed);
-        alert(`Warning: Failed to generate reports for: ${failedNames}. Please check these students manually.`);
-      }
-
-    } catch (error) {
-      console.error('Critical error in finalize week:', error);
-      alert('Failed to finalize week. Please try again.');
-    } finally {
-      setFinalizingWeek(false);
-    }
-  };
-
-  const handleGenerateCustomReport = () => {
-    if (!customStartDate || !customEndDate || selectedStudents.length === 0) {
-      alert('Please select date range and at least one student');
-      return;
-    }
-
-    const startDate = new Date(customStartDate);
-    const endDate = new Date(customEndDate);
-    endDate.setHours(23, 59, 59, 999);
-
-    const customReports = selectedStudents.map(studentId => {
-      const student = students.find(s => s.id === studentId);
-      const studentSubmissions = submissions.filter(s => {
-        if (!s.timestamp || s.student_id !== studentId) return false;
-        const timestamp = s.timestamp.toDate();
-        return timestamp >= startDate && timestamp <= endDate;
-      });
-
-      const totalBlocks = studentSubmissions.length;
-      const totalHours = studentSubmissions.reduce((sum, s) => sum + (s.block_duration || 30) / 60, 0);
-      const summaries = studentSubmissions.map(s => s.summary_text).filter(Boolean);
-      const weeklyGoal = getWeeklyGoal(studentId);
-
+    const subjectData = studentSubjects.map(subject => {
+      const subjectSubs = weekSubs
+        .filter(s => s.subject_id === subject.id)
+        .sort((a, b) => {
+          const at = a.timestamp?.toDate?.() || new Date(a.timestamp);
+          const bt = b.timestamp?.toDate?.() || new Date(b.timestamp);
+          return at - bt;
+        });
+      const uniqueBlocks = [...new Set(subjectSubs.map(s => s.block_index).filter(i => i !== undefined))];
       return {
-        student,
-        total_blocks: totalBlocks,
-        total_hours: Math.round(totalHours * 10) / 10,
-        summaries: summaries,
-        weekly_goal: weeklyGoal,
-        date_range: { start: startDate, end: endDate }
+        subject,
+        blocks: subjectSubs,
+        completedCount: uniqueBlocks.length,
+        totalCount: subject.block_count || 10,
+        totalMinutes: subjectSubs.reduce((sum, s) => sum + (s.block_duration || 30), 0),
       };
     });
 
-    setCustomReport(customReports);
-    setShowCustomModal(false);
+    const totalBlocks = subjectData.reduce((sum, s) => sum + s.completedCount, 0);
+    const goalBlocks = subjectData.reduce((sum, s) => sum + s.totalCount, 0);
+    const totalMinutes = subjectData.reduce((sum, s) => sum + s.totalMinutes, 0);
+    return { student, subjectData, totalBlocks, goalBlocks, totalMinutes };
   };
 
-  const handleDeleteReport = async (reportId) => {
-    if (!window.confirm('Are you sure? This will permanently delete this academic record.')) {
-      return;
-    }
+  const studentDataMap = Object.fromEntries(students.map(s => [s.id, buildStudentData(s)]));
+  const weekHasData = Object.values(studentDataMap).some(d => d.totalBlocks > 0);
 
+  // Save a non-destructive official record snapshot
+  const handleSaveRecord = async () => {
+    if (!window.confirm('Save an official record snapshot for this week? This does not affect any student data.')) return;
+    setSavingRecord(true);
     try {
-      await deleteDoc(doc(db, 'weeklyReports', reportId));
-      alert('Report deleted successfully');
-    } catch (error) {
-      console.error('Error deleting report:', error);
-      alert('Failed to delete report. Please try again.');
+      const batch = writeBatch(db);
+      students.forEach(student => {
+        const data = studentDataMap[student.id];
+        if (!data) return;
+        const subjectsData = {};
+        data.subjectData.forEach(({ subject, blocks, completedCount }) => {
+          if (completedCount === 0) return;
+          subjectsData[subject.id] = {
+            subjectTitle: subject.title,
+            totalBlocks: completedCount,
+            summaries: blocks
+              .filter(b => b.summary_text)
+              .map(b => ({
+                text: b.summary_text,
+                blockNumber: (b.block_index ?? 0) + 1,
+                date: b.timestamp?.toDate?.() || new Date(b.timestamp),
+                duration: b.block_duration || 30,
+              })),
+          };
+        });
+        const reportRef = doc(collection(db, 'weeklyReports'));
+        batch.set(reportRef, {
+          student_id: student.id,
+          student_name: student.name,
+          parent_id: currentUser.uid,
+          week_start: weekStart,
+          week_ending: weekEnd,
+          weekly_goal: data.goalBlocks,
+          total_blocks: data.totalBlocks,
+          total_hours: Math.round(data.totalMinutes / 60 * 10) / 10,
+          subjects_data: subjectsData,
+          summaries: data.subjectData.flatMap(sd => sd.blocks.map(b => b.summary_text).filter(Boolean)),
+          attachments: [],
+          created_at: serverTimestamp(),
+        });
+      });
+      await batch.commit();
+      setShowRecords(true);
+      alert('Official record saved.');
+    } catch (err) {
+      console.error('Error saving record:', err);
+      alert('Failed to save record. Please try again.');
+    } finally {
+      setSavingRecord(false);
     }
   };
 
-  const handleExportReport = (report) => {
-    setExportingReport(report);
-    // Open in new window after state updates
-    setTimeout(() => {
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>GridWorkz Report - ${report.student_name}</title>
-              <style>
-                body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
-                .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #3B82F6; padding-bottom: 20px; }
-                .logo { font-size: 32px; font-weight: bold; color: #3B82F6; margin-bottom: 10px; }
-                .student-info { margin: 20px 0; }
-                .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 30px 0; }
-                .metric { text-align: center; padding: 20px; border: 1px solid #E5E7EB; border-radius: 8px; }
-                .metric-value { font-size: 36px; font-weight: bold; color: #3B82F6; }
-                .metric-label { font-size: 14px; color: #6B7280; margin-top: 5px; }
-                .summaries { margin-top: 30px; }
-                .summary-item { margin: 15px 0; padding: 15px; background: #F9FAFB; border-radius: 8px; }
-                .attachments { margin-top: 20px; }
-                .attachment-item { margin: 10px 0; padding: 10px; background: #F3F4F6; border-radius: 6px; }
-                @media print { 
-                  body { 
-                    margin: 20px; 
-                    background: white !important;
-                    color: black !important;
-                  } 
-                  .no-print { display: none !important; }
-                  button { display: none !important; }
-                  a[href^="#"] { display: none !important; }
-                  * {
-                    -webkit-print-color-adjust: exact !important;
-                    print-color-adjust: exact !important;
-                  }
-                }
-              </style>
-            </head>
-            <body>
-              <div class="header">
-                <div class="logo">GridWorkz</div>
-                <h1>Weekly Progress Report</h1>
-              </div>
-              
-              <div class="student-info">
-                <h2>${report.student_name}</h2>
-                <p><strong>Report Period:</strong> ${getWeekRange(
-                  report.week_start?.toDate?.() || report.week_start,
-                  report.week_ending?.toDate?.() || report.week_ending
-                )}</p>
-              </div>
-              
-              <div class="metrics">
-                <div class="metric">
-                  <div class="metric-value">${report.total_blocks}</div>
-                  <div class="metric-label">Blocks Completed</div>
-                  <div>Goal: ${report.weekly_goal}</div>
-                </div>
-                <div class="metric">
-                  <div class="metric-value">${report.total_hours}h</div>
-                  <div class="metric-label">Total Hours</div>
-                </div>
-                <div class="metric">
-                  <div class="metric-value">${Math.round((report.total_blocks / report.weekly_goal) * 100)}%</div>
-                  <div class="metric-label">Weekly Progress</div>
-                </div>
-              </div>
-              
-              ${report.subjects_data && Object.keys(report.subjects_data).length > 0 ? `
-                <div class="summaries">
-                  <h3>Learning Summaries by Subject</h3>
-                  ${Object.values(report.subjects_data).map(subjectData => `
-                    <div class="subject-section" style="margin-bottom: 30px; page-break-inside: avoid;">
-                      <h4 style="color: #3B82F6; border-bottom: 2px solid #E5E7EB; padding-bottom: 10px; margin-bottom: 15px;">
-                        📚 ${subjectData.subjectTitle} (${subjectData.totalBlocks} blocks)
-                      </h4>
-                      ${subjectData.summaries.length > 0 ? `
-                        <div class="subject-summaries">
-                          ${subjectData.summaries.map(summary => `
-                            <div class="summary-item" style="margin: 15px 0; padding: 15px; background: #F9FAFB; border-left: 4px solid #3B82F6; border-radius: 4px;">
-                              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; color: #6B7280;">
-                                <span style="background: #3B82F6; color: white; padding: 2px 8px; border-radius: 12px; font-weight: bold;">
-                                  Block ${summary.blockNumber} of ${subjectData.totalBlocks}
-                                </span>
-                                <span>${summary.date.toDate ? summary.date.toDate().toLocaleDateString() : new Date(summary.date).toLocaleDateString()} at ${summary.date.toDate ? summary.date.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : new Date(summary.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                              </div>
-                              <p style="margin: 0 0 10px 0; line-height: 1.5;">${summary.text}</p>
-                              ${summary.resources && summary.resources.length > 0 ? `
-                                <div style="margin-top: 10px;">
-                                  <span style="font-size: 11px; color: #6B7280; font-weight: bold;">Resources Used:</span>
-                                  <div style="display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap;">
-                                    ${summary.resources.map((resourceIndex, resourceIdx) => `
-                                      <span style="background: #DBEAFE; color: #1E40AF; padding: 2px 6px; border-radius: 8px; font-size: 10px;">
-                                        Resource ${resourceIndex + 1}
-                                      </span>
-                                    `).join('')}
-                                  </div>
-                                </div>
-                              ` : ''}
-                            </div>
-                          `).join('')}
-                        </div>
-                      ` : '<p style="font-style: italic; color: #6B7280;">No summaries for this subject</p>'}
-                    </div>
-                  `).join('')}
-                </div>
-              ` : report.summaries && report.summaries.length > 0 ? `
-                <div class="summaries">
-                  <h3>Learning Summaries</h3>
-                  ${report.summaries.map(summary => `
-                    <div class="summary-item">${summary}</div>
-                  `).join('')}
-                </div>
-              ` : ''}
-              
-              ${report.attachments && report.attachments.length > 0 ? `
-                <div class="attachments">
-                  <h3>Attachments</h3>
-                  ${report.attachments.map(att => `
-                    <div class="attachment-item">
-                      <strong>${att.name || 'Attachment'}</strong>
-                      ${att.url ? `<br><a href="${att.url}">View File</a>` : ''}
-                    </div>
-                  `).join('')}
-                </div>
-              ` : ''}
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.print();
-      }
-      setExportingReport(null);
-    }, 100);
+  const handleDeleteRecord = async (id) => {
+    if (!window.confirm('Permanently delete this official record?')) return;
+    try { await deleteDoc(doc(db, 'weeklyReports', id)); }
+    catch (err) { alert('Failed to delete record.'); }
+  };
+
+  // Print saved weeklyReport doc (legacy / official records section)
+  const handlePrintRecord = (report) => {
+    const ws = report.week_start?.toDate?.() || new Date(report.week_start);
+    const we = report.week_ending?.toDate?.() || new Date(report.week_ending);
+    const weekRangeText = formatWeekRange(ws, we);
+    const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    const subjectsHtml = report.subjects_data
+      ? Object.values(report.subjects_data).map(sd => `
+          <div class="subject-section">
+            <div class="subject-header">
+              <span class="subject-title">${sd.subjectTitle}</span>
+              <span class="subject-stats">${sd.totalBlocks} blocks</span>
+            </div>
+            ${sd.summaries?.length > 0
+              ? sd.summaries.map(s => `<div class="block-entry"><span class="block-label">Block ${s.blockNumber || '?'}</span><p class="block-summary">${s.text}</p></div>`).join('')
+              : '<p class="no-entries">No summaries recorded</p>'}
+          </div>`).join('')
+      : '';
+
+    const pct = report.weekly_goal > 0 ? Math.round((report.total_blocks / report.weekly_goal) * 100) : 0;
+    const html = buildPrintHtml(weekRangeText, generatedDate, [{
+      name: report.student_name,
+      initial: report.student_name?.charAt(0) || '?',
+      totalBlocks: report.total_blocks,
+      goalBlocks: report.weekly_goal,
+      hours: report.total_hours || 0,
+      pct,
+      subjectsHtml,
+    }]);
+
+    const pw = window.open('', '_blank');
+    if (pw) { pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 400); }
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        <div className="animate-spin rounded-full h-7 w-7 border-b-2" style={{ borderColor: C.lavender }} />
       </div>
     );
   }
 
+  const weekPickerOptions = getWeekPickerOptions();
+  const weekRangeDisplay = formatWeekRange(weekStart, weekEnd);
+
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">Weekly Reports</h2>
-          <p className="text-sm text-slate-500 mt-1">Track student progress and weekly achievements</p>
+          <h2 className="text-[26px] font-display text-charcoal-ink" style={{ lineHeight: 1.1, letterSpacing: '-0.5px' }}>Reports</h2>
+          <p className="text-[14px] text-charcoal-ink/50 font-body mt-1">Live view of student activity by week</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {/* Week picker */}
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4" style={{ color: 'rgba(41,40,39,0.4)' }} />
+            <select
+              value={weekOffset}
+              onChange={e => setWeekOffset(parseInt(e.target.value))}
+              className="px-3 py-2 rounded-lg text-[13px] focus:outline-none"
+              style={{ border: `1px solid ${C.parchment}`, backgroundColor: '#fff', color: C.charcoal, fontWeight: 460 }}
+            >
+              {weekPickerOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label} ({opt.displayText})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Print live week */}
           <button
-            onClick={() => setShowCustomModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg font-medium transition-colors"
+            onClick={() => printWeekReport(students, weekStart, weekEnd, studentDataMap)}
+            disabled={!weekHasData}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-label text-[14px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            style={{ backgroundColor: C.cream, color: C.charcoal }}
+            onMouseEnter={e => { if (weekHasData) e.currentTarget.style.backgroundColor = C.parchment; }}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}
           >
-            <Settings className="w-4 h-4" />
-            Generate Custom Report
+            <Printer className="w-4 h-4" />
+            Print Report
           </button>
+
+          {/* Save official record */}
           <button
-            onClick={handleFinalizeWeek}
-            disabled={finalizingWeek}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+            onClick={handleSaveRecord}
+            disabled={savingRecord || !weekHasData}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-label text-[14px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            style={{ backgroundColor: C.charcoal, color: '#ffffff' }}
+            onMouseEnter={e => { if (!savingRecord && weekHasData) e.currentTarget.style.backgroundColor = '#3a3937'; }}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}
           >
-            <CheckCircle className="w-4 h-4" />
-            {finalizingWeek ? 'Processing Reports...' : 'Finalize Week'}
+            <Archive className="w-4 h-4" />
+            {savingRecord ? 'Saving…' : 'Save Record'}
           </button>
         </div>
       </div>
 
-      {weeklyReports.length === 0 ? (
-        <div className="text-center py-12">
-          <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-slate-900 mb-2">No weekly reports yet</h3>
-          <p className="text-slate-500 mb-6">Generate your first weekly report to see student progress</p>
-          <button
-            onClick={handleFinalizeWeek}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
-          >
-            <CheckCircle className="w-4 h-4" />
-            Generate First Report
-          </button>
+      {/* Week label */}
+      <p className="text-[12px] uppercase tracking-wider mb-6" style={{ color: C.amethyst, fontWeight: 700 }}>
+        {getWeekLabel(weekOffset)} — {weekRangeDisplay}
+      </p>
+
+      {/* Per-student live report cards */}
+      {students.length === 0 ? (
+        <div className="text-center py-16">
+          <FileText className="w-10 h-10 text-charcoal-ink/20 mx-auto mb-4" />
+          <p className="text-[15px] font-display text-charcoal-ink mb-1">No students yet</p>
+          <p className="text-[13px] text-charcoal-ink/40 font-body">Add students from the dashboard to see their reports here.</p>
         </div>
       ) : (
-        <div className="space-y-6">
-          {weeklyReports.map((report) => (
-            <div key={report.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900 mb-1">
-                    {report.student_name}
-                  </h3>
-                  <p className="text-sm text-slate-500">
-                    <Calendar className="w-4 h-4 inline mr-1" />
-                    {getWeekRange(
-                      report.week_start?.toDate?.() || report.week_start,
-                      report.week_ending?.toDate?.() || report.week_ending
-                    )}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setSelectedReport(report)}
-                    className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"
-                  >
-                    <FileText className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleExportReport(report)}
-                    className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg"
-                  >
-                    <Printer className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedReport(report);
-                      setShowAttachModal(true);
-                    }}
-                    className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg"
-                  >
-                    <Paperclip className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteReport(report.id)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+        <div className="space-y-6 mb-10">
+          {students.map(student => {
+            const data = studentDataMap[student.id];
+            if (!data) return null;
+            const pct = data.goalBlocks > 0 ? Math.round((data.totalBlocks / data.goalBlocks) * 100) : 0;
+            const hours = Math.round(data.totalMinutes / 60 * 10) / 10;
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Blocks Completed</span>
-                    <span className="text-lg font-semibold text-slate-900">
-                      {report.total_blocks}/{report.weekly_goal}
+            return (
+              <div key={student.id} className="bg-white rounded-2xl p-6" style={{ border: `1px solid ${C.parchment}` }}>
+                {/* Student header */}
+                <div className="flex items-center gap-4 mb-5">
+                  <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: C.lavenderTint }}>
+                    <span className="text-[17px] font-display" style={{ color: C.amethyst }}>
+                      {student.name.charAt(0).toUpperCase()}
                     </span>
                   </div>
-                  <div className="mt-2 w-full bg-slate-200 rounded-full h-2">
-                    <div 
-                      className="bg-indigo-600 h-2 rounded-full"
-                      style={{ width: `${Math.min((report.total_blocks / report.weekly_goal) * 100, 100)}%` }}
-                    />
-                  </div>
-                </div>
-                
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Total Hours</span>
-                    <span className="text-lg font-semibold text-slate-900">
-                      {report.total_hours}h
-                    </span>
-                  </div>
-                </div>
-                
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Progress</span>
-                    <span className="text-lg font-semibold text-slate-900">
-                      {Math.round((report.total_blocks / report.weekly_goal) * 100)}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {report.subjects_data && Object.keys(report.subjects_data).length > 0 ? (
-                <div className="border-t border-slate-100 pt-4">
-                  <h4 className="text-sm font-medium text-slate-700 mb-4">Learning Summaries by Subject</h4>
-                  <div className="space-y-4">
-                    {Object.values(report.subjects_data).map((subjectData, index) => (
-                      <div key={index} className="bg-slate-50 rounded-lg p-4">
-                        <h5 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
-                          <BookOpen className="w-4 h-4" />
-                          {subjectData.subjectTitle}
-                          <span className="text-xs text-slate-500">({subjectData.totalBlocks} blocks)</span>
-                        </h5>
-                        {subjectData.summaries.length > 0 ? (
-                          <div className="space-y-3">
-                            {subjectData.summaries.map((summary, summaryIndex) => (
-                              <div key={summaryIndex} className="bg-white rounded-lg p-3 border border-slate-200">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="text-xs font-medium text-indigo-600">
-                                    Block {summary.blockNumber} of {subjectData.totalBlocks}
-                                  </span>
-                                  <span className="text-xs text-slate-500">
-                                    {summary.date.toDate ? summary.date.toDate().toLocaleDateString() : new Date(summary.date).toLocaleDateString()}
-                                  </span>
-                                </div>
-                                <p className="text-sm text-slate-700 mb-2">{summary.text}</p>
-                                {summary.resources && summary.resources.length > 0 && (
-                                  <div className="flex flex-wrap gap-1">
-                                    {summary.resources.map((resourceIndex, resourceIdx) => (
-                                      <span key={resourceIdx} className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">
-                                        Resource {resourceIndex + 1}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-slate-500 italic">No summaries for this subject</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : report.summaries && report.summaries.length > 0 ? (
-                <div className="border-t border-slate-100 pt-4">
-                  <h4 className="text-sm font-medium text-slate-700 mb-2">Weekly Summaries</h4>
-                  <div className="space-y-2">
-                    {report.summaries.slice(0, 3).map((summary, index) => (
-                      <div key={index} className="bg-slate-50 rounded-lg p-3">
-                        <p className="text-sm text-slate-700 line-clamp-2">{summary}</p>
-                      </div>
-                    ))}
-                    {report.summaries.length > 3 && (
-                      <p className="text-xs text-slate-500">
-                        +{report.summaries.length - 3} more summaries
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Report Detail Modal */}
-      {selectedReport && !showAttachModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-slate-200">
-              <h2 className="text-xl font-semibold text-slate-900">
-                {selectedReport.student_name} - Weekly Report
-              </h2>
-              <button
-                onClick={() => setSelectedReport(null)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-indigo-600">{selectedReport.total_blocks}</div>
-                  <div className="text-sm text-slate-500">Blocks Completed</div>
-                  <div className="text-xs text-slate-400 mt-1">Goal: {selectedReport.weekly_goal}</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-green-600">{selectedReport.total_hours}h</div>
-                  <div className="text-sm text-slate-500">Total Hours</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-slate-600">
-                    {Math.round((selectedReport.total_blocks / selectedReport.weekly_goal) * 100)}%
-                  </div>
-                  <div className="text-sm text-slate-500">Weekly Progress</div>
-                </div>
-              </div>
-
-              {selectedReport.subjects_data && Object.keys(selectedReport.subjects_data).length > 0 ? (
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900 mb-4">Learning Summaries by Subject</h3>
-                  <div className="space-y-4">
-                    {Object.values(selectedReport.subjects_data).map((subjectData, index) => (
-                      <div key={index} className="bg-slate-50 rounded-lg p-4">
-                        <h4 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
-                          <BookOpen className="w-4 h-4" />
-                          {subjectData.subjectTitle}
-                          <span className="text-sm text-slate-500">({subjectData.totalBlocks} blocks)</span>
-                        </h4>
-                        {subjectData.summaries.length > 0 ? (
-                          <div className="space-y-3">
-                            {subjectData.summaries.map((summary, summaryIndex) => (
-                              <div key={summaryIndex} className="bg-white rounded-lg p-3 border border-slate-200">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="text-xs font-medium text-indigo-600">
-                                    Block {summary.blockNumber} of {subjectData.totalBlocks}
-                                  </span>
-                                  <span className="text-xs text-slate-500">
-                                    {summary.date.toDate ? summary.date.toDate().toLocaleDateString() + ' at ' + summary.date.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : new Date(summary.date).toLocaleDateString() + ' at ' + new Date(summary.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                  </span>
-                                </div>
-                                <p className="text-sm text-slate-700 mb-2 whitespace-pre-wrap">{summary.text}</p>
-                                {summary.resources && summary.resources.length > 0 && (
-                                  <div className="flex flex-wrap gap-1">
-                                    {summary.resources.map((resourceIndex, resourceIdx) => (
-                                      <span key={resourceIdx} className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded">
-                                        Resource {resourceIndex + 1}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-slate-500 italic">No summaries for this subject</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : selectedReport.summaries && selectedReport.summaries.length > 0 ? (
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900 mb-4">All Summaries</h3>
-                  <div className="space-y-3">
-                    {selectedReport.summaries.map((summary, index) => (
-                      <div key={index} className="bg-slate-50 rounded-lg p-4">
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{summary}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* File Attachment Modal */}
-      {showAttachModal && selectedReport && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-slate-200">
-              <h2 className="text-xl font-semibold text-slate-900">Attach Files</h2>
-              <button
-                onClick={() => {
-                  setShowAttachModal(false);
-                  setAttachments([]);
-                }}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6">
-              <p className="text-sm text-slate-600 mb-4">
-                Attach files to {selectedReport.student_name}'s weekly report
-              </p>
-              <div className="space-y-3">
-                <button
-                  onClick={() => {
-                    // File upload logic would go here
-                    alert('File upload would be implemented here');
-                  }}
-                  className="w-full p-4 border-2 border-dashed border-slate-300 rounded-lg hover:border-indigo-400 transition-colors"
-                >
-                  <Paperclip className="w-6 h-6 text-slate-400 mx-auto mb-2" />
-                  <p className="text-sm text-slate-600">Click to upload files</p>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Custom Report Modal */}
-      {showCustomModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-slate-200">
-              <h2 className="text-xl font-semibold text-slate-900">Generate Custom Report</h2>
-              <button
-                onClick={() => {
-                  setShowCustomModal(false);
-                  setCustomStartDate('');
-                  setCustomEndDate('');
-                  setSelectedStudents([]);
-                }}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Start Date</label>
-                <input
-                  type="date"
-                  value={customStartDate}
-                  onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">End Date</label>
-                <input
-                  type="date"
-                  value={customEndDate}
-                  onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Select Students</label>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {students.map(student => (
-                    <label key={student.id} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedStudents.includes(student.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedStudents([...selectedStudents, student.id]);
-                          } else {
-                            setSelectedStudents(selectedStudents.filter(id => id !== student.id));
-                          }
-                        }}
-                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="text-sm text-slate-700">{student.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowCustomModal(false);
-                    setCustomStartDate('');
-                    setCustomEndDate('');
-                    setSelectedStudents([]);
-                  }}
-                  className="flex-1 px-4 py-2 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleGenerateCustomReport}
-                  className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
-                >
-                  Generate Report
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Custom Report Display */}
-      {customReport && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-slate-200">
-              <h2 className="text-xl font-semibold text-slate-900">Custom Report</h2>
-              <button
-                onClick={() => setCustomReport(null)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6">
-              {customReport.map((report, index) => (
-                <div key={index} className="mb-8 pb-8 border-b border-slate-200 last:border-b-0">
-                  <div className="mb-4">
-                    <h3 className="text-lg font-semibold text-slate-900">{report.student.name}</h3>
-                    <p className="text-sm text-slate-500">
-                      {report.date_range.start.toLocaleDateString()} - {report.date_range.end.toLocaleDateString()}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-[17px] font-display text-charcoal-ink" style={{ lineHeight: 1.2 }}>{student.name}</h3>
+                    <p className="text-[13px] font-body mt-0.5" style={{ color: 'rgba(41,40,39,0.45)' }}>
+                      {data.totalBlocks} of {data.goalBlocks} blocks completed this week
                     </p>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div className="bg-slate-50 rounded-lg p-3">
-                      <div className="text-lg font-semibold text-slate-900">
-                        {report.total_blocks}/{report.weekly_goal}
+                  {/* Metrics pills */}
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    {[
+                      { label: 'Blocks', value: `${data.totalBlocks}/${data.goalBlocks}` },
+                      { label: 'Hours', value: `${hours}h` },
+                      { label: 'Progress', value: `${pct}%` },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="text-center rounded-lg px-4 py-2.5" style={{ backgroundColor: `${C.lavenderTint}80` }}>
+                        <div className="text-[16px] font-display text-amethyst-link">{value}</div>
+                        <div className="text-[11px] text-charcoal-ink/40 font-body">{label}</div>
                       </div>
-                      <div className="text-sm text-slate-600">Blocks Completed</div>
-                    </div>
-                    <div className="bg-slate-50 rounded-lg p-3">
-                      <div className="text-lg font-semibold text-slate-900">{report.total_hours}h</div>
-                      <div className="text-sm text-slate-600">Total Hours</div>
-                    </div>
-                    <div className="bg-slate-50 rounded-lg p-3">
-                      <div className="text-lg font-semibold text-slate-900">
-                        {Math.round((report.total_blocks / report.weekly_goal) * 100)}%
-                      </div>
-                      <div className="text-sm text-slate-600">Progress</div>
-                    </div>
+                    ))}
                   </div>
-                  {report.summaries.length > 0 && (
-                    <div>
-                      <h4 className="text-sm font-medium text-slate-700 mb-2">Summaries</h4>
-                      <div className="space-y-2">
-                        {report.summaries.map((summary, i) => (
-                          <div key={i} className="bg-slate-50 rounded-lg p-3">
-                            <p className="text-sm text-slate-700">{summary}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
-              ))}
-            </div>
-          </div>
+
+                {/* Progress bar */}
+                <div className="w-full rounded-full h-1.5 mb-5 overflow-hidden" style={{ backgroundColor: C.parchment }}>
+                  <div className="h-1.5 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: C.lavender }} />
+                </div>
+
+                {/* Subject rows */}
+                {data.subjectData.length === 0 ? (
+                  <p className="text-[13px] text-charcoal-ink/30 italic font-body text-center py-4">
+                    No subjects assigned to this student.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-label uppercase tracking-wider mb-2" style={{ color: 'rgba(41,40,39,0.4)' }}>
+                      Subjects — click to expand block details
+                    </p>
+                    {data.subjectData.map(sd => (
+                      <SubjectRow key={sd.subject.id} subjectDatum={sd} />
+                    ))}
+                  </div>
+                )}
+
+                {data.totalBlocks === 0 && (
+                  <p className="text-center text-[13px] font-body mt-4" style={{ color: 'rgba(41,40,39,0.3)' }}>
+                    No blocks completed {weekOffset === 0 ? 'this week yet' : 'during this week'}.
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
+
+      {/* Official Records section */}
+      <div>
+        <button
+          className="flex items-center gap-2 mb-4"
+          onClick={() => setShowRecords(r => !r)}
+        >
+          {showRecords
+            ? <ChevronDown className="w-4 h-4" style={{ color: 'rgba(41,40,39,0.4)' }} />
+            : <ChevronRight className="w-4 h-4" style={{ color: 'rgba(41,40,39,0.4)' }} />}
+          <span className="text-[12px] uppercase tracking-wider font-label" style={{ color: 'rgba(41,40,39,0.5)' }}>
+            Official Records ({weeklyReports.length})
+          </span>
+        </button>
+
+        {showRecords && (
+          weeklyReports.length === 0 ? (
+            <p className="text-[13px] text-charcoal-ink/30 italic font-body pl-6">
+              No saved records yet. Use "Save Record" to stamp an official snapshot.
+            </p>
+          ) : (
+            <div className="space-y-2 pl-6">
+              {weeklyReports.map(report => {
+                const ws = report.week_start?.toDate?.() || new Date(report.week_start);
+                const we = report.week_ending?.toDate?.() || new Date(report.week_ending);
+                return (
+                  <div key={report.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white"
+                    style={{ border: `1px solid ${C.parchment}` }}>
+                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: C.lavender }} />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[14px] font-display text-charcoal-ink">{report.student_name}</span>
+                      <span className="text-[12px] font-body ml-2" style={{ color: 'rgba(41,40,39,0.4)' }}>
+                        {formatWeekRange(ws, we)}
+                      </span>
+                    </div>
+                    <span className="text-[12px] font-body" style={{ color: 'rgba(41,40,39,0.4)' }}>
+                      {report.total_blocks}/{report.weekly_goal} blocks
+                    </span>
+                    <button onClick={() => handlePrintRecord(report)}
+                      className="p-1.5 transition-colors" style={{ color: 'rgba(41,40,39,0.3)' }}
+                      onMouseEnter={e => e.currentTarget.style.color = C.amethyst}
+                      onMouseLeave={e => e.currentTarget.style.color = 'rgba(41,40,39,0.3)'}
+                      title="Print">
+                      <Printer className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleDeleteRecord(report.id)}
+                      className="p-1.5 transition-colors" style={{ color: 'rgba(41,40,39,0.3)' }}
+                      onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                      onMouseLeave={e => e.currentTarget.style.color = 'rgba(41,40,39,0.3)'}
+                      title="Delete">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        )}
+      </div>
     </div>
   );
 };
+
+// Shared print HTML builder used by handlePrintRecord
+function buildPrintHtml(weekRangeText, generatedDate, studentRows) {
+  const sections = studentRows.map(r => `
+    <div class="student-section">
+      <div class="student-header">
+        <div class="student-initial">${r.initial}</div>
+        <div><h2 class="student-name">${r.name}</h2><p class="student-sub">${r.totalBlocks} of ${r.goalBlocks} blocks completed</p></div>
+        <div class="student-pct">${r.pct}%</div>
+      </div>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${Math.min(r.pct, 100)}%"></div></div>
+      <div class="metrics">
+        <div class="metric"><div class="metric-value">${r.totalBlocks}</div><div class="metric-label">Blocks Completed</div></div>
+        <div class="metric"><div class="metric-value">${r.goalBlocks}</div><div class="metric-label">Weekly Goal</div></div>
+        <div class="metric"><div class="metric-value">${r.hours}h</div><div class="metric-label">Time Spent</div></div>
+        <div class="metric"><div class="metric-value">${r.pct}%</div><div class="metric-label">Progress</div></div>
+      </div>
+      <div class="subjects">${r.subjectsHtml}</div>
+    </div>`).join('');
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>GridWorkz — ${weekRangeText}</title><style>
+    *{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,'Times New Roman',serif;color:#292827;background:#fff;padding:48px;font-size:13px;line-height:1.6}
+    .report-header{text-align:center;margin-bottom:48px;padding-bottom:24px;border-bottom:2px solid #292827}
+    .report-logo{font-family:Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#714cb6;margin-bottom:8px}
+    .report-title{font-size:26px;font-weight:bold;color:#292827;margin-bottom:6px}
+    .report-week{font-size:15px;color:#714cb6;margin-bottom:4px}
+    .report-generated{font-size:11px;color:#9a9591}
+    .student-section{margin-bottom:48px;padding-bottom:40px;border-bottom:1px solid #dcd7d3}
+    .student-section:last-child{border-bottom:none;margin-bottom:0}
+    .student-header{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+    .student-initial{width:44px;height:44px;border-radius:50%;background:#f0eaff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:bold;color:#714cb6;flex-shrink:0;font-family:Arial,sans-serif}
+    .student-name{font-size:20px;font-weight:bold;color:#292827;font-family:Arial,sans-serif}
+    .student-sub{font-size:12px;color:#9a9591;font-family:Arial,sans-serif}
+    .student-pct{margin-left:auto;font-size:28px;font-weight:bold;color:#714cb6;font-family:Arial,sans-serif}
+    .progress-bar-wrap{height:6px;background:#dcd7d3;border-radius:3px;margin-bottom:20px;overflow:hidden}
+    .progress-bar-fill{height:100%;background:#cbb7fb;border-radius:3px}
+    .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px}
+    .metric{background:#f8f6ff;border:1px solid #e4dcff;border-radius:8px;padding:14px;text-align:center}
+    .metric-value{font-size:22px;font-weight:bold;color:#714cb6;font-family:Arial,sans-serif}
+    .metric-label{font-size:11px;color:#9a9591;margin-top:3px;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:0.5px}
+    .subject-section{margin-bottom:20px}
+    .subject-header{display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #e9e5dd;font-family:Arial,sans-serif}
+    .subject-title{font-size:14px;font-weight:bold;color:#292827}
+    .subject-stats{margin-left:auto;font-size:11px;color:#9a9591}
+    .block-entry{margin-bottom:8px;padding:10px 14px;background:#faf9f8;border-left:3px solid #cbb7fb;border-radius:0 6px 6px 0}
+    .block-label{font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.5px;color:#714cb6;margin-right:8px;font-family:Arial,sans-serif}
+    .block-summary{font-size:13px;color:#504e4d;line-height:1.5;margin-top:4px}
+    .no-entries{font-size:12px;color:#b0aba7;font-style:italic;padding:4px 0}
+    @media print{body{padding:24px}.student-section{page-break-inside:avoid}}
+  </style></head><body>
+  <div class="report-header">
+    <div class="report-logo">GridWorkz LMS</div>
+    <div class="report-title">Weekly Progress Report</div>
+    <div class="report-week">${weekRangeText}</div>
+    <div class="report-generated">Generated ${generatedDate}</div>
+  </div>
+  ${sections}
+  </body></html>`;
+}
 
 export default Reports;
