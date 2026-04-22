@@ -39,10 +39,9 @@ service cloud.firestore {
         data.saved_at is int;
     }
 
-    // Students: parents own their records; portal reads by document ID only (no list)
+    // Students: portal resolves student records by slug, which requires query/list access
     match /students/{studentId} {
-      allow get: if true;
-      allow list: if isAuth();
+      allow read: if true;
       allow create: if isOwner(request.resource.data.parent_id);
       allow update, delete: if isOwner(resource.data.parent_id);
     }
