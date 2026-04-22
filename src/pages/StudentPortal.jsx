@@ -69,6 +69,10 @@ const StudentPortal = () => {
   const alarmAudioRef = useRef(null);
   const alarmStopTimerRef = useRef(null);
   const alarmSoundRef = useRef(ALARM_SOUNDS[0].file);
+  const alarmPrimedRef = useRef(false);
+  const audioContextRef = useRef(null);
+  const alarmBufferCacheRef = useRef(new Map());
+  const alarmSourceRef = useRef(null);
   const [pinAttempts, setPinAttempts] = useState(0);
   const [pinLockoutUntil, setPinLockoutUntil] = useState(null);
   const oldSubjectUnsubRef = useRef(null);
@@ -76,6 +80,74 @@ const StudentPortal = () => {
 
   const db = getFirestore(app);
   const subjectMap = useMemo(() => Object.fromEntries(subjects.map(subject => [subject.id, subject])), [subjects]);
+
+  const ensureAlarmAudio = () => {
+    if (!alarmAudioRef.current) {
+      alarmAudioRef.current = new Audio(`/sounds/${alarmSoundRef.current}`);
+      alarmAudioRef.current.preload = 'auto';
+    }
+
+    const expectedSrc = `${window.location.origin}/sounds/${alarmSoundRef.current}`;
+    if (alarmAudioRef.current.src !== expectedSrc) {
+      alarmAudioRef.current.src = `/sounds/${alarmSoundRef.current}`;
+      alarmPrimedRef.current = false;
+    }
+
+    return alarmAudioRef.current;
+  };
+
+  const ensureAudioContext = async () => {
+    if (typeof window === 'undefined') return null;
+
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContextClass();
+    }
+
+    if (audioContextRef.current.state === 'suspended') {
+      await audioContextRef.current.resume();
+    }
+
+    return audioContextRef.current;
+  };
+
+  const ensureAlarmBuffer = async (file = alarmSoundRef.current) => {
+    if (alarmBufferCacheRef.current.has(file)) {
+      return alarmBufferCacheRef.current.get(file);
+    }
+
+    const context = await ensureAudioContext();
+    if (!context) return null;
+
+    const response = await fetch(`/sounds/${file}`);
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await context.decodeAudioData(arrayBuffer.slice(0));
+    alarmBufferCacheRef.current.set(file, audioBuffer);
+    return audioBuffer;
+  };
+
+  const primeAlarmAudio = async () => {
+    const audio = ensureAlarmAudio();
+    if (alarmPrimedRef.current) return true;
+
+    try {
+      audio.muted = true;
+      audio.currentTime = 0;
+      await audio.play();
+      audio.pause();
+      audio.currentTime = 0;
+      audio.muted = false;
+      await ensureAlarmBuffer();
+      alarmPrimedRef.current = true;
+      return true;
+    } catch (error) {
+      audio.muted = false;
+      console.warn('Unable to prime alarm audio:', error);
+      return false;
+    }
+  };
 
   useEffect(() => {
     if (!slug) return;
@@ -251,21 +323,49 @@ const StudentPortal = () => {
     setAlarmSound(file);
     alarmSoundRef.current = file;
     if (student) localStorage.setItem(`alarm_sound_${student.id}`, file);
-    const audio = new Audio(`/sounds/${file}`);
+    const audio = ensureAlarmAudio();
+    audio.src = `/sounds/${file}`;
+    alarmPrimedRef.current = false;
+    primeAlarmAudio().catch(() => {});
+    audio.currentTime = 0;
     audio.play().catch(() => {});
   };
 
   const stopAlarm = () => {
     if (alarmStopTimerRef.current) { clearTimeout(alarmStopTimerRef.current); alarmStopTimerRef.current = null; }
-    if (alarmAudioRef.current) { alarmAudioRef.current.loop = false; alarmAudioRef.current.pause(); alarmAudioRef.current.currentTime = 0; alarmAudioRef.current = null; }
+    if (alarmSourceRef.current) {
+      try { alarmSourceRef.current.stop(); } catch (e) {}
+      try { alarmSourceRef.current.disconnect(); } catch (e) {}
+      alarmSourceRef.current = null;
+    }
+    if (alarmAudioRef.current) { alarmAudioRef.current.loop = false; alarmAudioRef.current.pause(); alarmAudioRef.current.currentTime = 0; }
   };
 
-  const playNotificationSound = () => {
+  const playNotificationSound = async () => {
     stopAlarm();
-    const audio = new Audio(`/sounds/${alarmSoundRef.current}`);
-    audio.loop = true;
-    alarmAudioRef.current = audio;
-    audio.play().catch(() => {});
+
+    try {
+      const context = await ensureAudioContext();
+      const buffer = await ensureAlarmBuffer();
+
+      if (context && buffer) {
+        const source = context.createBufferSource();
+        source.buffer = buffer;
+        source.loop = true;
+        source.connect(context.destination);
+        source.start(0);
+        alarmSourceRef.current = source;
+      } else {
+        const audio = ensureAlarmAudio();
+        audio.loop = true;
+        audio.muted = false;
+        audio.currentTime = 0;
+        await audio.play();
+      }
+    } catch (error) {
+      console.warn('Alarm playback was blocked:', error);
+    }
+
     alarmStopTimerRef.current = setTimeout(stopAlarm, 20_000);
   };
 
@@ -328,6 +428,7 @@ const StudentPortal = () => {
 
   const startTimer = async (subject) => {
     if (!subject) return;
+    await primeAlarmAudio();
     const otherRunning = Object.keys(activeTimers).some(id => id !== subject.id);
     if (otherRunning) return;
     const nextBlock = getNextAvailableBlock(subject);
