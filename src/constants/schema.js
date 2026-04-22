@@ -105,6 +105,28 @@ export const DailyLogSchema = {
   updated_at: "timestamp"
 };
 
+// Timer Session Schema (for cross-device timer persistence)
+export const TimerSessionSchema = {
+  id: "string", // Deterministic: `${student_id}_${subject_id}`
+  student_id: "string", // Reference to student
+  parent_id: "string", // Reference to parent
+  subject_id: "string", // Reference to subject
+  block_index: "number", // Current block tied to the timer
+  start_time: "number", // Client timestamp in ms when timer started
+  duration_ms: "number", // Original timer duration in milliseconds
+  duration_minutes: "number", // Original timer duration in minutes
+  target_end_time: "number", // Client timestamp in ms when timer should end
+  initial_duration_ms: "number", // For progress calculations
+  remaining_time: "number", // Cached remaining ms for paused timers
+  is_running: "boolean", // Whether the timer is actively counting down
+  paused_at: "number", // Client timestamp in ms when paused
+  resumed_at: "number", // Client timestamp in ms when most recently resumed
+  completed_at: "number", // Client timestamp in ms when timer hit zero
+  saved_at: "number", // Client timestamp in ms for last local sync
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
 // Export collection names for Firestore
 export const Collections = {
   PARENTS: "parents",
@@ -112,7 +134,8 @@ export const Collections = {
   SUBJECTS: "subjects",
   WEEKLY_REPORTS: "weeklyReports",
   DAILY_LOGS: "dailyLogs",
-  SUBMISSIONS: "submissions"
+  SUBMISSIONS: "submissions",
+  TIMER_SESSIONS: "timerSessions"
 };
 
 // Submission Schema (for individual block completions)

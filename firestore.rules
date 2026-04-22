@@ -9,6 +9,35 @@ service cloud.firestore {
     function isOwner(parentId) {
       return isAuth() && request.auth.uid == parentId;
     }
+    function studentExists(studentId) {
+      return exists(/databases/$(database)/documents/students/$(studentId));
+    }
+    function subjectExists(subjectId) {
+      return exists(/databases/$(database)/documents/subjects/$(subjectId));
+    }
+    function timerSubjectIsAssigned(studentId, subjectId) {
+      let subject = subjectExists(subjectId)
+        ? get(/databases/$(database)/documents/subjects/$(subjectId)).data
+        : null;
+      return subject != null && (
+        (subject.student_ids is list && studentId in subject.student_ids) ||
+        subject.student_id == studentId
+      );
+    }
+    function validTimerTimerSessionData(data) {
+      return data.student_id is string &&
+        data.subject_id is string &&
+        data.parent_id is string &&
+        data.block_index is int &&
+        data.start_time is int &&
+        data.duration_ms is int &&
+        data.duration_minutes is int &&
+        data.target_end_time is int &&
+        data.initial_duration_ms is int &&
+        data.remaining_time is int &&
+        data.is_running is bool &&
+        data.saved_at is int;
+    }
 
     // Students: parents own their records; portal reads by document ID only (no list)
     match /students/{studentId} {
@@ -30,6 +59,18 @@ service cloud.firestore {
       allow read: if true;
       allow create: if true;
       allow update, delete: if isAuth();
+    }
+
+    // Timer sessions: portal needs unauthenticated cross-device persistence
+    match /timerSessions/{timerSessionId} {
+      allow get: if studentExists(resource.data.student_id) &&
+        timerSubjectIsAssigned(resource.data.student_id, resource.data.subject_id);
+      allow list: if false;
+      allow create, update: if studentExists(request.resource.data.student_id) &&
+        timerSubjectIsAssigned(request.resource.data.student_id, request.resource.data.subject_id) &&
+        validTimerTimerSessionData(request.resource.data);
+      allow delete: if studentExists(resource.data.student_id) &&
+        timerSubjectIsAssigned(resource.data.student_id, resource.data.subject_id);
     }
 
     // Weekly reports: parent-scoped only

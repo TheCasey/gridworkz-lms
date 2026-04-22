@@ -2,16 +2,16 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   getFirestore, collection, addDoc, query, where, onSnapshot, orderBy, limit,
-  doc, getDoc, getDocs, serverTimestamp
+  doc, getDocs, serverTimestamp, setDoc, deleteDoc
 } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
-import { Check, Clock, BookOpen, Lock, X, ExternalLink, Bell } from 'lucide-react';
+import { Check, BookOpen, Lock, X, ExternalLink, Bell } from 'lucide-react';
 
-import { getCurrentWeekRange, isTimestampInWeek } from '../utils/weekUtils';
+import { getCurrentWeekRange } from '../utils/weekUtils';
 import {
-  createTimerConfig, getRemainingTime, isTimerCompleted, saveTimerToStorage,
+  createTimerConfig, getRemainingTime, saveTimerToStorage,
   loadTimerFromStorage, clearTimerFromStorage, getTimerKey, formatRemainingTime,
-  getTimerProgress, resumeTimerFromStorage
+  getTimerSessionDocId, hydrateStoredTimer
 } from '../utils/timerUtils';
 
 const ALARM_SOUNDS = [
@@ -72,8 +72,10 @@ const StudentPortal = () => {
   const [pinAttempts, setPinAttempts] = useState(0);
   const [pinLockoutUntil, setPinLockoutUntil] = useState(null);
   const oldSubjectUnsubRef = useRef(null);
+  const completionNotifiedRef = useRef({});
 
   const db = getFirestore(app);
+  const subjectMap = useMemo(() => Object.fromEntries(subjects.map(subject => [subject.id, subject])), [subjects]);
 
   useEffect(() => {
     if (!slug) return;
@@ -137,7 +139,65 @@ const StudentPortal = () => {
   }, [student, subjects, db]);
 
   useEffect(() => {
+    if (!student || subjects.length === 0) return;
+
+    const unsubscribers = subjects.map((subject) => {
+      const timerRef = doc(db, 'timerSessions', getTimerSessionDocId(student.id, subject.id));
+
+      return onSnapshot(timerRef, async (snapshot) => {
+        if (!snapshot.exists()) {
+          const key = getTimerKey(student.id, subject.id);
+          const stored = loadTimerFromStorage(key);
+          const nextBlock = getNextAvailableBlock(subject);
+
+          if (stored && stored.blockIndex === nextBlock) {
+            const hydrated = hydrateStoredTimer(stored);
+
+            if (hydrated) {
+              try {
+                await persistTimer(subject, hydrated, true);
+              } catch (migrationError) {
+                console.error('Error migrating timer to Firestore:', migrationError);
+              }
+            }
+          }
+
+          clearTimerFromStorage(key);
+          setActiveTimers((prev) => {
+            if (!prev[subject.id]) return prev;
+            const updated = { ...prev };
+            delete updated[subject.id];
+            return updated;
+          });
+          delete completionNotifiedRef.current[subject.id];
+          return;
+        }
+
+        const hydrated = hydrateStoredTimer(snapshot.data());
+
+        setActiveTimers((prev) => {
+          const previousTimer = prev[subject.id];
+          if (
+            previousTimer?.remainingTime > 0 &&
+            hydrated?.remainingTime === 0 &&
+            !completionNotifiedRef.current[subject.id]
+          ) {
+            handleTimerComplete(subject.id);
+            completionNotifiedRef.current[subject.id] = true;
+          }
+
+          return { ...prev, [subject.id]: hydrated };
+        });
+      });
+    });
+
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [student, subjects, completedBlocks, db]);
+
+  useEffect(() => {
     const interval = setInterval(() => {
+      const completedTimers = [];
+
       setActiveTimers(prev => {
         const updated = { ...prev };
         Object.keys(updated).forEach(subjectId => {
@@ -147,36 +207,36 @@ const StudentPortal = () => {
             if (remaining > 0) {
               updated[subjectId] = { ...timer, remainingTime: remaining };
             } else {
-              updated[subjectId] = { ...timer, remainingTime: 0, isRunning: false, pausedAt: null };
-              handleTimerComplete(subjectId);
-              clearTimerFromStorage(getTimerKey(student?.id, subjectId));
+              updated[subjectId] = {
+                ...timer,
+                remainingTime: 0,
+                isRunning: false,
+                pausedAt: null,
+                completedAt: timer.completedAt ?? Date.now(),
+              };
+              completedTimers.push({ subjectId, timer: updated[subjectId] });
             }
           }
         });
         return updated;
       });
+
+      completedTimers.forEach(({ subjectId, timer }) => {
+        if (!completionNotifiedRef.current[subjectId]) {
+          handleTimerComplete(subjectId);
+          completionNotifiedRef.current[subjectId] = true;
+        }
+
+        const subject = subjectMap[subjectId];
+        if (!subject) return;
+
+        persistTimer(subject, timer).catch((error) => {
+          console.error('Error syncing completed timer:', error);
+        });
+      });
     }, 1000);
     return () => clearInterval(interval);
-  }, [student?.id]);
-
-  useEffect(() => {
-    if (!student || !subjects.length) return;
-    const loaded = {};
-    subjects.forEach(subject => {
-      const key = getTimerKey(student.id, subject.id);
-      const stored = loadTimerFromStorage(key);
-      if (stored) {
-        const nextBlock = getNextAvailableBlock(subject);
-        if (stored.blockIndex === nextBlock) {
-          const resumed = resumeTimerFromStorage(stored);
-          if (resumed) loaded[subject.id] = resumed;
-        } else {
-          clearTimerFromStorage(key);
-        }
-      }
-    });
-    if (Object.keys(loaded).length > 0) setActiveTimers(loaded);
-  }, [student, subjects, completedBlocks]);
+  }, [subjectMap]);
 
   useEffect(() => {
     if (!student) return;
@@ -213,6 +273,51 @@ const StudentPortal = () => {
     try { playNotificationSound(); } catch (e) {}
   };
 
+  const buildTimerSessionPayload = (subject, timer, includeCreatedAt = false) => {
+    const payload = {
+      student_id: student.id,
+      parent_id: student.parent_id,
+      subject_id: subject.id,
+      block_index: timer.blockIndex,
+      start_time: timer.startTime,
+      duration_ms: timer.durationMs,
+      duration_minutes: timer.durationMinutes,
+      target_end_time: timer.targetEndTime,
+      initial_duration_ms: timer.initialDurationMs,
+      remaining_time: timer.remainingTime ?? getRemainingTime(timer.targetEndTime),
+      is_running: timer.isRunning,
+      paused_at: timer.pausedAt ?? null,
+      resumed_at: timer.resumedAt ?? null,
+      completed_at: timer.remainingTime === 0 ? (timer.completedAt ?? Date.now()) : null,
+      saved_at: Date.now(),
+      updated_at: serverTimestamp(),
+    };
+
+    if (includeCreatedAt) payload.created_at = serverTimestamp();
+
+    return payload;
+  };
+
+  const persistTimer = async (subject, timer, includeCreatedAt = false) => {
+    if (!student || !subject || !timer) return;
+
+    await setDoc(
+      doc(db, 'timerSessions', getTimerSessionDocId(student.id, subject.id)),
+      buildTimerSessionPayload(subject, timer, includeCreatedAt),
+      { merge: true }
+    );
+
+    saveTimerToStorage(getTimerKey(student.id, subject.id), timer, student.id, subject.id, timer.blockIndex);
+  };
+
+  const removeTimer = async (subjectId) => {
+    if (!student || !subjectId) return;
+
+    await deleteDoc(doc(db, 'timerSessions', getTimerSessionDocId(student.id, subjectId)));
+    clearTimerFromStorage(getTimerKey(student.id, subjectId));
+    delete completionNotifiedRef.current[subjectId];
+  };
+
   const getNextAvailableBlock = (subject) => {
     if (!subject) return null;
     const total = subject?.block_count || 10;
@@ -221,45 +326,78 @@ const StudentPortal = () => {
     return null;
   };
 
-  const startTimer = (subject) => {
+  const startTimer = async (subject) => {
     if (!subject) return;
     const otherRunning = Object.keys(activeTimers).some(id => id !== subject.id);
     if (otherRunning) return;
     const nextBlock = getNextAvailableBlock(subject);
     if (nextBlock === null) { alert('All blocks completed!'); return; }
-    const key = getTimerKey(student.id, subject.id);
-    const stored = loadTimerFromStorage(key);
-    let config;
-    if (stored && stored.blockIndex === nextBlock) {
-      config = resumeTimerFromStorage(stored) || createTimerConfig(subject?.block_length || 30);
-      config.blockIndex = nextBlock; config.isRunning = true;
-    } else {
-      config = createTimerConfig(subject?.block_length || 30);
-      config.blockIndex = nextBlock; config.isRunning = true;
+
+    const config = {
+      ...createTimerConfig(subject?.block_length || 30),
+      blockIndex: nextBlock,
+      isRunning: true,
+      pausedAt: null,
+      completedAt: null,
+    };
+
+    setActiveTimers(prev => ({ ...prev, [subject.id]: config }));
+    delete completionNotifiedRef.current[subject.id];
+
+    try {
+      await persistTimer(subject, config, true);
+    } catch (err) {
+      console.error('Error starting timer:', err);
+      setActiveTimers((prev) => {
+        const updated = { ...prev };
+        delete updated[subject.id];
+        return updated;
+      });
+      setError('Failed to start timer. Please try again.');
     }
-    setActiveTimers(prev => ({ ...prev, [subject.id]: config }));
-    saveTimerToStorage(key, config, student.id, subject.id, nextBlock);
   };
 
-  const pauseTimer = (subject) => {
-    const config = { ...activeTimers[subject.id], isRunning: false, pausedAt: Date.now() };
+  const pauseTimer = async (subject) => {
+    const config = {
+      ...activeTimers[subject.id],
+      isRunning: false,
+      pausedAt: Date.now(),
+    };
     setActiveTimers(prev => ({ ...prev, [subject.id]: config }));
-    saveTimerToStorage(getTimerKey(student.id, subject.id), config, student.id, subject.id, config.blockIndex);
+
+    try {
+      await persistTimer(subject, config);
+    } catch (err) {
+      console.error('Error pausing timer:', err);
+      setError('Failed to pause timer. Please try again.');
+    }
   };
 
-  const resumeTimer = (subject) => {
+  const resumeTimer = async (subject) => {
     const current = activeTimers[subject.id];
     const now = Date.now();
     const config = current.pausedAt
       ? { ...current, isRunning: true, targetEndTime: current.targetEndTime + (now - current.pausedAt), pausedAt: null, resumedAt: now }
       : { ...current, isRunning: true, resumedAt: now };
     setActiveTimers(prev => ({ ...prev, [subject.id]: config }));
-    saveTimerToStorage(getTimerKey(student.id, subject.id), config, student.id, subject.id, config.blockIndex);
+
+    try {
+      await persistTimer(subject, config);
+    } catch (err) {
+      console.error('Error resuming timer:', err);
+      setError('Failed to resume timer. Please try again.');
+    }
   };
 
-  const resetTimer = (subject) => {
+  const resetTimer = async (subject) => {
     setActiveTimers(prev => { const u = { ...prev }; delete u[subject.id]; return u; });
-    clearTimerFromStorage(getTimerKey(student.id, subject.id));
+
+    try {
+      await removeTimer(subject.id);
+    } catch (err) {
+      console.error('Error resetting timer:', err);
+      setError('Failed to reset timer. Please try again.');
+    }
   };
 
   const setSubmissionLock = (subjectId, blockIndex) => { submissionLocksRef.current[`${subjectId}_${blockIndex}`] = true; };
@@ -303,7 +441,6 @@ const StudentPortal = () => {
       if (!timer || timer.remainingTime > 0) { alert('This subject requires the timer to complete before submitting.'); return; }
       if (timer?.remainingTime === 0) {
         setActiveTimers(prev => ({ ...prev, [subject.id]: { ...timer, isFinished: true, isRunning: false } }));
-        clearTimerFromStorage(getTimerKey(student.id, subject.id));
       }
     }
     setSelectedSubject(subject); setSelectedBlockIndex(blockIndex);
@@ -344,8 +481,9 @@ const StudentPortal = () => {
         resources_used: selectedResources, custom_field_responses: customFieldResponses,
         created_at: serverTimestamp()
       });
+
+      await removeTimer(subject.id);
       setActiveTimers(prev => { const u = { ...prev }; delete u[subject.id]; return u; });
-      clearTimerFromStorage(getTimerKey(student.id, subject.id));
       setSelectedSubject(null); setSelectedBlockIndex(null);
       setSummaryText(''); setSelectedResources([]); resetCustomFieldResponses();
       clearSubmissionLock(subject.id, blockIndex);

@@ -18,7 +18,8 @@ export const createTimerConfig = (durationMinutes) => {
     durationMs,
     targetEndTime,
     durationMinutes,
-    initialDurationMs: durationMs
+    initialDurationMs: durationMs,
+    remainingTime: durationMs
   };
 };
 
@@ -87,12 +88,6 @@ export const loadTimerFromStorage = (key) => {
       return null;
     }
     
-    // Check if timer is already completed
-    if (isTimerCompleted(data.targetEndTime)) {
-      localStorage.removeItem(key);
-      return null;
-    }
-    
     return data;
   } catch (error) {
     console.error('Error loading timer from localStorage:', error);
@@ -120,6 +115,16 @@ export const clearTimerFromStorage = (key) => {
  */
 export const getTimerKey = (studentId, subjectId) => {
   return `timer_${studentId}_${subjectId}`;
+};
+
+/**
+ * Generate timer session document id
+ * @param {string} studentId - Student ID
+ * @param {string} subjectId - Subject ID
+ * @returns {string} Firestore document id
+ */
+export const getTimerSessionDocId = (studentId, subjectId) => {
+  return `${studentId}_${subjectId}`;
 };
 
 /**
@@ -157,26 +162,47 @@ export const getTimerProgress = (targetEndTime, initialDurationMs) => {
  * @returns {Object} Updated timer configuration
  */
 export const resumeTimerFromStorage = (storedData) => {
-  const now = Date.now();
-  const remaining = getRemainingTime(storedData.targetEndTime);
-  
-  if (remaining === 0) {
-    return null; // Timer already completed
-  }
-  
-  // If timer was paused, keep it paused
-  if (storedData.isRunning === false && storedData.pausedAt) {
-    return {
-      ...storedData,
-      remainingTime: remaining
-    };
-  }
-  
-  // Otherwise resume it
+  return hydrateStoredTimer(storedData);
+};
+
+/**
+ * Normalize timer data from localStorage or Firestore into UI state
+ * @param {Object} storedData - Raw timer data
+ * @returns {Object|null} Hydrated timer state
+ */
+export const hydrateStoredTimer = (storedData) => {
+  if (!storedData) return null;
+
+  const startTime = storedData.startTime ?? storedData.start_time ?? Date.now();
+  const durationMs = storedData.durationMs ?? storedData.duration_ms ?? 0;
+  const targetEndTime = storedData.targetEndTime ?? storedData.target_end_time ?? startTime + durationMs;
+  const durationMinutes = storedData.durationMinutes ?? storedData.duration_minutes ?? Math.round(durationMs / 60000);
+  const initialDurationMs = storedData.initialDurationMs ?? storedData.initial_duration_ms ?? durationMs;
+  const blockIndex = storedData.blockIndex ?? storedData.block_index ?? null;
+  const pausedAt = storedData.pausedAt ?? storedData.paused_at ?? null;
+  const resumedAt = storedData.resumedAt ?? storedData.resumed_at ?? null;
+  const completedAt = storedData.completedAt ?? storedData.completed_at ?? null;
+  const savedAt = storedData.savedAt ?? storedData.saved_at ?? null;
+  const isRunning = storedData.isRunning ?? storedData.is_running ?? false;
+  const savedRemaining = storedData.remainingTime ?? storedData.remaining_time ?? null;
+  const computedRemaining = getRemainingTime(targetEndTime);
+  const remainingTime = pausedAt && !isRunning
+    ? Math.max(0, savedRemaining ?? computedRemaining)
+    : computedRemaining;
+
   return {
     ...storedData,
-    isRunning: true,
-    resumedAt: now,
-    remainingTime: remaining
+    startTime,
+    durationMs,
+    targetEndTime,
+    durationMinutes,
+    initialDurationMs,
+    blockIndex,
+    pausedAt,
+    resumedAt,
+    completedAt,
+    savedAt,
+    isRunning: remainingTime > 0 ? isRunning : false,
+    remainingTime
   };
 };

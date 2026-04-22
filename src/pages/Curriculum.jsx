@@ -32,6 +32,14 @@ const inputFocusStyle = { border: `1px solid ${C.charcoal}` };
 
 const labelCls = 'block text-[13px] font-label uppercase tracking-wider text-charcoal-ink/50 mb-2';
 
+const parsePositiveInt = (value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+};
+
+const hasText = (value) => typeof value === 'string' && value.trim().length > 0;
+
 const STEPS = [
   { label: 'Basics', description: 'Name, students & color' },
   { label: 'Schedule', description: 'Blocks & time settings' },
@@ -225,6 +233,15 @@ const Curriculum = () => {
     setCurrentStep(s => Math.min(s + 1, STEPS.length));
   };
 
+  const handlePrimaryAction = async (e) => {
+    e.preventDefault();
+    if (currentStep < STEPS.length) {
+      handleNext();
+      return;
+    }
+    await handleSubmit(e);
+  };
+
   const resetForm = () => {
     setSelectedStudents([]); setSubjectName(''); setTotalBlocks(10); setBlockLength(30);
     setSubjectColor('#3B82F6'); setRequireSummary(true); setResources([{ name: '', url: '' }]);
@@ -240,12 +257,14 @@ const Curriculum = () => {
       return;
     }
     try {
+      const safeTotalBlocks = parsePositiveInt(totalBlocks, 10, { min: 1, max: 20 });
+      const safeBlockLength = parsePositiveInt(blockLength, 30, { min: 5, max: 120 });
       const data = {
         student_ids: selectedStudents,
         parent_id: currentUser.uid,
         title: subjectName.trim(),
-        block_count: totalBlocks,
-        block_length: blockLength,
+        block_count: safeTotalBlocks,
+        block_length: safeBlockLength,
         color: subjectColor,
         resources: resources.filter(r => r.name.trim()),
         require_input: requireSummary,
@@ -254,17 +273,17 @@ const Curriculum = () => {
         block_objectives: Object.fromEntries(
           Object.entries(blockObjectives)
             .filter(([, obj]) => {
-              if (obj.instruction.trim()) return true;
-              return Object.values(obj.student_overrides || {}).some(ov => ov.instruction.trim());
+              if (hasText(obj?.instruction)) return true;
+              return Object.values(obj?.student_overrides || {}).some(ov => hasText(ov?.instruction));
             })
             .map(([k, obj]) => {
               const cleanedOverrides = Object.fromEntries(
                 Object.entries(obj.student_overrides || {})
-                  .filter(([, ov]) => ov.instruction.trim())
+                  .filter(([, ov]) => hasText(ov?.instruction))
                   .map(([sid, ov]) => [sid, { instruction: ov.instruction, custom_fields: (ov.custom_fields || []).filter(f => f.label.trim()) }])
               );
               return [k, {
-                instruction: obj.instruction,
+                instruction: obj.instruction || '',
                 custom_fields: (obj.custom_fields || []).filter(f => f.label.trim()),
                 student_overrides: cleanedOverrides
               }];
@@ -323,6 +342,7 @@ const Curriculum = () => {
   }
 
   const activeSubjects = subjects.filter(s => s.is_active);
+  const normalizedTotalBlocks = parsePositiveInt(totalBlocks, 10, { min: 1, max: 20 });
 
   return (
     <div className="p-8">
@@ -441,18 +461,24 @@ const Curriculum = () => {
                   <div>
                     <label className={labelCls}>Blocks per Week</label>
                     <input type="number" min="1" max="20" value={totalBlocks}
-                      onChange={(e) => setTotalBlocks(parseInt(e.target.value))}
+                      onChange={(e) => setTotalBlocks(e.target.value === '' ? '' : parsePositiveInt(e.target.value, 10, { min: 1, max: 20 }))}
                       className={inputCls} style={inputStyle}
                       onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                      onBlur={e => Object.assign(e.currentTarget.style, inputStyle)} />
+                      onBlur={e => {
+                        Object.assign(e.currentTarget.style, inputStyle);
+                        setTotalBlocks(parsePositiveInt(e.target.value, 10, { min: 1, max: 20 }));
+                      }} />
                   </div>
                   <div>
                     <label className={labelCls}>Block Length (min)</label>
                     <input type="number" min="5" max="120" step="5" value={blockLength}
-                      onChange={(e) => setBlockLength(parseInt(e.target.value))}
+                      onChange={(e) => setBlockLength(e.target.value === '' ? '' : parsePositiveInt(e.target.value, 30, { min: 5, max: 120 }))}
                       className={inputCls} style={inputStyle}
                       onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                      onBlur={e => Object.assign(e.currentTarget.style, inputStyle)} />
+                      onBlur={e => {
+                        Object.assign(e.currentTarget.style, inputStyle);
+                        setBlockLength(parsePositiveInt(e.target.value, 30, { min: 5, max: 120 }));
+                      }} />
                   </div>
                 </div>
                 <div className="space-y-4">
@@ -570,7 +596,7 @@ const Curriculum = () => {
                     Attach specific instructions to individual blocks. Students see these as guided blocks with a dot indicator. Leave blocks blank for independent learning.
                   </p>
                   <div className="space-y-2">
-                    {Array.from({ length: totalBlocks }, (_, i) => {
+                    {Array.from({ length: normalizedTotalBlocks }, (_, i) => {
                       const obj = blockObjectives[i];
                       const isExpanded = expandedObjectiveBlock === i;
                       return (
@@ -770,8 +796,8 @@ const Curriculum = () => {
                   {currentStep === 1 ? 'Cancel' : '← Back'}
                 </button>
                 <button
-                  type={currentStep === STEPS.length ? 'submit' : 'button'}
-                  onClick={currentStep === STEPS.length ? undefined : handleNext}
+                  type="button"
+                  onClick={handlePrimaryAction}
                   className="flex-1 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
                   style={{ backgroundColor: C.charcoal, color: '#ffffff' }}
                   onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
