@@ -7,7 +7,7 @@ import {
 import { app } from '../firebase/firebaseConfig';
 import { Check, BookOpen, Lock, X, ExternalLink, Bell } from 'lucide-react';
 
-import { getCurrentWeekRange } from '../utils/weekUtils';
+import { getCurrentWeekRange, getWeekConfig } from '../utils/weekUtils';
 import {
   createTimerConfig, getRemainingTime, saveTimerToStorage,
   loadTimerFromStorage, clearTimerFromStorage, getTimerKey, formatRemainingTime,
@@ -81,6 +81,11 @@ const StudentPortal = () => {
 
   const db = getFirestore(app);
   const subjectMap = useMemo(() => Object.fromEntries(subjects.map(subject => [subject.id, subject])), [subjects]);
+  const weekConfig = useMemo(() => getWeekConfig(student || {}), [
+    student?.week_reset_day,
+    student?.week_reset_hour,
+    student?.week_reset_minute,
+  ]);
   const getSoundUrl = (file) => `${import.meta.env.BASE_URL}sounds/${file}`;
 
   const ensureAlarmAudio = () => {
@@ -146,7 +151,7 @@ const StudentPortal = () => {
         }
       }, () => setLoading(false));
 
-      const { weekStart } = getCurrentWeekRange();
+      const { weekStart } = getCurrentWeekRange(new Date(), studentData);
       const submissionsQuery = query(collection(db, 'submissions'),
         where('student_id', '==', studentData.id), where('timestamp', '>=', weekStart), orderBy('timestamp', 'desc'));
       const unsubscribeSubmissions = onSnapshot(submissionsQuery, (snap) => {
@@ -164,7 +169,7 @@ const StudentPortal = () => {
 
   useEffect(() => {
     if (!student || subjects.length === 0) return;
-    const { weekStart } = getCurrentWeekRange();
+    const { weekStart } = getCurrentWeekRange(new Date(), weekConfig);
     const completedBlocksData = {};
     const unsubscribers = subjects.map(subject => {
       const q = query(collection(db, 'submissions'),
@@ -177,7 +182,7 @@ const StudentPortal = () => {
       });
     });
     return () => unsubscribers.forEach(u => u());
-  }, [student, subjects, db]);
+  }, [student, subjects, db, weekConfig]);
 
   useEffect(() => {
     if (!student || subjects.length === 0) return;
@@ -609,7 +614,7 @@ const StudentPortal = () => {
     setSubmissionLock(subject.id, blockIndex);
     setSubmitting(true);
     try {
-      const { weekStart } = getCurrentWeekRange();
+      const { weekStart } = getCurrentWeekRange(new Date(), weekConfig);
       const existing = await getDocs(query(collection(db, 'submissions'),
         where('student_id', '==', student.id), where('subject_id', '==', subject.id),
         where('block_index', '==', blockIndex), where('timestamp', '>=', weekStart), limit(1)));

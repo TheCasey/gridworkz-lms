@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   getFirestore,
@@ -12,6 +12,8 @@ import {
   deleteDoc,
   addDoc,
   serverTimestamp,
+  setDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
 import { nanoid } from 'nanoid';
@@ -34,14 +36,26 @@ import StudentCard from '../components/StudentCard';
 import AddStudentModal from '../components/AddStudentModal';
 import Curriculum from './Curriculum';
 import Reports from './Reports';
+import Settings, { buildSettingsFormState } from './Settings';
 import {
   getCurrentWeekRange,
   getWeekRangeByOffset,
   formatWeekRange,
   getWeekLabel,
   getWeekPickerOptions,
-  isTimestampInWeek
+  isTimestampInWeek,
+  getWeekConfig,
 } from '../utils/weekUtils';
+import {
+  buildDefaultParentProfile,
+  mergeParentSettings,
+} from '../utils/schoolSettingsUtils';
+import {
+  buildStudentWeeklySnapshot,
+  buildWeeklyReportPayload,
+  getStudentSubjects,
+  getWeekKey,
+} from '../utils/reportUtils';
 
 const FONT = "'Super Sans VF', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif";
 
@@ -66,9 +80,44 @@ const ParentDashboard = () => {
   const [showManualConfirm, setShowManualConfirm] = useState(false);
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [parentSettings, setParentSettings] = useState(buildSettingsFormState(mergeParentSettings()));
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsReady, setSettingsReady] = useState(false);
+  const [rolloverStatus, setRolloverStatus] = useState({ running: false, message: '' });
   const studentProgressUnsubRef = useRef(null);
 
   const db = getFirestore(app);
+  const weekConfig = useMemo(() => getWeekConfig(parentSettings), [
+    parentSettings.week_reset_day,
+    parentSettings.week_reset_hour,
+    parentSettings.week_reset_minute,
+  ]);
+
+  useEffect(() => {
+    if (!currentUser) return undefined;
+
+    const parentRef = doc(db, 'parents', currentUser.uid);
+    return onSnapshot(parentRef, async (snapshot) => {
+      if (!snapshot.exists()) {
+        try {
+          await setDoc(parentRef, {
+            ...buildDefaultParentProfile(currentUser),
+            created_at: serverTimestamp(),
+            updated_at: serverTimestamp(),
+          }, { merge: true });
+        } catch (error) {
+          console.error('Error creating parent profile:', error);
+        }
+        return;
+      }
+
+      setParentSettings(buildSettingsFormState(mergeParentSettings(snapshot.data(), currentUser)));
+      setSettingsReady(true);
+    }, (error) => {
+      console.error('Error loading parent settings:', error);
+      setSettingsReady(true);
+    });
+  }, [currentUser, db]);
 
   useEffect(() => {
     setLoading(true);
@@ -103,7 +152,7 @@ const ParentDashboard = () => {
       console.error('Error fetching subjects:', error);
     });
 
-    const { weekStart } = getCurrentWeekRange();
+    const { weekStart } = getCurrentWeekRange(new Date(), weekConfig);
 
     const submissionsQuery = query(
       collection(db, 'submissions'),
@@ -128,7 +177,7 @@ const ParentDashboard = () => {
       submissionsUnsubscribe();
       clearTimeout(loadingTimeout);
     };
-  }, [currentUser, db]);
+  }, [currentUser, db, weekConfig]);
 
   const handleAddStudent = async ({ name, accessPin }) => {
     setAddingStudent(true);
@@ -141,6 +190,10 @@ const ParentDashboard = () => {
         slug,
         access_pin: accessPin || null,
         parent_id: currentUser.uid,
+        week_reset_day: weekConfig.resetDay,
+        week_reset_hour: weekConfig.resetHour,
+        week_reset_minute: weekConfig.resetMinute,
+        timezone: parentSettings.timezone,
         is_active: true,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp()
@@ -159,6 +212,49 @@ const ParentDashboard = () => {
       }
     } finally {
       setAddingStudent(false);
+    }
+  };
+
+  const handleSaveSettings = async (nextSettings) => {
+    if (!currentUser) return;
+    if (nextSettings.school_year_start && nextSettings.school_year_end && nextSettings.school_year_end < nextSettings.school_year_start) {
+      alert('School year end date must be after the start date.');
+      return;
+    }
+
+    setSettingsSaving(true);
+    try {
+      const { reset_time, ...settingsWithoutDisplayTime } = nextSettings;
+      const payload = mergeParentSettings({
+        ...settingsWithoutDisplayTime,
+        uid: currentUser.uid,
+        email: currentUser.email || '',
+      }, currentUser);
+
+      await setDoc(doc(db, 'parents', currentUser.uid), {
+        ...payload,
+        week_start_day: payload.week_reset_day,
+        updated_at: serverTimestamp(),
+      }, { merge: true });
+
+      if (students.length > 0) {
+        const batch = writeBatch(db);
+        students.forEach(student => {
+          batch.set(doc(db, 'students', student.id), {
+            week_reset_day: payload.week_reset_day,
+            week_reset_hour: payload.week_reset_hour,
+            week_reset_minute: payload.week_reset_minute,
+            timezone: payload.timezone,
+            updated_at: serverTimestamp(),
+          }, { merge: true });
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      alert('Failed to save settings. Please try again.');
+    } finally {
+      setSettingsSaving(false);
     }
   };
 
@@ -261,9 +357,78 @@ const ParentDashboard = () => {
     }
   };
 
+  const createWeeklyRecordsForRange = useCallback(async ({ weekStart, weekEnd, source }) => {
+    if (!currentUser) return 0;
+
+    const activeStudents = students.length > 0
+      ? students
+      : (await getDocs(query(
+        collection(db, 'students'),
+        where('parent_id', '==', currentUser.uid),
+        orderBy('created_at', 'desc')
+      ))).docs.map(snapshot => ({ id: snapshot.id, ...snapshot.data() }));
+
+    const activeSubjects = subjects.length > 0
+      ? subjects
+      : (await getDocs(query(
+        collection(db, 'subjects'),
+        where('parent_id', '==', currentUser.uid),
+        where('is_active', '==', true),
+        orderBy('title')
+      ))).docs.map(snapshot => ({ id: snapshot.id, ...snapshot.data() }));
+
+    if (activeStudents.length === 0) return 0;
+
+    const submissionsSnapshot = await getDocs(query(
+      collection(db, 'submissions'),
+      where('parent_id', '==', currentUser.uid),
+      where('timestamp', '>=', weekStart),
+      where('timestamp', '<=', weekEnd),
+      orderBy('timestamp', 'desc')
+    ));
+
+    const rangeSubmissions = submissionsSnapshot.docs.map(snapshot => ({ id: snapshot.id, ...snapshot.data() }));
+    const batch = writeBatch(db);
+    let createdCount = 0;
+
+    activeStudents.forEach(student => {
+      const snapshot = buildStudentWeeklySnapshot({
+        student,
+        subjects: activeSubjects,
+        submissions: rangeSubmissions,
+        weekStart,
+        weekEnd,
+      });
+
+      if (!snapshot) return;
+
+      const reportId = `${currentUser.uid}_${student.id}_${getWeekKey(weekStart)}`;
+      batch.set(
+        doc(db, 'weeklyReports', reportId),
+        buildWeeklyReportPayload({
+          student,
+          snapshot,
+          weekStart,
+          weekEnd,
+          parentId: currentUser.uid,
+          parentSettings,
+          source,
+        }),
+        { merge: true }
+      );
+      createdCount += 1;
+    });
+
+    if (createdCount > 0) {
+      await batch.commit();
+    }
+
+    return createdCount;
+  }, [currentUser, db, parentSettings, students, subjects]);
+
 
   const getWeeklyProgress = (studentId, subjectId, weekOffset = 0) => {
-    const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset);
+    const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset, weekConfig);
     const subjectSubmissions = submissions.filter(s =>
       s.student_id === studentId &&
       s.subject_id === subjectId &&
@@ -282,9 +447,9 @@ const ParentDashboard = () => {
   };
 
   const getRealTimeWeeklyProgress = (studentId, weekOffset = 0) => {
-    const studentSubjects = getStudentSubjects(studentId);
+    const studentSubjects = getStudentSubjects(subjects, studentId);
     if (studentSubjects.length === 0) return { completed: 0, total: 0, percentage: 0 };
-    const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset);
+    const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset, weekConfig);
     const completedBlocksBySubject = {};
     studentSubjects.forEach(subject => {
       const subs = submissions.filter(s =>
@@ -306,14 +471,14 @@ const ParentDashboard = () => {
   };
 
   const getWeekSubmissions = (weekOffset = 0) => {
-    const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset);
+    const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset, weekConfig);
     return submissions.filter(s => s.timestamp && isTimestampInWeek(s.timestamp, weekStart, weekEnd));
   };
 
   const handleDownloadWeeklyReport = async (weekOffset = 0) => {
     setIsGeneratingReport(true);
     try {
-      const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset);
+      const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset, weekConfig);
       const weekLabel = getWeekLabel(weekOffset);
       const weekRangeText = formatWeekRange(weekStart, weekEnd);
       let reportContent = `GridWorkz Weekly Report\nWeek: ${weekRangeText}\nGenerated: ${new Date().toLocaleString()}\n\n`;
@@ -336,7 +501,7 @@ const ParentDashboard = () => {
           for (const student of students) {
             const studentSubs = pastSubs.filter(s => s.student_id === student.id);
             if (studentSubs.length === 0) continue;
-            const studentSubjects = getStudentSubjects(student.id);
+            const studentSubjects = getStudentSubjects(subjects, student.id);
             const totalBlocks = studentSubs.length;
             reportContent += `═══════════════════════════════════════\nStudent: ${student.name}\nBlocks Completed: ${totalBlocks}\n\n`;
             for (const subject of studentSubjects) {
@@ -356,7 +521,7 @@ const ParentDashboard = () => {
         // Current week: use live submissions state
         for (const student of students) {
           const studentProgress = getRealTimeWeeklyProgress(student.id, weekOffset);
-          const studentSubjects = getStudentSubjects(student.id);
+          const studentSubjects = getStudentSubjects(subjects, student.id);
           reportContent += `═══════════════════════════════════════\nStudent: ${student.name}\nOverall Progress: ${studentProgress.completed}/${studentProgress.total} blocks (${studentProgress.percentage}%)\n\n`;
           for (const subject of studentSubjects) {
             const subjectProgress = getWeeklyProgress(student.id, subject.id, weekOffset);
@@ -392,13 +557,6 @@ const ParentDashboard = () => {
     }
   };
 
-  const getStudentSubjects = (studentId) => {
-    return subjects.filter(subject => {
-      if (subject.student_ids && Array.isArray(subject.student_ids)) return subject.student_ids.includes(studentId);
-      return subject.student_id === studentId;
-    });
-  };
-
   const getCustomFieldLabel = (fieldId, subjectId) => {
     const subject = subjects.find(s => s.id === subjectId);
     if (!subject || !subject.custom_fields) return fieldId;
@@ -406,10 +564,75 @@ const ParentDashboard = () => {
     return field ? field.label : fieldId;
   };
 
+  useEffect(() => {
+    if (!currentUser || !settingsReady || loading || rolloverStatus.running) return;
+
+    const currentWeek = getCurrentWeekRange(new Date(), weekConfig);
+    const previousWeek = getCurrentWeekRange(new Date(currentWeek.weekStart.getTime() - 1), weekConfig);
+    const previousWeekKey = getWeekKey(previousWeek.weekStart);
+
+    if (parentSettings.last_rollover_week_key === previousWeekKey) return;
+
+    let cancelled = false;
+    const runRollover = async () => {
+      setRolloverStatus({
+        running: true,
+        message: `Archiving ${formatWeekRange(previousWeek.weekStart, previousWeek.weekEnd)}...`,
+      });
+
+      try {
+        const createdCount = await createWeeklyRecordsForRange({
+          weekStart: previousWeek.weekStart,
+          weekEnd: previousWeek.weekEnd,
+          source: 'automatic',
+        });
+
+        await setDoc(doc(db, 'parents', currentUser.uid), {
+          last_rollover_week_key: previousWeekKey,
+          last_rollover_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
+        }, { merge: true });
+
+        if (!cancelled) {
+          setRolloverStatus({
+            running: false,
+            message: createdCount > 0
+              ? `Archived ${createdCount} official report${createdCount === 1 ? '' : 's'} for ${formatWeekRange(previousWeek.weekStart, previousWeek.weekEnd)}.`
+              : `Weekly reset processed for ${formatWeekRange(previousWeek.weekStart, previousWeek.weekEnd)}.`,
+          });
+        }
+      } catch (error) {
+        console.error('Error processing weekly rollover:', error);
+        if (!cancelled) {
+          setRolloverStatus({
+            running: false,
+            message: 'Weekly rollover could not be completed. Please refresh and try again.',
+          });
+        }
+      }
+    };
+
+    runRollover();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    createWeeklyRecordsForRange,
+    currentUser,
+    db,
+    loading,
+    parentSettings.last_rollover_week_key,
+    rolloverStatus.running,
+    settingsReady,
+    weekConfig,
+  ]);
+
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
     { id: 'curriculum', label: 'Curriculum', icon: BookOpen },
     { id: 'reports', label: 'Reports', icon: FileText },
+    { id: 'settings', label: 'Settings', icon: Calendar },
   ];
 
   const formatTimestamp = (timestamp) => {
@@ -496,12 +719,19 @@ const ParentDashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h2 style={{ fontSize: 22, fontWeight: 540, lineHeight: 0.96, letterSpacing: '-0.4px', color: C.charcoal }}>
-                  {activeNav === 'dashboard' ? 'Students' : activeNav === 'curriculum' ? 'Curriculum' : 'Reports'}
+                  {activeNav === 'dashboard'
+                    ? 'Students'
+                    : activeNav === 'curriculum'
+                      ? 'Curriculum'
+                      : activeNav === 'reports'
+                        ? 'Reports'
+                        : 'Settings'}
                 </h2>
                 <p className="text-[13px] mt-1" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>
                   {activeNav === 'dashboard' ? 'Manage your student accounts and access' :
                    activeNav === 'curriculum' ? 'Manage subjects and learning resources' :
-                   'View weekly reports and student progress'}
+                   activeNav === 'reports' ? 'View weekly reports and student progress' :
+                   'Manage school calendar and weekly reset settings'}
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -518,7 +748,7 @@ const ParentDashboard = () => {
                   </button>
                 )}
 
-                {(activeNav === 'dashboard' || activeNav === 'reports') && (
+                {activeNav === 'dashboard' && (
                   <>
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4" style={{ color: 'rgba(41,40,39,0.4)' }} />
@@ -528,7 +758,7 @@ const ParentDashboard = () => {
                         className="px-3 py-2 rounded-lg text-[13px] focus:outline-none"
                         style={{ border: `1px solid ${C.parchment}`, backgroundColor: '#fff', color: C.charcoal, fontWeight: 460 }}
                       >
-                        {getWeekPickerOptions().map(option => (
+                        {getWeekPickerOptions(weekConfig).map(option => (
                           <option key={option.value} value={option.value}>
                             {option.label} ({option.displayText})
                           </option>
@@ -576,6 +806,11 @@ const ParentDashboard = () => {
                 </div>
               </div>
             </div>
+            {rolloverStatus.message && (
+              <div className="mt-3 rounded-lg px-3 py-2 text-[12px] font-body" style={{ backgroundColor: `${C.lavenderTint}80`, color: C.charcoal }}>
+                {rolloverStatus.message}
+              </div>
+            )}
           </header>
 
           {/* Main Content Area */}
@@ -620,7 +855,13 @@ const ParentDashboard = () => {
             ) : activeNav === 'curriculum' ? (
               <Curriculum />
             ) : activeNav === 'reports' ? (
-              <Reports />
+              <Reports parentSettings={parentSettings} />
+            ) : activeNav === 'settings' ? (
+              <Settings
+                settings={parentSettings}
+                onSave={handleSaveSettings}
+                saving={settingsSaving}
+              />
             ) : null}
           </main>
         </div>
@@ -811,7 +1052,7 @@ const ParentDashboard = () => {
                   <div>
                     <p className="text-[11px] font-label uppercase tracking-wider text-amethyst-link mb-1">Viewing Progress For</p>
                     <p className="text-[13px] font-body text-charcoal-ink">
-                      {formatWeekRange(...Object.values(getWeekRangeByOffset(selectedWeekOffset)))}
+                      {formatWeekRange(...Object.values(getWeekRangeByOffset(selectedWeekOffset, weekConfig)))}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -821,7 +1062,7 @@ const ParentDashboard = () => {
                       onChange={(e) => setSelectedWeekOffset(parseInt(e.target.value))}
                       className="px-3 py-1.5 text-[13px] font-body border border-parchment rounded-lg bg-white text-charcoal-ink focus:outline-none focus:border-charcoal-ink"
                     >
-                      {getWeekPickerOptions().slice(-8).map(option => (
+                      {getWeekPickerOptions(weekConfig).slice(-8).map(option => (
                         <option key={option.value} value={option.value}>{option.label}</option>
                       ))}
                     </select>

@@ -8,8 +8,14 @@ export const ParentSchema = {
   uid: "string", // Firebase Auth UID
   email: "string", // Parent email address
   school_name: "string", // Homeschool name/identifier
+  school_year_start: "string", // YYYY-MM-DD
+  school_year_end: "string", // YYYY-MM-DD
   week_start_day: "number", // 0-6 (Sunday=0, Monday=1, etc.)
+  week_reset_day: "number", // 0-6 weekly rollover day
+  week_reset_hour: "number", // 0-23 local rollover hour
+  week_reset_minute: "number", // 0-59 local rollover minute
   timezone: "string", // IANA timezone identifier
+  last_rollover_week_key: "string", // YYYY-MM-DD week start key
   created_at: "timestamp", // Account creation timestamp
   updated_at: "timestamp" // Last update timestamp
 };
@@ -21,6 +27,10 @@ export const StudentSchema = {
   name: "string", // Student display name
   slug: "string", // Unique URL slug for student portal access
   access_pin: "string", // Optional 4-digit PIN for sibling protection
+  week_reset_day: "number", // Public copy of school weekly rollover day
+  week_reset_hour: "number", // Public copy of school weekly rollover hour
+  week_reset_minute: "number", // Public copy of school weekly rollover minute
+  timezone: "string", // IANA timezone for weekly rollover
   is_active: "boolean", // Whether student account is active
   created_at: "timestamp", // Student profile creation
   updated_at: "timestamp" // Last update timestamp
@@ -71,6 +81,9 @@ export const WeeklyReportSchema = {
   total_blocks_required: "number", // Total blocks required for this week
   submission_date: "timestamp", // When student submitted the week
   evidence_files: "array", // Array of file references for compliance
+  school_year_label: "string", // Cached school year label
+  school_quarter_label: "string", // Cached quarter label
+  week_key: "string", // YYYY-MM-DD week start key
   created_at: "timestamp",
   updated_at: "timestamp"
 };

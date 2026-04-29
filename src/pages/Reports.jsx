@@ -1,19 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   getFirestore, collection, query, where, onSnapshot, orderBy,
-  doc, deleteDoc, serverTimestamp, writeBatch
+  doc, deleteDoc, writeBatch
 } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
-import { FileText, Calendar, BookOpen, X, Archive, Trash2, Printer, ChevronDown, ChevronRight } from 'lucide-react';
+import { FileText, Calendar, Archive, Trash2, Printer, ChevronDown, ChevronRight, Filter, RotateCcw } from 'lucide-react';
 import {
-  getCurrentWeekRange,
   getWeekRangeByOffset,
   formatWeekRange,
   getWeekLabel,
   getWeekPickerOptions,
-  isTimestampInWeek
+  getWeekConfig,
 } from '../utils/weekUtils';
+import {
+  getSchoolYearLabel,
+  getSchoolYearMetadataForDate,
+  getSchoolYearOptionsFromReports,
+} from '../utils/schoolSettingsUtils';
+import {
+  buildStudentWeeklySnapshot,
+  buildWeeklyReportPayload,
+  getWeekKey,
+} from '../utils/reportUtils';
 
 const C = {
   mysteria: '#1b1938',
@@ -225,7 +234,7 @@ const SubjectRow = ({ subjectDatum }) => {
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
-const Reports = () => {
+const Reports = ({ parentSettings = {} }) => {
   const { currentUser } = useAuth();
   const [students, setStudents] = useState([]);
   const [subjects, setSubjects] = useState([]);
@@ -235,7 +244,16 @@ const Reports = () => {
   const [weekOffset, setWeekOffset] = useState(0);
   const [savingRecord, setSavingRecord] = useState(false);
   const [showRecords, setShowRecords] = useState(false);
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState([]);
+  const [selectedSchoolYear, setSelectedSchoolYear] = useState('all');
+  const [selectedQuarter, setSelectedQuarter] = useState('all');
   const db = getFirestore(app);
+  const weekConfig = useMemo(() => getWeekConfig(parentSettings), [
+    parentSettings.week_reset_day,
+    parentSettings.week_reset_hour,
+    parentSettings.week_reset_minute,
+  ]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -266,43 +284,12 @@ const Reports = () => {
   }, [currentUser, db]);
 
   // Derive selected week range
-  const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset);
+  const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset, weekConfig);
 
-  // Build per-student data for the selected week
-  const getStudentSubjects = (studentId) =>
-    subjects.filter(s => s.student_ids?.includes(studentId) || s.student_id === studentId);
-
-  const buildStudentData = (student) => {
-    const studentSubjects = getStudentSubjects(student.id);
-    const weekSubs = submissions.filter(s =>
-      s.student_id === student.id && s.timestamp && isTimestampInWeek(s.timestamp, weekStart, weekEnd)
-    );
-
-    const subjectData = studentSubjects.map(subject => {
-      const subjectSubs = weekSubs
-        .filter(s => s.subject_id === subject.id)
-        .sort((a, b) => {
-          const at = a.timestamp?.toDate?.() || new Date(a.timestamp);
-          const bt = b.timestamp?.toDate?.() || new Date(b.timestamp);
-          return at - bt;
-        });
-      const uniqueBlocks = [...new Set(subjectSubs.map(s => s.block_index).filter(i => i !== undefined))];
-      return {
-        subject,
-        blocks: subjectSubs,
-        completedCount: uniqueBlocks.length,
-        totalCount: subject.block_count || 10,
-        totalMinutes: subjectSubs.reduce((sum, s) => sum + (s.block_duration || 30), 0),
-      };
-    });
-
-    const totalBlocks = subjectData.reduce((sum, s) => sum + s.completedCount, 0);
-    const goalBlocks = subjectData.reduce((sum, s) => sum + s.totalCount, 0);
-    const totalMinutes = subjectData.reduce((sum, s) => sum + s.totalMinutes, 0);
-    return { student, subjectData, totalBlocks, goalBlocks, totalMinutes };
-  };
-
-  const studentDataMap = Object.fromEntries(students.map(s => [s.id, buildStudentData(s)]));
+  const studentDataMap = Object.fromEntries(students.map(student => [
+    student.id,
+    buildStudentWeeklySnapshot({ student, subjects, submissions, weekStart, weekEnd }),
+  ]));
   const weekHasData = Object.values(studentDataMap).some(d => d.totalBlocks > 0);
 
   // Save a non-destructive official record snapshot
@@ -312,39 +299,19 @@ const Reports = () => {
     try {
       const batch = writeBatch(db);
       students.forEach(student => {
-        const data = studentDataMap[student.id];
-        if (!data) return;
-        const subjectsData = {};
-        data.subjectData.forEach(({ subject, blocks, completedCount }) => {
-          if (completedCount === 0) return;
-          subjectsData[subject.id] = {
-            subjectTitle: subject.title,
-            totalBlocks: completedCount,
-            summaries: blocks
-              .filter(b => b.summary_text)
-              .map(b => ({
-                text: b.summary_text,
-                blockNumber: (b.block_index ?? 0) + 1,
-                date: b.timestamp?.toDate?.() || new Date(b.timestamp),
-                duration: b.block_duration || 30,
-              })),
-          };
-        });
-        const reportRef = doc(collection(db, 'weeklyReports'));
-        batch.set(reportRef, {
-          student_id: student.id,
-          student_name: student.name,
-          parent_id: currentUser.uid,
-          week_start: weekStart,
-          week_ending: weekEnd,
-          weekly_goal: data.goalBlocks,
-          total_blocks: data.totalBlocks,
-          total_hours: Math.round(data.totalMinutes / 60 * 10) / 10,
-          subjects_data: subjectsData,
-          summaries: data.subjectData.flatMap(sd => sd.blocks.map(b => b.summary_text).filter(Boolean)),
-          attachments: [],
-          created_at: serverTimestamp(),
-        });
+        const snapshot = studentDataMap[student.id];
+        if (!snapshot) return;
+
+        const reportId = `${currentUser.uid}_${student.id}_${getWeekKey(weekStart)}`;
+        batch.set(doc(db, 'weeklyReports', reportId), buildWeeklyReportPayload({
+          student,
+          snapshot,
+          weekStart,
+          weekEnd,
+          parentId: currentUser.uid,
+          parentSettings,
+          source: 'manual',
+        }), { merge: true });
       });
       await batch.commit();
       setShowRecords(true);
@@ -398,6 +365,107 @@ const Reports = () => {
     if (pw) { pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 400); }
   };
 
+  const toggleSelection = (value, setSelectedValues) => {
+    setSelectedValues(current => (
+      current.includes(value)
+        ? current.filter(item => item !== value)
+        : [...current, value]
+    ));
+  };
+
+  const normalizedWeeklyReports = useMemo(() => (
+    weeklyReports.map(report => {
+      if (report.school_year_label && report.school_quarter_label) return report;
+      const weekDate = report.week_end?.toDate?.() || report.week_ending?.toDate?.() || new Date(report.week_end || report.week_ending);
+      const schoolYear = getSchoolYearMetadataForDate(weekDate, parentSettings);
+      return {
+        ...report,
+        school_year_label: report.school_year_label || schoolYear?.schoolYearLabel || '',
+        school_quarter: report.school_quarter ?? schoolYear?.quarter?.index ?? null,
+        school_quarter_label: report.school_quarter_label || schoolYear?.quarter?.label || '',
+      };
+    })
+  ), [weeklyReports, parentSettings]);
+
+  const schoolYearOptions = useMemo(() => {
+    const options = getSchoolYearOptionsFromReports(normalizedWeeklyReports);
+    if (parentSettings.school_year_start && parentSettings.school_year_end) {
+      const currentLabel = getSchoolYearLabel(
+        new Date(`${parentSettings.school_year_start}T00:00:00`),
+        new Date(`${parentSettings.school_year_end}T00:00:00`)
+      );
+      if (!options.includes(currentLabel)) options.unshift(currentLabel);
+    }
+    return options;
+  }, [normalizedWeeklyReports, parentSettings.school_year_end, parentSettings.school_year_start]);
+
+  const filteredWeeklyReports = useMemo(() => (
+    normalizedWeeklyReports.filter(report => {
+      if (selectedStudentIds.length > 0 && !selectedStudentIds.includes(report.student_id)) return false;
+      if (selectedSubjectIds.length > 0) {
+        const reportSubjectIds = report.subject_ids || Object.keys(report.subjects_data || {});
+        if (!selectedSubjectIds.some(subjectId => reportSubjectIds.includes(subjectId))) return false;
+      }
+      if (selectedSchoolYear !== 'all' && report.school_year_label !== selectedSchoolYear) return false;
+      if (selectedQuarter !== 'all' && Number(report.school_quarter) !== Number(selectedQuarter)) return false;
+      return true;
+    })
+  ), [normalizedWeeklyReports, selectedQuarter, selectedSchoolYear, selectedStudentIds, selectedSubjectIds]);
+
+  const handleResetFilters = () => {
+    setSelectedStudentIds([]);
+    setSelectedSubjectIds([]);
+    setSelectedSchoolYear('all');
+    setSelectedQuarter('all');
+  };
+
+  const handlePrintFilteredRecords = () => {
+    if (filteredWeeklyReports.length === 0) return;
+    const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const activeFilters = [
+      selectedStudentIds.length > 0 ? `${selectedStudentIds.length} student${selectedStudentIds.length === 1 ? '' : 's'}` : null,
+      selectedSubjectIds.length > 0 ? `${selectedSubjectIds.length} subject${selectedSubjectIds.length === 1 ? '' : 's'}` : null,
+      selectedSchoolYear !== 'all' ? selectedSchoolYear : null,
+      selectedQuarter !== 'all' ? `Q${selectedQuarter}` : null,
+    ].filter(Boolean).join(' • ') || 'All official records';
+
+    const studentRows = filteredWeeklyReports.map(report => {
+      const pct = report.weekly_goal > 0 ? Math.round((report.total_blocks / report.weekly_goal) * 100) : 0;
+      const subjectsHtml = report.subjects_data
+        ? Object.values(report.subjects_data)
+          .filter(subjectDatum => selectedSubjectIds.length === 0 || selectedSubjectIds.includes(subjectDatum.subjectId))
+          .map(subjectDatum => `
+            <div class="subject-section">
+              <div class="subject-header">
+                <span class="subject-title">${subjectDatum.subjectTitle}</span>
+                <span class="subject-stats">${subjectDatum.totalBlocks} blocks</span>
+              </div>
+              ${subjectDatum.summaries?.length > 0
+                ? subjectDatum.summaries.map(summary => `<div class="block-entry"><span class="block-label">Block ${summary.blockNumber || '?'}</span><p class="block-summary">${summary.text}</p></div>`).join('')
+                : '<p class="no-entries">No summaries recorded</p>'}
+            </div>`).join('')
+        : '';
+
+      return {
+        name: `${report.student_name} ${report.school_quarter_label ? `(${report.school_quarter_label})` : ''}`.trim(),
+        initial: report.student_name?.charAt(0) || '?',
+        totalBlocks: report.total_blocks,
+        goalBlocks: report.weekly_goal,
+        hours: report.total_hours || 0,
+        pct,
+        subjectsHtml,
+      };
+    });
+
+    const html = buildPrintHtml(activeFilters, generatedDate, studentRows, 'Custom Report');
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(html);
+      printWindow.document.close();
+      setTimeout(() => printWindow.print(), 400);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -406,7 +474,7 @@ const Reports = () => {
     );
   }
 
-  const weekPickerOptions = getWeekPickerOptions();
+  const weekPickerOptions = getWeekPickerOptions(weekConfig);
   const weekRangeDisplay = formatWeekRange(weekStart, weekEnd);
 
   return (
@@ -467,6 +535,120 @@ const Reports = () => {
       <p className="text-[12px] uppercase tracking-wider mb-6" style={{ color: C.amethyst, fontWeight: 700 }}>
         {getWeekLabel(weekOffset)} — {weekRangeDisplay}
       </p>
+
+      <div className="mb-8 bg-white rounded-2xl p-6" style={{ border: `1px solid ${C.parchment}` }}>
+        <div className="flex items-start justify-between gap-4 mb-5">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Filter className="w-4 h-4" style={{ color: C.amethyst }} />
+              <h3 className="text-[17px] font-display text-charcoal-ink">Custom Report Builder</h3>
+            </div>
+            <p className="text-[13px] font-body text-charcoal-ink/45">
+              Filter official records by student, subject, school year, quarter, or any combination.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleResetFilters}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] transition-colors"
+              style={{ backgroundColor: C.cream, color: C.charcoal, fontWeight: 700 }}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Reset
+            </button>
+            <button
+              onClick={handlePrintFilteredRecords}
+              disabled={filteredWeeklyReports.length === 0}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              style={{ backgroundColor: C.charcoal, color: '#fff', fontWeight: 700 }}
+            >
+              <Printer className="w-4 h-4" />
+              Print Filtered
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+          <div className="rounded-xl p-4" style={{ backgroundColor: `${C.lavenderTint}65` }}>
+            <p className="text-[11px] uppercase tracking-wider font-label mb-3" style={{ color: C.amethyst }}>Students</p>
+            <div className="flex flex-wrap gap-2">
+              {students.map(student => (
+                <button
+                  key={student.id}
+                  onClick={() => toggleSelection(student.id, setSelectedStudentIds)}
+                  className="px-3 py-1.5 rounded-full text-[12px] transition-colors"
+                  style={{
+                    backgroundColor: selectedStudentIds.includes(student.id) ? C.charcoal : '#fff',
+                    color: selectedStudentIds.includes(student.id) ? '#fff' : C.charcoal,
+                    border: `1px solid ${selectedStudentIds.includes(student.id) ? C.charcoal : C.parchment}`,
+                    fontWeight: 700,
+                  }}
+                >
+                  {student.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl p-4" style={{ backgroundColor: `${C.lavenderTint}65` }}>
+            <p className="text-[11px] uppercase tracking-wider font-label mb-3" style={{ color: C.amethyst }}>Subjects</p>
+            <div className="flex flex-wrap gap-2">
+              {subjects.map(subject => (
+                <button
+                  key={subject.id}
+                  onClick={() => toggleSelection(subject.id, setSelectedSubjectIds)}
+                  className="px-3 py-1.5 rounded-full text-[12px] transition-colors"
+                  style={{
+                    backgroundColor: selectedSubjectIds.includes(subject.id) ? C.charcoal : '#fff',
+                    color: selectedSubjectIds.includes(subject.id) ? '#fff' : C.charcoal,
+                    border: `1px solid ${selectedSubjectIds.includes(subject.id) ? C.charcoal : C.parchment}`,
+                    fontWeight: 700,
+                  }}
+                >
+                  {subject.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-[11px] uppercase tracking-wider font-label mb-1.5" style={{ color: 'rgba(41,40,39,0.4)' }}>School Year</label>
+            <select
+              value={selectedSchoolYear}
+              onChange={event => setSelectedSchoolYear(event.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg text-[13px] focus:outline-none"
+              style={{ border: `1px solid ${C.parchment}`, backgroundColor: '#fff', color: C.charcoal, fontWeight: 460 }}
+            >
+              <option value="all">All school years</option>
+              {schoolYearOptions.map(option => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[11px] uppercase tracking-wider font-label mb-1.5" style={{ color: 'rgba(41,40,39,0.4)' }}>Quarter</label>
+            <select
+              value={selectedQuarter}
+              onChange={event => setSelectedQuarter(event.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg text-[13px] focus:outline-none"
+              style={{ border: `1px solid ${C.parchment}`, backgroundColor: '#fff', color: C.charcoal, fontWeight: 460 }}
+            >
+              <option value="all">All quarters</option>
+              <option value="1">Q1</option>
+              <option value="2">Q2</option>
+              <option value="3">Q3</option>
+              <option value="4">Q4</option>
+            </select>
+          </div>
+        </div>
+
+        <p className="text-[13px] font-body" style={{ color: 'rgba(41,40,39,0.5)' }}>
+          {filteredWeeklyReports.length} official record{filteredWeeklyReports.length === 1 ? '' : 's'} match the current filters.
+        </p>
+      </div>
 
       {/* Per-student live report cards */}
       {students.length === 0 ? (
@@ -556,18 +738,18 @@ const Reports = () => {
             ? <ChevronDown className="w-4 h-4" style={{ color: 'rgba(41,40,39,0.4)' }} />
             : <ChevronRight className="w-4 h-4" style={{ color: 'rgba(41,40,39,0.4)' }} />}
           <span className="text-[12px] uppercase tracking-wider font-label" style={{ color: 'rgba(41,40,39,0.5)' }}>
-            Official Records ({weeklyReports.length})
+            Official Records ({filteredWeeklyReports.length}/{normalizedWeeklyReports.length})
           </span>
         </button>
 
         {showRecords && (
-          weeklyReports.length === 0 ? (
+          filteredWeeklyReports.length === 0 ? (
             <p className="text-[13px] text-charcoal-ink/30 italic font-body pl-6">
-              No saved records yet. Use "Save Record" to stamp an official snapshot.
+              No official records match the current filters.
             </p>
           ) : (
             <div className="space-y-2 pl-6">
-              {weeklyReports.map(report => {
+              {filteredWeeklyReports.map(report => {
                 const ws = report.week_start?.toDate?.() || new Date(report.week_start);
                 const we = report.week_ending?.toDate?.() || new Date(report.week_ending);
                 return (
@@ -579,6 +761,11 @@ const Reports = () => {
                       <span className="text-[12px] font-body ml-2" style={{ color: 'rgba(41,40,39,0.4)' }}>
                         {formatWeekRange(ws, we)}
                       </span>
+                      {report.school_quarter_label && (
+                        <span className="text-[11px] font-body ml-2" style={{ color: C.amethyst }}>
+                          {report.school_quarter_label}{report.school_year_label ? ` • ${report.school_year_label}` : ''}
+                        </span>
+                      )}
                     </div>
                     <span className="text-[12px] font-body" style={{ color: 'rgba(41,40,39,0.4)' }}>
                       {report.total_blocks}/{report.weekly_goal} blocks
@@ -609,7 +796,7 @@ const Reports = () => {
 };
 
 // Shared print HTML builder used by handlePrintRecord
-function buildPrintHtml(weekRangeText, generatedDate, studentRows) {
+function buildPrintHtml(weekRangeText, generatedDate, studentRows, reportTitle = 'Weekly Progress Report') {
   const sections = studentRows.map(r => `
     <div class="student-section">
       <div class="student-header">
@@ -659,7 +846,7 @@ function buildPrintHtml(weekRangeText, generatedDate, studentRows) {
   </style></head><body>
   <div class="report-header">
     <div class="report-logo">GridWorkz LMS</div>
-    <div class="report-title">Weekly Progress Report</div>
+    <div class="report-title">${reportTitle}</div>
     <div class="report-week">${weekRangeText}</div>
     <div class="report-generated">Generated ${generatedDate}</div>
   </div>
