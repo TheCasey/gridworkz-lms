@@ -70,62 +70,30 @@ const StudentPortal = () => {
   const alarmStopTimerRef = useRef(null);
   const alarmSoundRef = useRef(ALARM_SOUNDS[0].file);
   const alarmPrimedRef = useRef(false);
-  const audioContextRef = useRef(null);
-  const alarmBufferCacheRef = useRef(new Map());
-  const alarmSourceRef = useRef(null);
   const [pinAttempts, setPinAttempts] = useState(0);
   const [pinLockoutUntil, setPinLockoutUntil] = useState(null);
   const oldSubjectUnsubRef = useRef(null);
   const completionNotifiedRef = useRef({});
+  const previousTimersRef = useRef({});
+  const timerRemovalInFlightRef = useRef({});
 
   const db = getFirestore(app);
   const subjectMap = useMemo(() => Object.fromEntries(subjects.map(subject => [subject.id, subject])), [subjects]);
+  const getSoundUrl = (file) => `${import.meta.env.BASE_URL}sounds/${file}`;
 
   const ensureAlarmAudio = () => {
     if (!alarmAudioRef.current) {
-      alarmAudioRef.current = new Audio(`/sounds/${alarmSoundRef.current}`);
+      alarmAudioRef.current = new Audio(getSoundUrl(alarmSoundRef.current));
       alarmAudioRef.current.preload = 'auto';
     }
 
-    const expectedSrc = `${window.location.origin}/sounds/${alarmSoundRef.current}`;
+    const expectedSrc = new URL(getSoundUrl(alarmSoundRef.current), window.location.href).href;
     if (alarmAudioRef.current.src !== expectedSrc) {
-      alarmAudioRef.current.src = `/sounds/${alarmSoundRef.current}`;
+      alarmAudioRef.current.src = getSoundUrl(alarmSoundRef.current);
       alarmPrimedRef.current = false;
     }
 
     return alarmAudioRef.current;
-  };
-
-  const ensureAudioContext = async () => {
-    if (typeof window === 'undefined') return null;
-
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return null;
-
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContextClass();
-    }
-
-    if (audioContextRef.current.state === 'suspended') {
-      await audioContextRef.current.resume();
-    }
-
-    return audioContextRef.current;
-  };
-
-  const ensureAlarmBuffer = async (file = alarmSoundRef.current) => {
-    if (alarmBufferCacheRef.current.has(file)) {
-      return alarmBufferCacheRef.current.get(file);
-    }
-
-    const context = await ensureAudioContext();
-    if (!context) return null;
-
-    const response = await fetch(`/sounds/${file}`);
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await context.decodeAudioData(arrayBuffer.slice(0));
-    alarmBufferCacheRef.current.set(file, audioBuffer);
-    return audioBuffer;
   };
 
   const primeAlarmAudio = async () => {
@@ -139,7 +107,6 @@ const StudentPortal = () => {
       audio.pause();
       audio.currentTime = 0;
       audio.muted = false;
-      await ensureAlarmBuffer();
       alarmPrimedRef.current = true;
       return true;
     } catch (error) {
@@ -217,7 +184,25 @@ const StudentPortal = () => {
       const timerRef = doc(db, 'timerSessions', getTimerSessionDocId(student.id, subject.id));
 
       return onSnapshot(timerRef, async (snapshot) => {
+        if (timerRemovalInFlightRef.current[subject.id] && snapshot.exists()) {
+          return;
+        }
+
         if (!snapshot.exists()) {
+          if (timerRemovalInFlightRef.current[subject.id]) {
+            clearTimerFromStorage(getTimerKey(student.id, subject.id));
+            setActiveTimers((prev) => {
+              if (!prev[subject.id]) return prev;
+              const updated = { ...prev };
+              delete updated[subject.id];
+              return updated;
+            });
+            delete timerRemovalInFlightRef.current[subject.id];
+            delete previousTimersRef.current[subject.id];
+            delete completionNotifiedRef.current[subject.id];
+            return;
+          }
+
           const key = getTimerKey(student.id, subject.id);
           const stored = loadTimerFromStorage(key);
           const nextBlock = getNextAvailableBlock(subject);
@@ -241,25 +226,15 @@ const StudentPortal = () => {
             delete updated[subject.id];
             return updated;
           });
+          delete timerRemovalInFlightRef.current[subject.id];
+          delete previousTimersRef.current[subject.id];
           delete completionNotifiedRef.current[subject.id];
           return;
         }
 
         const hydrated = hydrateStoredTimer(snapshot.data());
 
-        setActiveTimers((prev) => {
-          const previousTimer = prev[subject.id];
-          if (
-            previousTimer?.remainingTime > 0 &&
-            hydrated?.remainingTime === 0 &&
-            !completionNotifiedRef.current[subject.id]
-          ) {
-            handleTimerComplete(subject.id);
-            completionNotifiedRef.current[subject.id] = true;
-          }
-
-          return { ...prev, [subject.id]: hydrated };
-        });
+        setActiveTimers((prev) => ({ ...prev, [subject.id]: hydrated }));
       });
     });
 
@@ -294,11 +269,6 @@ const StudentPortal = () => {
       });
 
       completedTimers.forEach(({ subjectId, timer }) => {
-        if (!completionNotifiedRef.current[subjectId]) {
-          handleTimerComplete(subjectId);
-          completionNotifiedRef.current[subjectId] = true;
-        }
-
         const subject = subjectMap[subjectId];
         if (!subject) return;
 
@@ -311,6 +281,33 @@ const StudentPortal = () => {
   }, [subjectMap]);
 
   useEffect(() => {
+    Object.entries(activeTimers).forEach(([subjectId, timer]) => {
+      const previousTimer = previousTimersRef.current[subjectId];
+
+      if (
+        previousTimer?.remainingTime > 0 &&
+        timer?.remainingTime === 0 &&
+        !completionNotifiedRef.current[subjectId]
+      ) {
+        playNotificationSound().catch((error) => {
+          console.warn('Alarm playback failed:', error);
+        });
+        completionNotifiedRef.current[subjectId] = true;
+      }
+    });
+
+    Object.keys(previousTimersRef.current).forEach((subjectId) => {
+      if (!activeTimers[subjectId]) {
+        delete previousTimersRef.current[subjectId];
+      }
+    });
+
+    previousTimersRef.current = Object.fromEntries(
+      Object.entries(activeTimers).map(([subjectId, timer]) => [subjectId, { ...timer }])
+    );
+  }, [activeTimers]);
+
+  useEffect(() => {
     if (!student) return;
     const saved = localStorage.getItem(`alarm_sound_${student.id}`);
     if (saved && ALARM_SOUNDS.some(s => s.file === saved)) {
@@ -319,25 +316,29 @@ const StudentPortal = () => {
     }
   }, [student?.id]);
 
-  const handleAlarmChange = (file) => {
+  const handleAlarmChange = async (file) => {
     setAlarmSound(file);
     alarmSoundRef.current = file;
     if (student) localStorage.setItem(`alarm_sound_${student.id}`, file);
     const audio = ensureAlarmAudio();
-    audio.src = `/sounds/${file}`;
+    audio.src = getSoundUrl(file);
     alarmPrimedRef.current = false;
-    primeAlarmAudio().catch(() => {});
-    audio.currentTime = 0;
-    audio.play().catch(() => {});
+
+    try {
+      await primeAlarmAudio();
+    } catch (error) {
+      console.warn('Unable to prime selected alarm sound:', error);
+    }
+
+    const previewAudio = new Audio(getSoundUrl(file));
+    previewAudio.currentTime = 0;
+    previewAudio.play().catch((error) => {
+      console.warn('Alarm preview was blocked:', error);
+    });
   };
 
   const stopAlarm = () => {
     if (alarmStopTimerRef.current) { clearTimeout(alarmStopTimerRef.current); alarmStopTimerRef.current = null; }
-    if (alarmSourceRef.current) {
-      try { alarmSourceRef.current.stop(); } catch (e) {}
-      try { alarmSourceRef.current.disconnect(); } catch (e) {}
-      alarmSourceRef.current = null;
-    }
     if (alarmAudioRef.current) { alarmAudioRef.current.loop = false; alarmAudioRef.current.pause(); alarmAudioRef.current.currentTime = 0; }
   };
 
@@ -345,32 +346,16 @@ const StudentPortal = () => {
     stopAlarm();
 
     try {
-      const context = await ensureAudioContext();
-      const buffer = await ensureAlarmBuffer();
-
-      if (context && buffer) {
-        const source = context.createBufferSource();
-        source.buffer = buffer;
-        source.loop = true;
-        source.connect(context.destination);
-        source.start(0);
-        alarmSourceRef.current = source;
-      } else {
-        const audio = ensureAlarmAudio();
-        audio.loop = true;
-        audio.muted = false;
-        audio.currentTime = 0;
-        await audio.play();
-      }
+      const audio = ensureAlarmAudio();
+      audio.loop = true;
+      audio.muted = false;
+      audio.currentTime = 0;
+      await audio.play();
     } catch (error) {
       console.warn('Alarm playback was blocked:', error);
     }
 
     alarmStopTimerRef.current = setTimeout(stopAlarm, 20_000);
-  };
-
-  const handleTimerComplete = (subjectId) => {
-    try { playNotificationSound(); } catch (e) {}
   };
 
   const buildTimerSessionPayload = (subject, timer, includeCreatedAt = false) => {
@@ -413,9 +398,17 @@ const StudentPortal = () => {
   const removeTimer = async (subjectId) => {
     if (!student || !subjectId) return;
 
-    await deleteDoc(doc(db, 'timerSessions', getTimerSessionDocId(student.id, subjectId)));
+    timerRemovalInFlightRef.current[subjectId] = true;
     clearTimerFromStorage(getTimerKey(student.id, subjectId));
+    delete previousTimersRef.current[subjectId];
     delete completionNotifiedRef.current[subjectId];
+
+    try {
+      await deleteDoc(doc(db, 'timerSessions', getTimerSessionDocId(student.id, subjectId)));
+    } catch (error) {
+      delete timerRemovalInFlightRef.current[subjectId];
+      throw error;
+    }
   };
 
   const getNextAvailableBlock = (subject) => {
@@ -444,6 +437,7 @@ const StudentPortal = () => {
 
     setActiveTimers(prev => ({ ...prev, [subject.id]: config }));
     delete completionNotifiedRef.current[subject.id];
+    delete timerRemovalInFlightRef.current[subject.id];
 
     try {
       await persistTimer(subject, config, true);
@@ -491,6 +485,7 @@ const StudentPortal = () => {
   };
 
   const resetTimer = async (subject) => {
+    stopAlarm();
     setActiveTimers(prev => { const u = { ...prev }; delete u[subject.id]; return u; });
 
     try {
@@ -550,6 +545,7 @@ const StudentPortal = () => {
 
   const handleCompleteBlock = (subject) => {
     if (!subject) return;
+    stopAlarm();
     const nextBlock = getNextAvailableBlock(subject);
     if (nextBlock === null) { alert('All blocks completed!'); return; }
     if (isSubmissionLocked(subject.id, nextBlock)) { setError('Submission in progress...'); return; }
@@ -558,6 +554,7 @@ const StudentPortal = () => {
   };
 
   const submitBlock = async (subject, blockIndex, summary) => {
+    stopAlarm();
     setSubmissionLock(subject.id, blockIndex);
     setSubmitting(true);
     try {
