@@ -1,295 +1,346 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
+import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  getFirestore,
-  collection,
-  query,
-  where,
-  onSnapshot,
-  orderBy,
-  doc,
-  getDocs,
-  deleteDoc,
-  addDoc,
-  serverTimestamp,
-  setDoc,
-  writeBatch,
-} from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
-import { nanoid } from 'nanoid';
 import {
-  Home,
   BookOpen,
   FileText,
   Heart,
   Plus,
   Activity,
-  Users,
   Clock,
   X,
   Info,
   Check,
   Download,
-  Calendar
+  Calendar,
+  Lock,
 } from 'lucide-react';
-import StudentCard from '../components/StudentCard';
 import AddStudentModal from '../components/AddStudentModal';
-import Curriculum from './Curriculum';
-import Reports from './Reports';
-import Settings, { buildSettingsFormState } from './Settings';
+import {
+  DASHBOARD_HEADER_ACTIONS,
+  DASHBOARD_FEATURE_STATES,
+  DASHBOARD_HEADER_FILTERS,
+  DASHBOARD_HEADER_NOTICES,
+  DASHBOARD_DEFAULT_FEATURE_ID,
+  DASHBOARD_RIGHT_RAIL_MODES,
+  getDashboardDefaultFeature,
+  resolveDashboardFeatures,
+  dashboardFeaturesById,
+} from '../constants/dashboardFeatures';
+import useEntitlements from '../hooks/useEntitlements';
+import useParentSettings from '../hooks/useParentSettings';
+import useStudentMutations from '../hooks/useStudentMutations';
+import useStudents from '../hooks/useStudents';
+import useSubjects from '../hooks/useSubjects';
+import useWeeklyActivity from '../hooks/useWeeklyActivity';
+import useWeeklyReportRecords from '../hooks/useWeeklyReportRecords';
+import useWeeklyRollover from '../hooks/useWeeklyRollover';
 import {
   getCurrentWeekRange,
   getWeekRangeByOffset,
   formatWeekRange,
   getWeekLabel,
   getWeekPickerOptions,
-  isTimestampInWeek,
   getWeekConfig,
 } from '../utils/weekUtils';
-import {
-  buildDefaultParentProfile,
-  mergeParentSettings,
-} from '../utils/schoolSettingsUtils';
-import {
-  buildStudentWeeklySnapshot,
-  buildWeeklyReportPayload,
-  getStudentSubjects,
-  getWeekKey,
-} from '../utils/reportUtils';
+import { buildEntitlementUsageSummary } from '../utils/entitlementUtils';
 
 const FONT = "'Super Sans VF', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif";
 
 const labelCls = 'block text-[11px] uppercase tracking-wider mb-1.5' + ' ' + 'font-label';
-const inputCls = 'w-full px-3 py-2.5 rounded-lg focus:outline-none text-[14px] transition-colors bg-white';
+
+const DashboardLivePulseRail = ({
+  colors,
+  formatTimestamp,
+  getRealTimeWeeklyProgress,
+  getWeekSubmissions,
+  selectedWeekOffset,
+  setViewingSummary,
+  students,
+  submissions,
+}) => (
+  <div className="w-80 flex flex-col flex-shrink-0" style={{ backgroundColor: '#ffffff', borderLeft: `1px solid ${colors.parchment}` }}>
+    <div className="px-6 pt-6 pb-5" style={{ borderBottom: `1px solid ${colors.parchment}` }}>
+      <div className="flex items-center gap-2 mb-1">
+        <Activity className="w-4 h-4" style={{ color: colors.amethyst }} />
+        <h3 style={{ fontSize: 15, fontWeight: 540, color: colors.charcoal }}>Live Pulse</h3>
+      </div>
+      <p className="text-[12px]" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>Real-time activity feed</p>
+    </div>
+
+    <div className="flex-1 overflow-auto p-5">
+      {submissions.length === 0 ? (
+        <div className="text-center py-10">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-3" style={{ backgroundColor: '#f0eaff' }}>
+            <Activity className="w-5 h-5" style={{ color: 'rgba(113,76,182,0.5)' }} />
+          </div>
+          <p className="text-[13px]" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>No submissions yet</p>
+          <p className="text-[12px] mt-1" style={{ color: 'rgba(41,40,39,0.3)', fontWeight: 460 }}>Student activity will appear here</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(240,234,255,0.5)', border: `1px solid rgba(203,183,251,0.4)` }}>
+            <div className="flex items-center justify-between mb-3">
+              <h4 style={{ fontSize: 13, fontWeight: 540, color: colors.charcoal }}>Weekly Progress</h4>
+              <span className="text-[11px] uppercase tracking-wider" style={{ color: colors.amethyst, fontWeight: 700 }}>
+                {getWeekLabel(selectedWeekOffset)}
+              </span>
+            </div>
+            <div className="space-y-3">
+              {students.map(student => {
+                const progress = getRealTimeWeeklyProgress(student.id, selectedWeekOffset);
+                if (progress.total === 0) return null;
+                return (
+                  <div key={student.id}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[13px]" style={{ color: colors.charcoal, fontWeight: 460 }}>{student.name}</span>
+                      <span className="text-[12px]" style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 700 }}>
+                        {progress.completed}/{progress.total}
+                      </span>
+                    </div>
+                    <div className="w-full rounded-full h-1.5 overflow-hidden" style={{ backgroundColor: colors.parchment }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${progress.percentage}%`, backgroundColor: colors.lavender }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-[11px] uppercase tracking-wider mb-3" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>
+              Activity — {getWeekLabel(selectedWeekOffset)}
+            </h4>
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {(() => {
+                const weekSubmissions = getWeekSubmissions(selectedWeekOffset);
+                if (weekSubmissions.length === 0) {
+                  return (
+                    <p className="text-[13px] text-center py-4" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>
+                      No submissions {selectedWeekOffset === 0 ? 'this week' : 'for selected week'}
+                    </p>
+                  );
+                }
+                return weekSubmissions.map((submission) => (
+                  <div
+                    key={submission.id}
+                    className="flex items-start gap-3 p-3 rounded-xl cursor-pointer transition-colors"
+                    style={{ backgroundColor: colors.cream }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = colors.parchment}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = colors.cream}
+                    onClick={() => setViewingSummary(submission)}
+                  >
+                    <div className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: colors.lavender }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px]" style={{ color: colors.charcoal, fontWeight: 460 }}>
+                        <span style={{ fontWeight: 540 }}>{students.find(s => s.id === submission.student_id)?.name || 'Unknown'}</span>
+                        {' '}completed{' '}
+                        <span style={{ color: colors.amethyst }}>{submission.subject_name}</span>
+                      </p>
+                      {submission.custom_field_responses && Object.keys(submission.custom_field_responses).length > 0 && (
+                        <div className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full" style={{ backgroundColor: '#f0eaff' }}>
+                          <Info className="w-3 h-3" style={{ color: colors.amethyst }} />
+                          <span className="text-[10px]" style={{ color: colors.amethyst, fontWeight: 700 }}>Extra Details</span>
+                        </div>
+                      )}
+                      <p className="text-[11px] mt-1 flex items-center gap-1" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>
+                        <Clock className="w-3 h-3" />
+                        {formatTimestamp(submission.timestamp)}
+                      </p>
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+);
 
 const ParentDashboard = () => {
   const { currentUser, logout } = useAuth();
-  const [students, setStudents] = useState([]);
-  const [subjects, setSubjects] = useState([]);
-  const [submissions, setSubmissions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const location = useLocation();
+  const navigate = useNavigate();
   const [modalOpen, setModalOpen] = useState(false);
-  const [addingStudent, setAddingStudent] = useState(false);
-  const [activeNav, setActiveNav] = useState('dashboard');
   const [viewingStudentProgress, setViewingStudentProgress] = useState(null);
-  const [studentSubmissions, setStudentSubmissions] = useState([]);
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [viewingSummary, setViewingSummary] = useState(null);
   const [manualCompleteBlock, setManualCompleteBlock] = useState(null);
   const [parentNote, setParentNote] = useState('');
   const [showManualConfirm, setShowManualConfirm] = useState(false);
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
-  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-  const [parentSettings, setParentSettings] = useState(buildSettingsFormState(mergeParentSettings()));
-  const [settingsSaving, setSettingsSaving] = useState(false);
-  const [settingsReady, setSettingsReady] = useState(false);
-  const [rolloverStatus, setRolloverStatus] = useState({ running: false, message: '' });
-  const studentProgressUnsubRef = useRef(null);
 
   const db = getFirestore(app);
+  const { students, loading: studentsLoading } = useStudents({
+    parentId: currentUser?.uid,
+    enabled: Boolean(currentUser),
+  });
+  const {
+    parentSettings,
+    saveSettings: handleSaveSettings,
+    settingsReady,
+    settingsSaving,
+  } = useParentSettings({
+    currentUser,
+    students,
+    enabled: Boolean(currentUser),
+  });
+  const { subjects, loading: subjectsLoading } = useSubjects({
+    parentId: currentUser?.uid,
+    enabled: Boolean(currentUser),
+    activeOnly: true,
+    sortField: 'title',
+    sortDirection: 'asc',
+  });
   const weekConfig = useMemo(() => getWeekConfig(parentSettings), [
     parentSettings.week_reset_day,
     parentSettings.week_reset_hour,
     parentSettings.week_reset_minute,
   ]);
+  const currentWeekStart = useMemo(
+    () => getCurrentWeekRange(new Date(), weekConfig).weekStart,
+    [weekConfig]
+  );
+  const {
+    plan,
+    curriculumLimitCheck,
+    featureAccess,
+    featureAccessList,
+    isMissingEntitlementDoc,
+    lockdownAccess,
+    subscriptionStatusMeta,
+    studentLimitCheck,
+    trialEndsAt,
+    currentPeriodEnd,
+    canAddStudent,
+  } = useEntitlements({
+    parentId: currentUser?.uid,
+    students,
+    subjects,
+    enabled: Boolean(currentUser),
+  });
+  const {
+    addStudent,
+    addingStudent,
+    deleteStudent: handleDeleteStudent,
+  } = useStudentMutations({
+    canAddStudent,
+    currentUser,
+    planName: plan?.displayName || 'Free',
+    studentLimitCheck,
+  });
+  const {
+    completeBlockManually,
+    downloadWeeklyReport,
+    getCustomFieldLabel,
+    getRealTimeWeeklyProgress,
+    getWeeklyProgress,
+    getWeekSubmissions,
+    isGeneratingReport,
+    loading: activityLoading,
+    resetSubmission,
+    submissions,
+  } = useWeeklyActivity({
+    currentUser,
+    parentId: currentUser?.uid,
+    enabled: Boolean(currentUser),
+    students,
+    subjects,
+    weekConfig,
+    startAt: currentWeekStart,
+  });
+  const { createWeeklyRecordsForRange } = useWeeklyReportRecords({
+    currentUser,
+    parentSettings,
+    students,
+    subjects,
+    enabled: Boolean(currentUser),
+    listen: false,
+  });
+  const loading = studentsLoading || subjectsLoading || activityLoading;
+  const { rolloverStatus } = useWeeklyRollover({
+    createWeeklyRecordsForRange,
+    currentUser,
+    enabled: Boolean(currentUser),
+    loading,
+    parentSettings,
+    settingsReady,
+    weekConfig,
+  });
+  const resolvedDashboardFeatures = useMemo(
+    () => resolveDashboardFeatures({ featureAccess }),
+    [featureAccess]
+  );
+  const resolvedDashboardFeaturesById = useMemo(
+    () => Object.fromEntries(resolvedDashboardFeatures.map((feature) => [feature.id, feature])),
+    [resolvedDashboardFeatures]
+  );
+  const resolvedDashboardFeaturesByPath = useMemo(
+    () => Object.fromEntries(resolvedDashboardFeatures.map((feature) => [feature.path, feature])),
+    [resolvedDashboardFeatures]
+  );
+  const defaultDashboardFeature = useMemo(
+    () => getDashboardDefaultFeature(resolvedDashboardFeatures),
+    [resolvedDashboardFeatures]
+  );
+  const activeFeaturePath = location.pathname.replace(/\/+$/, '').split('/')[2] || DASHBOARD_DEFAULT_FEATURE_ID;
+  const activeFeature = resolvedDashboardFeaturesByPath[activeFeaturePath] || defaultDashboardFeature;
+  const activeFeatureShell = activeFeature.shell || {
+    headerSlots: {
+      primaryAction: null,
+      secondaryActions: [],
+      filters: [],
+      notices: [],
+    },
+    rightRail: {
+      mode: DASHBOARD_RIGHT_RAIL_MODES.NONE,
+    },
+  };
+  const defaultDashboardPath = defaultDashboardFeature?.path || dashboardFeaturesById[DASHBOARD_DEFAULT_FEATURE_ID].path;
+  const navigableDashboardFeatures = resolvedDashboardFeatures.filter(
+    (feature) => feature.shellState !== DASHBOARD_FEATURE_STATES.HIDDEN
+  );
+  const hasShellHeaderControls = Boolean(
+    activeFeatureShell.headerSlots.primaryAction ||
+    activeFeatureShell.headerSlots.filters.length ||
+    activeFeatureShell.headerSlots.secondaryActions.length
+  );
 
-  useEffect(() => {
-    if (!currentUser) return undefined;
-
-    const parentRef = doc(db, 'parents', currentUser.uid);
-    return onSnapshot(parentRef, async (snapshot) => {
-      if (!snapshot.exists()) {
-        try {
-          await setDoc(parentRef, {
-            ...buildDefaultParentProfile(currentUser),
-            created_at: serverTimestamp(),
-            updated_at: serverTimestamp(),
-          }, { merge: true });
-        } catch (error) {
-          console.error('Error creating parent profile:', error);
-        }
-        return;
-      }
-
-      setParentSettings(buildSettingsFormState(mergeParentSettings(snapshot.data(), currentUser)));
-      setSettingsReady(true);
-    }, (error) => {
-      console.error('Error loading parent settings:', error);
-      setSettingsReady(true);
-    });
-  }, [currentUser, db]);
-
-  useEffect(() => {
-    setLoading(true);
-
-    if (!currentUser) {
-      setLoading(false);
-      return;
-    }
-
-    const studentsQuery = query(
-      collection(db, 'students'),
-      where('parent_id', '==', currentUser.uid),
-      orderBy('created_at', 'desc')
-    );
-
-    const studentsUnsubscribe = onSnapshot(studentsQuery, (snapshot) => {
-      setStudents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      console.error('Error fetching students:', error.code, error.message);
-    });
-
-    const subjectsQuery = query(
-      collection(db, 'subjects'),
-      where('parent_id', '==', currentUser.uid),
-      where('is_active', '==', true),
-      orderBy('title')
-    );
-
-    const subjectsUnsubscribe = onSnapshot(subjectsQuery, (snapshot) => {
-      setSubjects(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      console.error('Error fetching subjects:', error);
-    });
-
-    const { weekStart } = getCurrentWeekRange(new Date(), weekConfig);
-
-    const submissionsQuery = query(
-      collection(db, 'submissions'),
-      where('parent_id', '==', currentUser.uid),
-      where('timestamp', '>=', weekStart),
-      orderBy('timestamp', 'desc')
-    );
-
-    const submissionsUnsubscribe = onSnapshot(submissionsQuery, (snapshot) => {
-      setSubmissions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    }, (error) => {
-      console.error('Error fetching submissions:', error.code, error.message);
-      setLoading(false);
-    });
-
-    const loadingTimeout = setTimeout(() => setLoading(false), 3000);
-
-    return () => {
-      studentsUnsubscribe();
-      subjectsUnsubscribe();
-      submissionsUnsubscribe();
-      clearTimeout(loadingTimeout);
-    };
-  }, [currentUser, db, weekConfig]);
-
-  const handleAddStudent = async ({ name, accessPin }) => {
-    setAddingStudent(true);
-    try {
-      const baseSlug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-      const slug = `${baseSlug}-${nanoid(6)}`;
-
-      const studentDoc = {
-        name: name.trim(),
-        slug,
-        access_pin: accessPin || null,
-        parent_id: currentUser.uid,
-        week_reset_day: weekConfig.resetDay,
-        week_reset_hour: weekConfig.resetHour,
-        week_reset_minute: weekConfig.resetMinute,
-        timezone: parentSettings.timezone,
-        is_active: true,
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp()
-      };
-
-      await addDoc(collection(db, 'students'), studentDoc);
+  const handleAddStudent = useCallback(async ({ name, accessPin }) => {
+    const added = await addStudent({ name, accessPin });
+    if (added) {
       setModalOpen(false);
-    } catch (error) {
-      console.error('Error adding student:', error.code, error.message);
-      if (error.code === 'permission-denied') {
-        alert('Permission denied. Please check Firestore security rules.');
-      } else if (error.code === 'unavailable') {
-        alert('Firestore unavailable. Check your internet connection.');
-      } else {
-        alert(`Failed to add student: ${error.message}`);
-      }
-    } finally {
-      setAddingStudent(false);
     }
-  };
+  }, [addStudent]);
 
-  const handleSaveSettings = async (nextSettings) => {
-    if (!currentUser) return;
-    if (nextSettings.school_year_start && nextSettings.school_year_end && nextSettings.school_year_end < nextSettings.school_year_start) {
-      alert('School year end date must be after the start date.');
-      return;
-    }
-
-    setSettingsSaving(true);
-    try {
-      const { reset_time, ...settingsWithoutDisplayTime } = nextSettings;
-      const payload = mergeParentSettings({
-        ...settingsWithoutDisplayTime,
-        uid: currentUser.uid,
-        email: currentUser.email || '',
-      }, currentUser);
-
-      await setDoc(doc(db, 'parents', currentUser.uid), {
-        ...payload,
-        week_start_day: payload.week_reset_day,
-        updated_at: serverTimestamp(),
-      }, { merge: true });
-
-      if (students.length > 0) {
-        const batch = writeBatch(db);
-        students.forEach(student => {
-          batch.set(doc(db, 'students', student.id), {
-            week_reset_day: payload.week_reset_day,
-            week_reset_hour: payload.week_reset_hour,
-            week_reset_minute: payload.week_reset_minute,
-            timezone: payload.timezone,
-            updated_at: serverTimestamp(),
-          }, { merge: true });
-        });
-        await batch.commit();
-      }
-    } catch (error) {
-      console.error('Error saving settings:', error);
-      alert('Failed to save settings. Please try again.');
-    } finally {
-      setSettingsSaving(false);
-    }
-  };
+  if (activeFeature?.shellState === DASHBOARD_FEATURE_STATES.HIDDEN) {
+    return <Navigate to={`/dashboard/${defaultDashboardPath}`} replace />;
+  }
 
   const handleViewStudentProgress = (student) => {
     setViewingStudentProgress(student);
-    const submissionsQuery = query(
-      collection(db, 'submissions'),
-      where('student_id', '==', student.id),
-      orderBy('timestamp', 'desc')
-    );
-    studentProgressUnsubRef.current = onSnapshot(submissionsQuery, (snapshot) => {
-      setStudentSubmissions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      console.error('Error fetching student submissions:', error);
-    });
   };
 
   const handleCloseStudentProgress = () => {
     setViewingStudentProgress(null);
-    setStudentSubmissions([]);
     setSelectedSubmission(null);
-    if (studentProgressUnsubRef.current) {
-      studentProgressUnsubRef.current();
-      studentProgressUnsubRef.current = null;
-    }
   };
 
   const handleResetBlock = async (submissionId) => {
     if (!window.confirm('Are you sure you want to reset this block? This will delete the submission and the student will need to redo it.')) return;
-    try {
-      await deleteDoc(doc(db, 'submissions', submissionId));
+
+    const reset = await resetSubmission(submissionId);
+    if (reset) {
       setSelectedSubmission(null);
       alert('Block reset successfully! The student can now redo this block.');
-    } catch (error) {
-      console.error('Error resetting block:', error);
+    } else {
       alert('Failed to reset block. Please try again.');
     }
   };
@@ -301,25 +352,21 @@ const ParentDashboard = () => {
   };
 
   const confirmManualComplete = async () => {
-    if (!manualCompleteBlock) return;
-    try {
-      await addDoc(collection(db, 'submissions'), {
-        student_id: viewingStudentProgress.id,
-        subject_id: manualCompleteBlock.subject.id,
-        subject_name: manualCompleteBlock.subject.title,
-        block_index: manualCompleteBlock.blockIndex,
-        status: 'parent_completed',
-        summary_text: parentNote || 'Parent-led session',
-        timestamp: serverTimestamp(),
-        manual_override: true,
-        parent_id: currentUser.uid
-      });
+    if (!manualCompleteBlock || !viewingStudentProgress) return;
+
+    const completed = await completeBlockManually({
+      studentId: viewingStudentProgress.id,
+      subject: manualCompleteBlock.subject,
+      blockIndex: manualCompleteBlock.blockIndex,
+      parentNote,
+    });
+
+    if (completed) {
       setShowManualConfirm(false);
       setManualCompleteBlock(null);
       setParentNote('');
       alert('Block marked as completed successfully!');
-    } catch (error) {
-      console.error('Error marking block complete:', error);
+    } else {
       alert('Failed to mark block complete. Please try again.');
     }
   };
@@ -346,295 +393,6 @@ const ParentDashboard = () => {
     if (!result.success) console.error('Logout failed:', result.error);
   };
 
-  const handleDeleteStudent = async (studentId) => {
-    if (window.confirm('Are you sure you want to delete this student? This action cannot be undone.')) {
-      try {
-        await deleteDoc(doc(db, 'students', studentId));
-      } catch (error) {
-        console.error('Error deleting student:', error);
-        alert('Failed to delete student. Please try again.');
-      }
-    }
-  };
-
-  const createWeeklyRecordsForRange = useCallback(async ({ weekStart, weekEnd, source }) => {
-    if (!currentUser) return 0;
-
-    const activeStudents = students.length > 0
-      ? students
-      : (await getDocs(query(
-        collection(db, 'students'),
-        where('parent_id', '==', currentUser.uid),
-        orderBy('created_at', 'desc')
-      ))).docs.map(snapshot => ({ id: snapshot.id, ...snapshot.data() }));
-
-    const activeSubjects = subjects.length > 0
-      ? subjects
-      : (await getDocs(query(
-        collection(db, 'subjects'),
-        where('parent_id', '==', currentUser.uid),
-        where('is_active', '==', true),
-        orderBy('title')
-      ))).docs.map(snapshot => ({ id: snapshot.id, ...snapshot.data() }));
-
-    if (activeStudents.length === 0) return 0;
-
-    const submissionsSnapshot = await getDocs(query(
-      collection(db, 'submissions'),
-      where('parent_id', '==', currentUser.uid),
-      where('timestamp', '>=', weekStart),
-      where('timestamp', '<=', weekEnd),
-      orderBy('timestamp', 'desc')
-    ));
-
-    const rangeSubmissions = submissionsSnapshot.docs.map(snapshot => ({ id: snapshot.id, ...snapshot.data() }));
-    const batch = writeBatch(db);
-    let createdCount = 0;
-
-    activeStudents.forEach(student => {
-      const snapshot = buildStudentWeeklySnapshot({
-        student,
-        subjects: activeSubjects,
-        submissions: rangeSubmissions,
-        weekStart,
-        weekEnd,
-      });
-
-      if (!snapshot) return;
-
-      const reportId = `${currentUser.uid}_${student.id}_${getWeekKey(weekStart)}`;
-      batch.set(
-        doc(db, 'weeklyReports', reportId),
-        buildWeeklyReportPayload({
-          student,
-          snapshot,
-          weekStart,
-          weekEnd,
-          parentId: currentUser.uid,
-          parentSettings,
-          source,
-        }),
-        { merge: true }
-      );
-      createdCount += 1;
-    });
-
-    if (createdCount > 0) {
-      await batch.commit();
-    }
-
-    return createdCount;
-  }, [currentUser, db, parentSettings, students, subjects]);
-
-
-  const getWeeklyProgress = (studentId, subjectId, weekOffset = 0) => {
-    const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset, weekConfig);
-    const subjectSubmissions = submissions.filter(s =>
-      s.student_id === studentId &&
-      s.subject_id === subjectId &&
-      s.timestamp &&
-      isTimestampInWeek(s.timestamp, weekStart, weekEnd) &&
-      s.block_index !== undefined
-    );
-    const uniqueBlockIndices = [...new Set(subjectSubmissions.map(s => s.block_index).filter(i => i !== undefined))];
-    const subject = subjects.find(sub => sub.id === subjectId);
-    const totalBlocks = subject?.block_count || 10;
-    return {
-      completed: uniqueBlockIndices.length,
-      total: totalBlocks,
-      percentage: Math.round((uniqueBlockIndices.length / totalBlocks) * 100)
-    };
-  };
-
-  const getRealTimeWeeklyProgress = (studentId, weekOffset = 0) => {
-    const studentSubjects = getStudentSubjects(subjects, studentId);
-    if (studentSubjects.length === 0) return { completed: 0, total: 0, percentage: 0 };
-    const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset, weekConfig);
-    const completedBlocksBySubject = {};
-    studentSubjects.forEach(subject => {
-      const subs = submissions.filter(s =>
-        s.student_id === studentId &&
-        s.subject_id === subject.id &&
-        s.timestamp &&
-        isTimestampInWeek(s.timestamp, weekStart, weekEnd) &&
-        s.block_index !== undefined
-      );
-      completedBlocksBySubject[subject.id] = [...new Set(subs.map(s => s.block_index).filter(i => i !== undefined))];
-    });
-    const totalBlocks = studentSubjects.reduce((sum, s) => sum + (s.block_count || 10), 0);
-    const completedBlocks = Object.values(completedBlocksBySubject).reduce((sum, blocks) => sum + blocks.length, 0);
-    return {
-      completed: completedBlocks,
-      total: totalBlocks,
-      percentage: totalBlocks > 0 ? Math.round((completedBlocks / totalBlocks) * 100) : 0
-    };
-  };
-
-  const getWeekSubmissions = (weekOffset = 0) => {
-    const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset, weekConfig);
-    return submissions.filter(s => s.timestamp && isTimestampInWeek(s.timestamp, weekStart, weekEnd));
-  };
-
-  const handleDownloadWeeklyReport = async (weekOffset = 0) => {
-    setIsGeneratingReport(true);
-    try {
-      const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset, weekConfig);
-      const weekLabel = getWeekLabel(weekOffset);
-      const weekRangeText = formatWeekRange(weekStart, weekEnd);
-      let reportContent = `GridWorkz Weekly Report\nWeek: ${weekRangeText}\nGenerated: ${new Date().toLocaleString()}\n\n`;
-
-      if (weekOffset < 0) {
-        // Past week: query live submissions directly (submissions are permanent records)
-        const pastSubsSnap = await getDocs(query(
-          collection(db, 'submissions'),
-          where('parent_id', '==', currentUser.uid),
-          where('timestamp', '>=', weekStart),
-          where('timestamp', '<=', weekEnd),
-          orderBy('timestamp', 'desc')
-        ));
-
-        const pastSubs = pastSubsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-        if (pastSubs.length === 0) {
-          reportContent += 'No activity recorded for this week.\n';
-        } else {
-          for (const student of students) {
-            const studentSubs = pastSubs.filter(s => s.student_id === student.id);
-            if (studentSubs.length === 0) continue;
-            const studentSubjects = getStudentSubjects(subjects, student.id);
-            const totalBlocks = studentSubs.length;
-            reportContent += `═══════════════════════════════════════\nStudent: ${student.name}\nBlocks Completed: ${totalBlocks}\n\n`;
-            for (const subject of studentSubjects) {
-              const subSubs = studentSubs.filter(s => s.subject_id === subject.id);
-              if (subSubs.length === 0) continue;
-              reportContent += `📚 ${subject.title}\n   Blocks Completed: ${subSubs.length}\n`;
-              subSubs.forEach(s => {
-                const t = s.timestamp.toDate();
-                reportContent += `   • Block ${(s.block_index ?? 0) + 1} - ${t.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at ${t.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}\n`;
-                if (s.summary_text) reportContent += `     Summary: ${s.summary_text}\n`;
-              });
-              reportContent += `\n`;
-            }
-          }
-        }
-      } else {
-        // Current week: use live submissions state
-        for (const student of students) {
-          const studentProgress = getRealTimeWeeklyProgress(student.id, weekOffset);
-          const studentSubjects = getStudentSubjects(subjects, student.id);
-          reportContent += `═══════════════════════════════════════\nStudent: ${student.name}\nOverall Progress: ${studentProgress.completed}/${studentProgress.total} blocks (${studentProgress.percentage}%)\n\n`;
-          for (const subject of studentSubjects) {
-            const subjectProgress = getWeeklyProgress(student.id, subject.id, weekOffset);
-            const weekSubs = getWeekSubmissions(weekOffset).filter(s => s.student_id === student.id && s.subject_id === subject.id);
-            reportContent += `📚 ${subject.title}\n   Progress: ${subjectProgress.completed}/${subjectProgress.total} blocks (${subjectProgress.percentage}%)\n`;
-            if (weekSubs.length > 0) {
-              reportContent += `   Block Completions:\n`;
-              weekSubs.forEach(submission => {
-                const t = submission.timestamp.toDate();
-                reportContent += `   • Block ${submission.block_index + 1} - ${t.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at ${t.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}\n`;
-                if (submission.summary_text) reportContent += `     Summary: ${submission.summary_text}\n`;
-              });
-            }
-            reportContent += `\n`;
-          }
-        }
-      }
-
-      const blob = new Blob([reportContent], { type: 'text/plain' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `GridWorkz-Weekly-Report-${weekLabel.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Error generating weekly report:', error);
-      alert('Failed to generate weekly report. Please try again.');
-    } finally {
-      setIsGeneratingReport(false);
-    }
-  };
-
-  const getCustomFieldLabel = (fieldId, subjectId) => {
-    const subject = subjects.find(s => s.id === subjectId);
-    if (!subject || !subject.custom_fields) return fieldId;
-    const field = subject.custom_fields.find(f => f.id === fieldId);
-    return field ? field.label : fieldId;
-  };
-
-  useEffect(() => {
-    if (!currentUser || !settingsReady || loading || rolloverStatus.running) return;
-
-    const currentWeek = getCurrentWeekRange(new Date(), weekConfig);
-    const previousWeek = getCurrentWeekRange(new Date(currentWeek.weekStart.getTime() - 1), weekConfig);
-    const previousWeekKey = getWeekKey(previousWeek.weekStart);
-
-    if (parentSettings.last_rollover_week_key === previousWeekKey) return;
-
-    let cancelled = false;
-    const runRollover = async () => {
-      setRolloverStatus({
-        running: true,
-        message: `Archiving ${formatWeekRange(previousWeek.weekStart, previousWeek.weekEnd)}...`,
-      });
-
-      try {
-        const createdCount = await createWeeklyRecordsForRange({
-          weekStart: previousWeek.weekStart,
-          weekEnd: previousWeek.weekEnd,
-          source: 'automatic',
-        });
-
-        await setDoc(doc(db, 'parents', currentUser.uid), {
-          last_rollover_week_key: previousWeekKey,
-          last_rollover_at: serverTimestamp(),
-          updated_at: serverTimestamp(),
-        }, { merge: true });
-
-        if (!cancelled) {
-          setRolloverStatus({
-            running: false,
-            message: createdCount > 0
-              ? `Archived ${createdCount} official report${createdCount === 1 ? '' : 's'} for ${formatWeekRange(previousWeek.weekStart, previousWeek.weekEnd)}.`
-              : `Weekly reset processed for ${formatWeekRange(previousWeek.weekStart, previousWeek.weekEnd)}.`,
-          });
-        }
-      } catch (error) {
-        console.error('Error processing weekly rollover:', error);
-        if (!cancelled) {
-          setRolloverStatus({
-            running: false,
-            message: 'Weekly rollover could not be completed. Please refresh and try again.',
-          });
-        }
-      }
-    };
-
-    runRollover();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    createWeeklyRecordsForRange,
-    currentUser,
-    db,
-    loading,
-    parentSettings.last_rollover_week_key,
-    rolloverStatus.running,
-    settingsReady,
-    weekConfig,
-  ]);
-
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'curriculum', label: 'Curriculum', icon: BookOpen },
-    { id: 'reports', label: 'Reports', icon: FileText },
-    { id: 'settings', label: 'Settings', icon: Calendar },
-  ];
-
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return 'Just now';
     const now = new Date();
@@ -657,6 +415,155 @@ const ParentDashboard = () => {
     parchment: '#dcd7d3',
     lavenderTint: '#f0eaff',
   };
+  const studentLimitSummary = buildEntitlementUsageSummary({
+    limitCheck: studentLimitCheck,
+    nounSingular: 'student',
+    planName: plan?.displayName || 'Free',
+  });
+  const studentLimitReached = Boolean(studentLimitCheck?.hasReachedLimit);
+  const studentLimitMessage = studentLimitReached
+    ? `${studentLimitSummary} ${studentLimitCheck?.upgradeCopy || ''} You can still delete existing students to get back under the cap.`
+    : studentLimitSummary;
+  const openAddStudentModal = () => {
+    if (!canAddStudent) return;
+    setModalOpen(true);
+  };
+  const entitlementSummary = {
+    plan,
+    studentLimitCheck,
+    curriculumLimitCheck,
+    featureAccessList,
+    subscriptionStatusMeta,
+    isMissingEntitlementDoc,
+    trialEndsAt,
+    currentPeriodEnd,
+  };
+  const renderHeaderPrimaryAction = (actionId) => {
+    if (actionId !== DASHBOARD_HEADER_ACTIONS.ADD_STUDENT) return null;
+
+    return (
+      <button
+        onClick={openAddStudentModal}
+        disabled={!canAddStudent}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:cursor-not-allowed"
+        style={{
+          backgroundColor: canAddStudent ? C.charcoal : 'rgba(41,40,39,0.2)',
+          color: '#fff',
+          fontSize: 13,
+          fontWeight: 700,
+          opacity: canAddStudent ? 1 : 0.75,
+        }}
+        onMouseEnter={e => { if (canAddStudent) e.currentTarget.style.backgroundColor = '#3a3937'; }}
+        onMouseLeave={e => { e.currentTarget.style.backgroundColor = canAddStudent ? C.charcoal : 'rgba(41,40,39,0.2)'; }}
+      >
+        <Plus className="w-4 h-4" />
+        {studentLimitReached ? 'Student Limit Reached' : 'Add Student'}
+      </button>
+    );
+  };
+
+  const renderHeaderFilter = (filterId) => {
+    if (filterId !== DASHBOARD_HEADER_FILTERS.WEEK_RANGE) return null;
+
+    return (
+      <div className="flex items-center gap-2">
+        <Calendar className="w-4 h-4" style={{ color: 'rgba(41,40,39,0.4)' }} />
+        <select
+          value={selectedWeekOffset}
+          onChange={(e) => setSelectedWeekOffset(parseInt(e.target.value, 10))}
+          className="px-3 py-2 rounded-lg text-[13px] focus:outline-none"
+          style={{ border: `1px solid ${C.parchment}`, backgroundColor: '#fff', color: C.charcoal, fontWeight: 460 }}
+        >
+          {getWeekPickerOptions(weekConfig).map(option => (
+            <option key={option.value} value={option.value}>
+              {option.label} ({option.displayText})
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  };
+
+  const renderHeaderSecondaryAction = (actionId) => {
+    if (actionId === DASHBOARD_HEADER_ACTIONS.DOWNLOAD_WEEKLY_REPORT) {
+      return (
+        <button
+          onClick={() => downloadWeeklyReport(selectedWeekOffset)}
+          disabled={isGeneratingReport}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ backgroundColor: C.cream, color: C.charcoal, fontSize: 13, fontWeight: 700 }}
+          onMouseEnter={e => { if (!isGeneratingReport) e.currentTarget.style.backgroundColor = C.parchment; }}
+          onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}
+        >
+          <Download className="w-4 h-4" />
+          {isGeneratingReport ? 'Generating...' : 'Download Report'}
+        </button>
+      );
+    }
+
+    if (actionId === DASHBOARD_HEADER_ACTIONS.VIEW_REPORTS) {
+      if (selectedWeekOffset >= 0) return null;
+
+      return (
+        <button
+          onClick={() => navigate(`/dashboard/${dashboardFeaturesById.reports.path}`)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
+          style={{ backgroundColor: C.charcoal, color: '#fff', fontSize: 13, fontWeight: 700 }}
+          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
+          onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}
+        >
+          <FileText className="w-4 h-4" />
+          View Reports
+        </button>
+      );
+    }
+
+    return null;
+  };
+
+  const renderHeaderNotice = (noticeId) => {
+    if (noticeId !== DASHBOARD_HEADER_NOTICES.STUDENT_PLAN_USAGE || !studentLimitCheck) return null;
+
+    return (
+      <div
+        className="mt-3 rounded-xl px-4 py-3"
+        style={{
+          backgroundColor: studentLimitReached ? `${C.lavenderTint}` : '#fbfaf8',
+          border: `1px solid ${studentLimitReached ? `${C.lavender}90` : C.parchment}`,
+          color: C.charcoal,
+        }}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[12px] uppercase tracking-wider font-label" style={{ color: studentLimitReached ? C.amethyst : 'rgba(41,40,39,0.5)' }}>
+            Student Plan Usage
+          </p>
+          <span className="text-[12px] font-label" style={{ color: studentLimitReached ? C.amethyst : 'rgba(41,40,39,0.45)' }}>
+            {studentLimitCheck.isUnlimited ? `${studentLimitCheck.usage} active` : `${studentLimitCheck.usage}/${studentLimitCheck.limit}`}
+          </span>
+        </div>
+        <p className="mt-1.5 text-[13px] font-body" style={{ color: studentLimitReached ? C.charcoal : 'rgba(41,40,39,0.68)' }}>
+          {studentLimitMessage}
+        </p>
+      </div>
+    );
+  };
+
+  const renderRightRail = () => {
+    if (activeFeatureShell.rightRail?.mode !== DASHBOARD_RIGHT_RAIL_MODES.LIVE_PULSE) return null;
+
+    return (
+      <DashboardLivePulseRail
+        colors={C}
+        formatTimestamp={formatTimestamp}
+        getRealTimeWeeklyProgress={getRealTimeWeeklyProgress}
+        getWeekSubmissions={getWeekSubmissions}
+        selectedWeekOffset={selectedWeekOffset}
+        setViewingSummary={setViewingSummary}
+        students={students}
+        submissions={submissions}
+      />
+    );
+  };
 
   return (
     <div className="min-h-screen" style={{ fontFamily: FONT, backgroundColor: '#f5f3ef' }}>
@@ -674,26 +581,43 @@ const ParentDashboard = () => {
 
           <nav className="flex-1 p-3">
             <div className="space-y-0.5">
-              {navItems.map((item) => {
-                const isActive = activeNav === item.id;
-                const Icon = item.icon;
+              {navigableDashboardFeatures.map((feature) => {
+                const Icon = feature.icon;
                 return (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveNav(item.id)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all"
-                    style={{
-                      backgroundColor: isActive ? 'rgba(203,183,251,0.15)' : 'transparent',
-                      color: isActive ? C.lavender : 'rgba(255,255,255,0.5)',
+                  <NavLink
+                    key={feature.id}
+                    to={feature.path}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all hover:bg-white/5"
+                    style={({ isActive }) => ({
+                      backgroundColor: isActive
+                        ? 'rgba(203,183,251,0.15)'
+                        : (feature.isLocked ? 'rgba(255,255,255,0.03)' : 'transparent'),
+                      color: isActive
+                        ? C.lavender
+                        : (feature.isLocked ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.5)'),
                       fontWeight: isActive ? 540 : 460,
                       fontSize: 14,
-                    }}
-                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'; }}
-                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    })}
                   >
-                    <Icon className="w-4 h-4 flex-shrink-0" />
-                    <span>{item.label}</span>
-                  </button>
+                    {({ isActive }) => (
+                      <>
+                        <Icon className="w-4 h-4 flex-shrink-0" />
+                        <span>{feature.label}</span>
+                        {feature.isLocked ? (
+                          <span
+                            className="ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] font-label"
+                            style={{
+                              backgroundColor: 'rgba(255,255,255,0.08)',
+                              color: isActive ? C.lavender : 'rgba(255,255,255,0.72)',
+                            }}
+                          >
+                            <Lock className="w-3 h-3" />
+                            Locked
+                          </span>
+                        ) : null}
+                      </>
+                    )}
+                  </NavLink>
                 );
               })}
             </div>
@@ -719,82 +643,32 @@ const ParentDashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h2 style={{ fontSize: 22, fontWeight: 540, lineHeight: 0.96, letterSpacing: '-0.4px', color: C.charcoal }}>
-                  {activeNav === 'dashboard'
-                    ? 'Students'
-                    : activeNav === 'curriculum'
-                      ? 'Curriculum'
-                      : activeNav === 'reports'
-                        ? 'Reports'
-                        : 'Settings'}
+                  {activeFeature.header.title}
                 </h2>
                 <p className="text-[13px] mt-1" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>
-                  {activeNav === 'dashboard' ? 'Manage your student accounts and access' :
-                   activeNav === 'curriculum' ? 'Manage subjects and learning resources' :
-                   activeNav === 'reports' ? 'View weekly reports and student progress' :
-                   'Manage school calendar and weekly reset settings'}
+                  {activeFeature.header.description}
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                {activeNav === 'dashboard' && (
-                  <button
-                    onClick={() => setModalOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
-                    style={{ backgroundColor: C.charcoal, color: '#fff', fontSize: 13, fontWeight: 700 }}
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Student
-                  </button>
-                )}
+                {activeFeatureShell.headerSlots.primaryAction && renderHeaderPrimaryAction(activeFeatureShell.headerSlots.primaryAction)}
+                {activeFeatureShell.headerSlots.filters.map((filterId) => (
+                  <React.Fragment key={filterId}>
+                    {renderHeaderFilter(filterId)}
+                  </React.Fragment>
+                ))}
+                {activeFeatureShell.headerSlots.secondaryActions.map((actionId) => (
+                  <React.Fragment key={actionId}>
+                    {renderHeaderSecondaryAction(actionId)}
+                  </React.Fragment>
+                ))}
 
-                {activeNav === 'dashboard' && (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4" style={{ color: 'rgba(41,40,39,0.4)' }} />
-                      <select
-                        value={selectedWeekOffset}
-                        onChange={(e) => setSelectedWeekOffset(parseInt(e.target.value))}
-                        className="px-3 py-2 rounded-lg text-[13px] focus:outline-none"
-                        style={{ border: `1px solid ${C.parchment}`, backgroundColor: '#fff', color: C.charcoal, fontWeight: 460 }}
-                      >
-                        {getWeekPickerOptions(weekConfig).map(option => (
-                          <option key={option.value} value={option.value}>
-                            {option.label} ({option.displayText})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <button
-                      onClick={() => handleDownloadWeeklyReport(selectedWeekOffset)}
-                      disabled={isGeneratingReport}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{ backgroundColor: C.cream, color: C.charcoal, fontSize: 13, fontWeight: 700 }}
-                      onMouseEnter={e => { if (!isGeneratingReport) e.currentTarget.style.backgroundColor = C.parchment; }}
-                      onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}
-                    >
-                      <Download className="w-4 h-4" />
-                      {isGeneratingReport ? 'Generating...' : 'Download Report'}
-                    </button>
-
-                    {selectedWeekOffset < 0 && (
-                      <button
-                        onClick={() => setActiveNav('reports')}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
-                        style={{ backgroundColor: C.charcoal, color: '#fff', fontSize: 13, fontWeight: 700 }}
-                        onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
-                        onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}
-                      >
-                        <FileText className="w-4 h-4" />
-                        View Reports
-                      </button>
-                    )}
-                  </>
-                )}
-
-
-                <div className="flex items-center gap-3 pl-3" style={{ borderLeft: `1px solid ${C.parchment}` }}>
+                <div
+                  className="flex items-center gap-3"
+                  style={{
+                    borderLeft: hasShellHeaderControls ? `1px solid ${C.parchment}` : 'none',
+                    paddingLeft: hasShellHeaderControls ? 12 : 0,
+                  }}
+                >
                   <span className="text-[13px]" style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>{currentUser?.email}</span>
                   <button
                     onClick={handleLogout}
@@ -811,165 +685,40 @@ const ParentDashboard = () => {
                 {rolloverStatus.message}
               </div>
             )}
+            {activeFeatureShell.headerSlots.notices.map((noticeId) => (
+              <React.Fragment key={noticeId}>
+                {renderHeaderNotice(noticeId)}
+              </React.Fragment>
+            ))}
           </header>
 
           {/* Main Content Area */}
           <main className="flex-1 overflow-auto">
-            {activeNav === 'dashboard' ? (
-              <div className="p-8">
-                {loading ? (
-                  <div className="flex items-center justify-center h-64">
-                    <div className="animate-spin rounded-full h-8 w-8" style={{ borderBottom: `2px solid ${C.lavender}`, border: `2px solid transparent`, borderBottomColor: C.lavender }} />
-                  </div>
-                ) : students.length === 0 ? (
-                  <div className="text-center py-16">
-                    <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: '#f0eaff' }}>
-                      <Users className="w-7 h-7" style={{ color: C.amethyst }} />
-                    </div>
-                    <h3 className="text-[17px] mb-2" style={{ fontWeight: 540, color: C.charcoal }}>No students yet</h3>
-                    <p className="text-[14px] mb-6" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>Add your first student to get started with GridWorkz</p>
-                    <button
-                      onClick={() => setModalOpen(true)}
-                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg transition-colors"
-                      style={{ backgroundColor: C.charcoal, color: '#fff', fontSize: 14, fontWeight: 700 }}
-                      onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
-                      onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}
-                    >
-                      <Plus className="w-4 h-4" />
-                      Add Your First Student
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {students.map((student) => (
-                      <StudentCard
-                        key={student.id}
-                        student={student}
-                        onDelete={handleDeleteStudent}
-                        onViewProgress={handleViewStudentProgress}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : activeNav === 'curriculum' ? (
-              <Curriculum />
-            ) : activeNav === 'reports' ? (
-              <Reports parentSettings={parentSettings} />
-            ) : activeNav === 'settings' ? (
-              <Settings
-                settings={parentSettings}
-                onSave={handleSaveSettings}
-                saving={settingsSaving}
-              />
-            ) : null}
+            <Outlet
+              context={{
+                canAddStudent,
+                colors: C,
+                currentUser,
+                db,
+                entitlementSummary,
+                featureShellState: activeFeature.shellState,
+                handleDeleteStudent,
+                handleSaveSettings,
+                handleViewStudentProgress,
+                loading,
+                lockdownAccess,
+                openAddStudentModal,
+                parentSettings,
+                planName: plan?.displayName || 'Free',
+                resolvedDashboardFeaturesById,
+                settingsSaving,
+                studentLimitReached,
+                students,
+              }}
+            />
           </main>
         </div>
-
-        {/* Live Pulse */}
-        <div className="w-80 flex flex-col flex-shrink-0" style={{ backgroundColor: '#ffffff', borderLeft: `1px solid ${C.parchment}` }}>
-          <div className="px-6 pt-6 pb-5" style={{ borderBottom: `1px solid ${C.parchment}` }}>
-            <div className="flex items-center gap-2 mb-1">
-              <Activity className="w-4 h-4" style={{ color: C.amethyst }} />
-              <h3 style={{ fontSize: 15, fontWeight: 540, color: C.charcoal }}>Live Pulse</h3>
-            </div>
-            <p className="text-[12px]" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>Real-time activity feed</p>
-          </div>
-
-          <div className="flex-1 overflow-auto p-5">
-            {submissions.length === 0 ? (
-              <div className="text-center py-10">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-3" style={{ backgroundColor: '#f0eaff' }}>
-                  <Activity className="w-5 h-5" style={{ color: 'rgba(113,76,182,0.5)' }} />
-                </div>
-                <p className="text-[13px]" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>No submissions yet</p>
-                <p className="text-[12px] mt-1" style={{ color: 'rgba(41,40,39,0.3)', fontWeight: 460 }}>Student activity will appear here</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* Weekly Progress Summary */}
-                <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(240,234,255,0.5)', border: `1px solid rgba(203,183,251,0.4)` }}>
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 style={{ fontSize: 13, fontWeight: 540, color: C.charcoal }}>Weekly Progress</h4>
-                    <span className="text-[11px] uppercase tracking-wider" style={{ color: C.amethyst, fontWeight: 700 }}>
-                      {getWeekLabel(selectedWeekOffset)}
-                    </span>
-                  </div>
-                  <div className="space-y-3">
-                    {students.map(student => {
-                      const progress = getRealTimeWeeklyProgress(student.id, selectedWeekOffset);
-                      if (progress.total === 0) return null;
-                      return (
-                        <div key={student.id}>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-[13px]" style={{ color: C.charcoal, fontWeight: 460 }}>{student.name}</span>
-                            <span className="text-[12px]" style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 700 }}>
-                              {progress.completed}/{progress.total}
-                            </span>
-                          </div>
-                          <div className="w-full rounded-full h-1.5 overflow-hidden" style={{ backgroundColor: C.parchment }}>
-                            <div
-                              className="h-full rounded-full transition-all duration-500"
-                              style={{ width: `${progress.percentage}%`, backgroundColor: C.lavender }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Activity Feed */}
-                <div>
-                  <h4 className="text-[11px] uppercase tracking-wider mb-3" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>
-                    Activity — {getWeekLabel(selectedWeekOffset)}
-                  </h4>
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {(() => {
-                      const weekSubmissions = getWeekSubmissions(selectedWeekOffset);
-                      if (weekSubmissions.length === 0) {
-                        return (
-                          <p className="text-[13px] text-center py-4" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>
-                            No submissions {selectedWeekOffset === 0 ? 'this week' : 'for selected week'}
-                          </p>
-                        );
-                      }
-                      return weekSubmissions.map((submission) => (
-                        <div
-                          key={submission.id}
-                          className="flex items-start gap-3 p-3 rounded-xl cursor-pointer transition-colors"
-                          style={{ backgroundColor: C.cream }}
-                          onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
-                          onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}
-                          onClick={() => setViewingSummary(submission)}
-                        >
-                          <div className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: C.lavender }} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[13px]" style={{ color: C.charcoal, fontWeight: 460 }}>
-                              <span style={{ fontWeight: 540 }}>{students.find(s => s.id === submission.student_id)?.name || 'Unknown'}</span>
-                              {' '}completed{' '}
-                              <span style={{ color: C.amethyst }}>{submission.subject_name}</span>
-                            </p>
-                            {submission.custom_field_responses && Object.keys(submission.custom_field_responses).length > 0 && (
-                              <div className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full" style={{ backgroundColor: '#f0eaff' }}>
-                                <Info className="w-3 h-3" style={{ color: C.amethyst }} />
-                                <span className="text-[10px]" style={{ color: C.amethyst, fontWeight: 700 }}>Extra Details</span>
-                              </div>
-                            )}
-                            <p className="text-[11px] mt-1 flex items-center gap-1" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>
-                              <Clock className="w-3 h-3" />
-                              {formatTimestamp(submission.timestamp)}
-                            </p>
-                          </div>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        {renderRightRail()}
       </div>
 
       {/* Add Student Modal */}

@@ -1,0 +1,22 @@
+workflow_name: subscriptions-and-entitlements
+workflow_title: "Subscriptions And Entitlements Workflow"
+workflow_summary: "Implement the subscription and entitlement foundation in bounded phases that match the roadmap: shared plan contracts first, then create limits, then visible account states, then lockdown gating, and finally trusted backend enforcement."
+workflow_status: complete
+source_plan_path: "docs/upgrades/subscriptions-and-entitlements.md"
+current_phase_number: 5
+current_phase_slug: phase-05-trusted-entitlement-enforcement
+current_role: none
+phase_status: done
+owner: none
+last_completed_phase_number: 5
+last_completed_phase_slug: phase-05-trusted-entitlement-enforcement
+blocked_reason: none
+last_updated: 2026-05-05
+active_phase_path: "docs/upgrades/subscriptions-and-entitlements-workflow/phases/phase-05-trusted-entitlement-enforcement/phase.md"
+active_run_log_path: "docs/upgrades/subscriptions-and-entitlements-workflow/phases/phase-05-trusted-entitlement-enforcement/run-log.md"
+phase_sequence:
+  - phase-01-entitlement-foundation
+  - phase-02-create-limit-gates
+  - phase-03-account-visibility-and-locked-states
+  - phase-04-lockdown-entitlement-integration
+  - phase-05-trusted-entitlement-enforcement

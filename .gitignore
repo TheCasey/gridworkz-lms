@@ -44,3 +44,7 @@ firebase-debug.log
 # Temporary files
 tmp/
 temp/
+
+# Local Codex / browser-use artifacts
+.codex/
+.playwright-cli/

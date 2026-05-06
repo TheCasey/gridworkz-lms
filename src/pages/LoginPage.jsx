@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 const FONT = "'Super Sans VF', system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, sans-serif";

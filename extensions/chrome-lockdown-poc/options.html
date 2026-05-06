@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GridWorkz Lockdown PoC Setup</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="options-shell">
+    <main class="page-shell">
+      <section class="panel">
+        <p class="eyebrow">GridWorkz Lockdown PoC</p>
+        <h1>Extension pairing</h1>
+        <p class="muted">
+          Pair this browser to one saved Firestore policy document. The pairing code is the recommended PoC path because it bundles the public Firebase settings the extension needs for polling.
+        </p>
+
+        <div class="section">
+          <h2>Recommended setup</h2>
+          <div class="form-stack">
+            <div class="field-group">
+              <label for="pairing-code">Pairing code</label>
+              <textarea id="pairing-code" placeholder="Paste the pairing code from the parent dashboard"></textarea>
+              <p class="field-help">
+                The pairing code carries the policy ID plus the public Firebase project settings required for remote polling in this PoC.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Manual fallback</h2>
+          <div class="form-stack">
+            <div class="field-group">
+              <label for="policy-id">Policy ID</label>
+              <input id="policy-id" type="text" placeholder="Parent policy document id" />
+            </div>
+            <div class="field-group">
+              <label for="project-id">Firebase project ID</label>
+              <input id="project-id" type="text" placeholder="gridworkz-example-project" />
+            </div>
+            <div class="field-group">
+              <label for="api-key">Firebase web API key</label>
+              <input id="api-key" type="text" placeholder="AIza..." />
+              <p class="field-help">
+                Manual entry is only here to satisfy raw policy-ID pairing in the PoC. These are public web config values, not secret admin credentials.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="cluster">
+          <button class="primary-button" id="save-button" type="button">Save pairing</button>
+          <button class="secondary-button" id="clear-button" type="button">Clear pairing</button>
+          <button class="secondary-button" id="popup-button" type="button">Back to popup</button>
+        </div>
+
+        <p class="status-message" id="status-message"></p>
+
+        <div class="note">
+          This Phase 4 pairing model is intentionally narrow. It does not implement device identity, hardened enrollment, or kiosk protections.
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

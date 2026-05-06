@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lockdown allowlist</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="panel">
+        <p class="eyebrow">GridWorkz Lockdown PoC</p>
+        <h1>Current allowlist</h1>
+        <p class="muted">
+          Phase 1 keeps policy local and only enforces top-level website navigation.
+          The creator list is visible now and becomes enforcement data in Phase 2.
+        </p>
+        <p class="last-updated spacer-top" id="updated-at"></p>
+
+        <section class="section">
+          <h2>Allowed website origins</h2>
+          <ul class="section-list" id="origin-list"></ul>
+          <div class="empty-state" id="origin-empty" hidden>
+            No website origins are currently allowlisted.
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>Approved YouTube creators</h2>
+          <ul class="section-list" id="creator-list"></ul>
+          <div class="empty-state" id="creator-empty" hidden>
+            No creator entries are currently stored in the local policy.
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="allowlist.js"></script>
+  </body>
+</html>

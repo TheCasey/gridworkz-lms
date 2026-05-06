@@ -9,6 +9,29 @@ service cloud.firestore {
     function isOwner(parentId) {
       return isAuth() && request.auth.uid == parentId;
     }
+    function entitlementDoc(parentId) {
+      return exists(/databases/$(database)/documents/accountEntitlements/$(parentId))
+        ? get(/databases/$(database)/documents/accountEntitlements/$(parentId)).data
+        : null;
+    }
+    function entitlementPlanId(parentId) {
+      let entitlement = entitlementDoc(parentId);
+      return entitlement != null && entitlement.plan_id is string
+        ? entitlement.plan_id
+        : "free";
+    }
+    function hasLockdownEntitlement(parentId) {
+      let entitlement = entitlementDoc(parentId);
+      return entitlementPlanId(parentId) == "lockdown" ||
+        (
+          entitlement != null &&
+          entitlement.feature_overrides is map &&
+          (
+            entitlement.feature_overrides.can_use_lockdown_extension == true ||
+            entitlement.feature_overrides.can_use_lockdown_kiosk == true
+          )
+        );
+    }
     function studentExists(studentId) {
       return exists(/databases/$(database)/documents/students/$(studentId));
     }
@@ -42,14 +65,14 @@ service cloud.firestore {
     // Students: portal resolves student records by slug, which requires query/list access
     match /students/{studentId} {
       allow read: if true;
-      allow create: if isOwner(request.resource.data.parent_id);
+      allow create: if false;
       allow update, delete: if isOwner(resource.data.parent_id);
     }
 
     // Subjects: parents own their records; students need read access for the portal
     match /subjects/{subjectId} {
       allow read: if true;
-      allow create: if isOwner(request.resource.data.parent_id);
+      allow create: if false;
       allow update, delete: if isOwner(resource.data.parent_id);
     }
 
@@ -83,9 +106,35 @@ service cloud.firestore {
       allow read, write: if isAuth() && request.auth.uid == userId;
     }
 
-    // Everything else (dailyLogs, etc.): authenticated only
-    match /{document=**} {
+    // Account entitlements: server-owned billing and plan state
+    match /accountEntitlements/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    // Lockdown PoC policies: public read for Phase 4 extension polling, owner-only writes
+    match /lockdownPolicies/{policyId} {
+      allow get: if true;
+      allow list, delete: if isAuth() && request.auth.uid == policyId;
+      allow create: if isAuth() &&
+        request.auth.uid == policyId &&
+        request.resource.data.parent_id == request.auth.uid &&
+        hasLockdownEntitlement(request.auth.uid);
+      allow update: if isAuth() &&
+        request.auth.uid == policyId &&
+        resource.data.parent_id == request.auth.uid &&
+        request.resource.data.parent_id == request.auth.uid &&
+        hasLockdownEntitlement(request.auth.uid);
+    }
+
+    // Daily logs remain parent-authenticated until a narrower trusted path exists.
+    match /dailyLogs/{logId} {
       allow read, write: if isAuth();
+    }
+
+    // Deny everything else by default so specific collection matches stay authoritative.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

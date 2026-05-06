@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GridWorkz Lockdown PoC</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="popup-shell">
+    <main class="page-shell">
+      <section class="panel">
+        <p class="eyebrow">GridWorkz Lockdown PoC</p>
+        <h1>Extension shell</h1>
+        <p class="muted" id="status-copy">
+          Local cached policy is ready. Pair the extension to a remote policy to sync parent changes.
+        </p>
+
+        <div class="status-pill">
+          <span class="status-dot off" id="status-dot"></span>
+          <span id="status-pill-label">Blocking off</span>
+        </div>
+
+        <div class="section">
+          <h2>Remote sync</h2>
+          <div class="info-card spacer-top">
+            <strong id="sync-status-label">Not paired</strong>
+            <span id="sync-status-copy">This extension is still using its local PoC policy.</span>
+          </div>
+          <p class="caption spacer-top" id="pairing-summary">
+            No pairing saved yet.
+          </p>
+          <p class="caption" id="sync-timestamp">
+            No remote sync has completed yet.
+          </p>
+        </div>
+
+        <div class="stats">
+          <article class="stat-card">
+            <strong id="origin-count">0</strong>
+            <span>Allowed websites</span>
+          </article>
+          <article class="stat-card">
+            <strong id="creator-count">0</strong>
+            <span>Approved creators</span>
+          </article>
+        </div>
+
+        <div class="button-stack">
+          <button class="primary-button" id="toggle-button" type="button">
+            Turn blocking on
+          </button>
+          <button class="secondary-button" id="sync-button" type="button">
+            Sync remote policy now
+          </button>
+          <button class="secondary-button" id="setup-button" type="button">
+            Pair or edit sync setup
+          </button>
+          <button class="secondary-button" id="allowlist-button" type="button">
+            View allowlist
+          </button>
+        </div>
+
+        <p class="caption spacer-top" id="updated-at">
+          Cached policy state has not been changed yet.
+        </p>
+      </section>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

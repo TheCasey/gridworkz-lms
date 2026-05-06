@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   getFirestore, collection, addDoc, query, where, onSnapshot, orderBy, limit,
@@ -13,6 +13,7 @@ import {
   loadTimerFromStorage, clearTimerFromStorage, getTimerKey, formatRemainingTime,
   getTimerSessionDocId, hydrateStoredTimer
 } from '../utils/timerUtils';
+import useStudentAccessPolicy, { StudentAccessPolicyReasonCodes } from '../hooks/useStudentAccessPolicy';
 
 const ALARM_SOUNDS = [
   { file: 'alarm-clock.mp3', label: 'Alarm Clock' },
@@ -54,7 +55,7 @@ const StudentPortal = () => {
   const [error, setError] = useState('');
   const [student, setStudent] = useState(null);
   const [subjects, setSubjects] = useState([]);
-  const [submissions, setSubmissions] = useState([]);
+  const [, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [selectedBlockIndex, setSelectedBlockIndex] = useState(null);
@@ -86,6 +87,13 @@ const StudentPortal = () => {
     student?.week_reset_hour,
     student?.week_reset_minute,
   ]);
+  const { portalAccess, getNextAvailableBlock, getSubjectPolicy } = useStudentAccessPolicy({
+    student,
+    subjects,
+    completedBlocks,
+    activeTimers,
+    submissionLocksRef,
+  });
   const getSoundUrl = (file) => `${import.meta.env.BASE_URL}sounds/${file}`;
 
   const ensureAlarmAudio = () => {
@@ -418,26 +426,24 @@ const StudentPortal = () => {
     }
   };
 
-  const getNextAvailableBlock = (subject) => {
-    if (!subject) return null;
-    const total = subject?.block_count || 10;
-    const completed = completedBlocks[subject.id] || [];
-    for (let i = 0; i < total; i++) { if (!completed.includes(i)) return i; }
-    return null;
-  };
-
   const startTimer = async (subject, preferredBlockIndex = null) => {
     if (!subject) return;
+    const subjectPolicy = getSubjectPolicy(subject, { blockIndex: preferredBlockIndex });
+    const timerStartPolicy = subjectPolicy.canStartTimer;
+    if (!timerStartPolicy.allowed) {
+      if (
+        timerStartPolicy.blockedReason?.code === StudentAccessPolicyReasonCodes.NO_AVAILABLE_BLOCKS
+        || timerStartPolicy.blockedReason?.code === StudentAccessPolicyReasonCodes.SUBJECT_COMPLETE
+      ) {
+        alert('All blocks completed!');
+      } else if (timerStartPolicy.blockedReason?.message) {
+        setError(timerStartPolicy.blockedReason.message);
+      }
+      return;
+    }
+
     await primeAlarmAudio();
-    const otherRunning = Object.keys(activeTimers).some(id => id !== subject.id);
-    if (otherRunning) return;
-    const nextBlock = getNextAvailableBlock(subject);
-    const candidateBlock = (
-      preferredBlockIndex !== null &&
-      preferredBlockIndex !== undefined &&
-      !isBlockCompleted(subject, preferredBlockIndex)
-    ) ? preferredBlockIndex : nextBlock;
-    if (candidateBlock === null || candidateBlock === undefined) { alert('All blocks completed!'); return; }
+    const candidateBlock = timerStartPolicy.meta?.candidateBlockIndex;
 
     const config = {
       ...createTimerConfig(subject?.block_length || 30),
@@ -573,7 +579,8 @@ const StudentPortal = () => {
   };
 
   const handleBlockSelect = (subject, blockIndex) => {
-    if (!subject || isBlockCompleted(subject, blockIndex) || isSubjectLocked(subject)) return;
+    const subjectPolicy = getSubjectPolicy(subject, { blockIndex });
+    if (!subject || isBlockCompleted(subject, blockIndex) || !subjectPolicy.subjectAvailability.allowed) return;
     setExpandedSubjectId(subject.id);
     setExpandedBlockIndex(blockIndex);
     setError('');
@@ -581,13 +588,13 @@ const StudentPortal = () => {
 
   const openCompletionModal = (subject, blockIndex) => {
     if (!subject || blockIndex === null || blockIndex === undefined) return;
-    if (isSubmissionLocked(subject.id, blockIndex)) { setError('Submission in progress...'); return; }
+    const subjectPolicy = getSubjectPolicy(subject, { blockIndex });
+    if (!subjectPolicy.canSubmitBlock.allowed) {
+      setError(subjectPolicy.canSubmitBlock.blockedReason?.message || 'Unable to submit this block right now.');
+      return;
+    }
     if (subject.require_timer) {
       const timer = activeTimers[subject.id];
-      if (!timer || timer.blockIndex !== blockIndex || timer.remainingTime > 0) {
-        setError('Finish this block timer before submitting.');
-        return;
-      }
       setActiveTimers(prev => ({ ...prev, [subject.id]: { ...timer, isFinished: true, isRunning: false } }));
     }
 
@@ -605,12 +612,26 @@ const StudentPortal = () => {
     const timerBlock = activeTimers[subject.id]?.blockIndex;
     const selectedBlock = expandedSubjectId === subject.id ? expandedBlockIndex : null;
     const targetBlock = timerBlock ?? selectedBlock ?? getNextAvailableBlock(subject);
-    if (targetBlock === null || targetBlock === undefined) { alert('All blocks completed!'); return; }
+    const subjectPolicy = getSubjectPolicy(subject, { blockIndex: targetBlock });
+    if (!subjectPolicy.canSubmitBlock.allowed) {
+      if (subjectPolicy.canSubmitBlock.blockedReason?.code === StudentAccessPolicyReasonCodes.SUBJECT_COMPLETE) {
+        alert('All blocks completed!');
+      } else if (subjectPolicy.canSubmitBlock.blockedReason?.message) {
+        setError(subjectPolicy.canSubmitBlock.blockedReason.message);
+      }
+      return;
+    }
     openCompletionModal(subject, targetBlock);
   };
 
   const submitBlock = async (subject, blockIndex, summary) => {
     stopAlarm();
+    const subjectPolicy = getSubjectPolicy(subject, { blockIndex, ignoreSubmissionLock: true });
+    if (!subjectPolicy.canSubmitBlock.allowed) {
+      setError(subjectPolicy.canSubmitBlock.blockedReason?.message || 'Unable to submit this block right now.');
+      clearSubmissionLock(subject.id, blockIndex);
+      return;
+    }
     setSubmissionLock(subject.id, blockIndex);
     setSubmitting(true);
     try {
@@ -651,7 +672,6 @@ const StudentPortal = () => {
   };
 
   const isBlockCompleted = useMemo(() => (subject, blockIndex) => completedBlocks[subject.id]?.includes(blockIndex) || false, [completedBlocks]);
-  const isSubjectLocked = useMemo(() => (subject) => (completedBlocks[subject.id]?.length || 0) >= (subject?.block_count || 4), [completedBlocks]);
   const getSubjectProgress = useMemo(() => (subject) => completedBlocks[subject.id]?.length || 0, [completedBlocks]);
   const getWeeklyProgress = useMemo(() => () => {
     const total = subjects.reduce((s, sub) => s + (sub?.block_count || 0), 0);
@@ -781,20 +801,27 @@ const StudentPortal = () => {
           </div>
         )}
 
-        {subjects.length === 0 ? (
+        {!portalAccess.canViewSubjects.allowed || subjects.length === 0 ? (
           <div className="text-center py-16">
             <BookOpen className="w-10 h-10 mx-auto mb-4" style={{ color: 'rgba(41,40,39,0.2)' }} />
             <h3 style={{ fontSize: 18, fontWeight: 540, color: C.charcoal }} className="mb-2">No subjects available</h3>
-            <p style={{ fontSize: 14, color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>Your parent needs to set up your subjects first.</p>
+            <p style={{ fontSize: 14, color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>
+              {portalAccess.canViewSubjects.allowed
+                ? 'Your parent needs to set up your subjects first.'
+                : (portalAccess.canViewSubjects.blockedReason?.message || 'Subject access is currently unavailable.')}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {subjects.map((subject) => {
               const progress = getSubjectProgress(subject);
-              const locked = isSubjectLocked(subject);
-              const completed = progress >= (subject?.block_count || 0);
               const timer = activeTimers[subject.id];
               const selectedBlockForSubject = expandedSubjectId === subject.id ? expandedBlockIndex : null;
+              const subjectPolicy = getSubjectPolicy(subject, { blockIndex: selectedBlockForSubject });
+              const subjectAvailability = subjectPolicy.subjectAvailability;
+              const locked = !subjectAvailability.allowed;
+              const completed = subjectAvailability.status === 'completed';
+              const timerCompletionPolicy = timer ? getSubjectPolicy(subject, { blockIndex: timer.blockIndex }) : null;
               const selectedBlockObjective = selectedBlockForSubject !== null ? getBlockObjective(subject, selectedBlockForSubject) : null;
               const selectedBlockInstruction = selectedBlockForSubject !== null ? getEffectiveInstruction(subject, selectedBlockForSubject) : null;
               const selectedBlockFields = selectedBlockForSubject !== null ? getEffectiveCustomFields(subject, selectedBlockForSubject) : [];
@@ -849,20 +876,21 @@ const StudentPortal = () => {
                     <div className="flex gap-1.5 flex-wrap">
                       {Array.from({ length: subject?.block_count || 10 }, (_, i) => {
                         const blockCompleted = isBlockCompleted(subject, i);
+                        const blockPolicy = getSubjectPolicy(subject, { blockIndex: i });
                         const isWorkingOn = timer && timer.blockIndex === i && timer.isRunning && timer.remainingTime > 0;
                         const hasObjective = !!(subject.block_objectives?.[i]?.student_overrides?.[student?.id]?.instruction || subject.block_objectives?.[i]?.instruction);
                         const isSelected = selectedBlockForSubject === i;
                         return (
                           <button key={i}
                             onClick={() => handleBlockSelect(subject, i)}
-                            disabled={blockCompleted || isSubjectLocked(subject) || isSubmissionLocked(subject.id, i) || (!!timer && timer.blockIndex !== i)}
+                            disabled={blockCompleted || !blockPolicy.subjectAvailability.allowed || isSubmissionLocked(subject.id, i) || (!!timer && timer.blockIndex !== i)}
                             className={`w-10 h-10 rounded-lg text-[12px] transition-all relative ${isWorkingOn ? 'animate-pulse' : ''}`}
                             title={hasObjective ? 'Guided block — has specific instructions' : undefined}
                             style={{
-                              backgroundColor: blockCompleted ? C.lavenderTint : isSelected ? `${C.lavender}26` : isSubjectLocked(subject) ? C.cream : isWorkingOn ? 'rgba(203,183,251,0.2)' : '#ffffff',
+                              backgroundColor: blockCompleted ? C.lavenderTint : isSelected ? `${C.lavender}26` : !blockPolicy.subjectAvailability.allowed ? C.cream : isWorkingOn ? 'rgba(203,183,251,0.2)' : '#ffffff',
                               border: `1px solid ${blockCompleted ? C.lavender : isSelected ? C.amethyst : isWorkingOn ? C.lavender : hasObjective ? `${C.lavender}99` : C.parchment}`,
-                              color: blockCompleted ? C.amethyst : isSubjectLocked(subject) ? 'rgba(41,40,39,0.3)' : isSelected || isWorkingOn ? C.amethyst : 'rgba(41,40,39,0.5)',
-                              cursor: blockCompleted || isSubjectLocked(subject) || (!!timer && timer.blockIndex !== i) ? 'not-allowed' : 'pointer',
+                              color: blockCompleted ? C.amethyst : !blockPolicy.subjectAvailability.allowed ? 'rgba(41,40,39,0.3)' : isSelected || isWorkingOn ? C.amethyst : 'rgba(41,40,39,0.5)',
+                              cursor: blockCompleted || !blockPolicy.subjectAvailability.allowed || (!!timer && timer.blockIndex !== i) ? 'not-allowed' : 'pointer',
                               fontWeight: 460,
                             }}
                           >
@@ -879,7 +907,11 @@ const StudentPortal = () => {
                         );
                       })}
                     </div>
-                    {locked && <p className="text-[12px] mt-2" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>All blocks completed this week!</p>}
+                    {locked && (
+                      <p className="text-[12px] mt-2" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>
+                        {subjectAvailability.blockedReason?.message || 'All blocks completed this week!'}
+                      </p>
+                    )}
                   </div>
 
                   {hasSelectedDetails && (
@@ -965,10 +997,10 @@ const StudentPortal = () => {
 
                         <div className="flex gap-2">
                           {!timer ? (
-                            <button onClick={() => startTimer(subject, selectedBlockForSubject)} disabled={locked || Object.keys(activeTimers).some(id => id !== subject.id)}
+                            <button onClick={() => startTimer(subject, selectedBlockForSubject)} disabled={!subjectPolicy.canStartTimer.allowed}
                               className="flex-1 px-3 py-2 rounded-lg text-[13px] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                               style={{ backgroundColor: C.cream, color: C.charcoal, fontWeight: 700, fontFamily: FONT }}
-                              onMouseEnter={e => { if (!locked) e.currentTarget.style.backgroundColor = C.parchment; }}
+                              onMouseEnter={e => { if (subjectPolicy.canStartTimer.allowed) e.currentTarget.style.backgroundColor = C.parchment; }}
                               onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
                               Start Timer
                             </button>
@@ -1002,7 +1034,7 @@ const StudentPortal = () => {
                           ) : (
                             <>
                               <button onClick={() => handleCompleteBlock(subject)}
-                                disabled={submitting || isSubmissionLocked(subject.id, timer?.blockIndex)}
+                                disabled={submitting || isSubmissionLocked(subject.id, timer?.blockIndex) || !timerCompletionPolicy?.canSubmitBlock.allowed}
                                 className="flex-1 px-3 py-2 rounded-lg text-[13px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5 animate-pulse"
                                 style={{ backgroundColor: C.charcoal, color: '#fff', fontWeight: 700, fontFamily: FONT }}
                                 onMouseEnter={e => { if (!submitting) e.currentTarget.style.backgroundColor = '#3a3937'; }}
@@ -1021,7 +1053,7 @@ const StudentPortal = () => {
 
                           {!subject.require_timer && !timer && !locked && (
                             <button onClick={() => handleCompleteBlock(subject)}
-                              disabled={submitting || selectedBlockForSubject === null || isSubmissionLocked(subject.id, selectedBlockForSubject)}
+                              disabled={submitting || !subjectPolicy.canSubmitBlock.allowed}
                               className="flex-1 px-3 py-2 rounded-lg text-[13px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
                               style={{ backgroundColor: C.charcoal, color: '#fff', fontWeight: 700, fontFamily: FONT }}
                               onMouseEnter={e => { if (!submitting) e.currentTarget.style.backgroundColor = '#3a3937'; }}

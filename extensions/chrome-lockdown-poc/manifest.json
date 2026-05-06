@@ -1,0 +1,55 @@
+{
+  "manifest_version": 3,
+  "name": "GridWorkz Lockdown PoC",
+  "version": "0.2.0",
+  "description": "Phase 4 MV3 shell for lockdown pairing, remote sync, and cached enforcement.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "scripting",
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "https://firestore.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_page": "options.html",
+  "action": {
+    "default_title": "GridWorkz Lockdown PoC",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/watch*",
+        "https://www.youtube.com/shorts/*",
+        "https://youtube.com/watch*",
+        "https://youtube.com/shorts/*",
+        "https://m.youtube.com/watch*",
+        "https://m.youtube.com/shorts/*"
+      ],
+      "js": [
+        "youtube-content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "blocked.html",
+        "styles.css"
+      ],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ]
+    }
+  ]
+}

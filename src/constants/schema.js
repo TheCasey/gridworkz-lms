@@ -140,6 +140,40 @@ export const TimerSessionSchema = {
   updated_at: "timestamp"
 };
 
+// Lockdown Policy Schema (derived prototype policy document)
+export const LockdownPolicySchema = {
+  parent_id: "string", // Reference to parent's uid and document owner
+  is_enabled: "boolean", // Whether blocking is currently enabled
+  allowed_origins: "array", // Origin-level allowlist entries such as https://www.khanacademy.org
+  allowed_youtube_channels: "array", // Approved creators stored by stable channel_id
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
+// Account Entitlement nested schemas (server-owned billing and plan state)
+export const AccountEntitlementFeatureOverridesSchema = {
+  can_use_projects: "boolean", // Optional override for the planned projects feature
+  can_use_lockdown_extension: "boolean", // Optional override for browser extension access
+  can_use_lockdown_kiosk: "boolean" // Optional override for kiosk mode access
+};
+
+export const AccountEntitlementUsageSnapshotSchema = {
+  students: "number", // Cached student usage snapshot from trusted backend flows
+  curriculum_items: "number" // Cached active curriculum usage snapshot from trusted backend flows
+};
+
+export const AccountEntitlementSchema = {
+  parent_id: "string", // Parent uid and document owner; document id should match this uid
+  plan_id: "string", // Stable internal plan id: free | core | lockdown
+  subscription_status: "string", // trialing | active | past_due | canceled
+  billing_provider: "string", // Billing authority identifier, e.g. stripe
+  feature_overrides: "object", // See AccountEntitlementFeatureOverridesSchema; trusted-only
+  usage_snapshot: "object", // See AccountEntitlementUsageSnapshotSchema; preserved by trusted flows
+  trial_ends_at: "timestamp", // Nullable timestamp when a trial is active
+  current_period_end: "timestamp", // Nullable timestamp for current billing period
+  updated_at: "timestamp" // Last trusted backend update written by the billing webhook
+};
+
 // Export collection names for Firestore
 export const Collections = {
   PARENTS: "parents",
@@ -148,7 +182,15 @@ export const Collections = {
   WEEKLY_REPORTS: "weeklyReports",
   DAILY_LOGS: "dailyLogs",
   SUBMISSIONS: "submissions",
-  TIMER_SESSIONS: "timerSessions"
+  TIMER_SESSIONS: "timerSessions",
+  ACCOUNT_ENTITLEMENTS: "accountEntitlements",
+  LOCKDOWN_POLICIES: "lockdownPolicies"
+};
+
+export const TrustedFunctionNames = {
+  CREATE_STUDENT: "createStudent",
+  CREATE_SUBJECT: "createSubject",
+  BILLING_WEBHOOK: "billingWebhook"
 };
 
 // Submission Schema (for individual block completions)

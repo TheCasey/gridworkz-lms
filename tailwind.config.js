@@ -52,11 +52,5 @@ export default {
       },
     },
   },
-  safelist: [
-    {
-      pattern: /^(bg|text|border|ring|fill|stroke)-(charcoal-ink|lavender-glow|parchment|warm-cream|mysteria|amethyst-link)(\/\d+)?$/,
-      variants: ['hover', 'focus', 'active', 'dark'],
-    },
-  ],
   plugins: [],
 }

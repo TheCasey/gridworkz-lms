@@ -42,6 +42,11 @@ export const formatTimeInputValue = (hour = 0, minute = 0) => (
   `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
 );
 
+export const buildSettingsFormState = (settings = {}) => ({
+  ...settings,
+  reset_time: formatTimeInputValue(settings.week_reset_hour, settings.week_reset_minute),
+});
+
 export const parseTimeInputValue = (value) => {
   const [rawHour = '0', rawMinute = '0'] = String(value || '').split(':');
   const hour = Number.parseInt(rawHour, 10);

@@ -10,7 +10,6 @@ import {
   where, 
   orderBy, 
   getDocs, 
-  deleteDoc, 
   doc, 
   writeBatch 
 } from 'firebase/firestore';

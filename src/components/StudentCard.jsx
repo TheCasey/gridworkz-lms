@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Copy, Check, Trash2, Eye } from 'lucide-react';
 
 const StudentCard = ({ student, onDelete, onViewProgress }) => {

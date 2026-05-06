@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Website blocked</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="panel">
+        <p class="eyebrow">GridWorkz Lockdown PoC</p>
+        <h1>This site is blocked right now</h1>
+        <p class="muted">
+          Local blocking is active and this destination is not on the website allowlist.
+        </p>
+
+        <article class="info-card spacer-top">
+          <strong id="blocked-url">No blocked URL captured yet</strong>
+          <span id="blocked-at">Navigation details will appear here while testing the unpacked extension.</span>
+        </article>
+
+        <div class="note">
+          Top-level website navigation still redirects here. YouTube `watch` and `shorts` pages
+          now stay in-page and enforce approved creators by `channel_id`.
+        </div>
+
+        <section class="section">
+          <h2>Current allowed websites</h2>
+          <ul class="section-list" id="origin-list"></ul>
+          <div class="empty-state" id="origin-empty" hidden>
+            No website origins are currently allowlisted.
+          </div>
+        </section>
+
+        <div class="cluster">
+          <button class="secondary-button" id="view-allowlist" type="button">
+            Open allowlist details
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="blocked.js"></script>
+  </body>
+</html>

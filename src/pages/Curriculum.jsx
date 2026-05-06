@@ -1,20 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  getFirestore,
-  collection,
-  addDoc,
-  query,
-  where,
-  onSnapshot,
-  orderBy,
-  doc,
-  deleteDoc,
-  updateDoc,
-  serverTimestamp
-} from 'firebase/firestore';
-import { app } from '../firebase/firebaseConfig';
+import { serverTimestamp } from 'firebase/firestore';
 import { BookOpen, Plus, Trash2, Archive, Edit, ExternalLink, X } from 'lucide-react';
+import useEntitlements from '../hooks/useEntitlements';
+import useStudents from '../hooks/useStudents';
+import useSubjects from '../hooks/useSubjects';
+import useSubjectMutations from '../hooks/useSubjectMutations';
+import {
+  buildEntitlementUsageSummary,
+  isActiveCurriculumSubject,
+} from '../utils/entitlementUtils';
 
 const C = {
   mysteria: '#1b1938',
@@ -60,9 +55,6 @@ const Toggle = ({ value, onChange }) => (
 
 const Curriculum = () => {
   const { currentUser } = useAuth();
-  const [students, setStudents] = useState([]);
-  const [subjects, setSubjects] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingSubject, setEditingSubject] = useState(null);
 
@@ -80,24 +72,38 @@ const Curriculum = () => {
   const [expandedStudentOverrides, setExpandedStudentOverrides] = useState({});
   const [currentStep, setCurrentStep] = useState(1);
 
-  const db = getFirestore(app);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    const q = query(collection(db, 'students'), where('parent_id', '==', currentUser.uid), orderBy('name'));
-    const unsub = onSnapshot(q, (snap) => setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    return unsub;
-  }, [currentUser, db]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    const q = query(collection(db, 'subjects'), where('parent_id', '==', currentUser.uid), orderBy('title'));
-    const unsub = onSnapshot(q, (snap) => {
-      setSubjects(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    }, () => setLoading(false));
-    return unsub;
-  }, [currentUser, db]);
+  const { students } = useStudents({
+    parentId: currentUser?.uid,
+    enabled: Boolean(currentUser),
+    sortField: 'name',
+    sortDirection: 'asc',
+  });
+  const { subjects, loading } = useSubjects({
+    parentId: currentUser?.uid,
+    enabled: Boolean(currentUser),
+    sortField: 'title',
+    sortDirection: 'asc',
+  });
+  const {
+    plan,
+    curriculumLimitCheck,
+    canAddCurriculumItem,
+  } = useEntitlements({
+    parentId: currentUser?.uid,
+    students,
+    subjects,
+    enabled: Boolean(currentUser),
+  });
+  const {
+    archiveSubject,
+    deleteSubject,
+    saveSubject,
+  } = useSubjectMutations({
+    canAddCurriculumItem,
+    currentUser,
+    curriculumLimitCheck,
+    planName: plan?.displayName || 'Free',
+  });
 
   const handleAddResource = () => setResources([...resources, { name: '', url: '' }]);
   const handleRemoveResource = (i) => setResources(resources.filter((_, idx) => idx !== i));
@@ -249,6 +255,12 @@ const Curriculum = () => {
     setExpandedStudentOverrides({}); setCurrentStep(1); setShowAddForm(false); setEditingSubject(null);
   };
 
+  const openCreateSubjectForm = () => {
+    if (!canAddCurriculumItem) return;
+    resetForm();
+    setShowAddForm(true);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (currentStep < STEPS.length) { handleNext(); return; }
@@ -256,6 +268,19 @@ const Curriculum = () => {
       alert('Please select at least one student and enter a subject name');
       return;
     }
+
+    if (!editingSubject && !canAddCurriculumItem) {
+      alert(
+        `${buildEntitlementUsageSummary({
+          limitCheck: curriculumLimitCheck,
+          nounSingular: 'active subject',
+          nounPlural: 'active subjects',
+          planName: plan.displayName,
+        })} ${curriculumLimitCheck?.upgradeCopy || ''} You can still edit, archive, or delete existing subjects, and inactive records do not count toward this cap.`
+      );
+      return;
+    }
+
     try {
       const safeTotalBlocks = parsePositiveInt(totalBlocks, 10, { min: 1, max: 20 });
       const safeBlockLength = parsePositiveInt(blockLength, 30, { min: 5, max: 120 });
@@ -292,15 +317,16 @@ const Curriculum = () => {
         is_active: true,
         updated_at: serverTimestamp()
       };
-      if (editingSubject) {
-        await updateDoc(doc(db, 'subjects', editingSubject.id), data);
-      } else {
-        await addDoc(collection(db, 'subjects'), { ...data, created_at: serverTimestamp() });
+      const saved = await saveSubject({
+        editingSubject,
+        subjectData: data,
+      });
+
+      if (saved) {
+        resetForm();
       }
-      resetForm();
     } catch (err) {
-      console.error('Error saving subject:', err);
-      alert('Failed to save subject. Please try again.');
+      console.error('Unexpected subject submission error:', err);
     }
   };
 
@@ -321,18 +347,6 @@ const Curriculum = () => {
     setShowAddForm(true);
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this subject?')) {
-      try { await deleteDoc(doc(db, 'subjects', id)); }
-      catch (err) { alert('Failed to delete subject.'); }
-    }
-  };
-
-  const handleArchive = async (id) => {
-    try { await updateDoc(doc(db, 'subjects', id), { is_active: false, updated_at: serverTimestamp() }); }
-    catch (err) { alert('Failed to archive subject.'); }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -341,8 +355,19 @@ const Curriculum = () => {
     );
   }
 
-  const activeSubjects = subjects.filter(s => s.is_active);
+  const activeSubjects = subjects.filter(isActiveCurriculumSubject);
   const normalizedTotalBlocks = parsePositiveInt(totalBlocks, 10, { min: 1, max: 20 });
+  const curriculumLimitReached = Boolean(curriculumLimitCheck?.hasReachedLimit);
+  const curriculumLimitSummary = buildEntitlementUsageSummary({
+    limitCheck: curriculumLimitCheck,
+    nounSingular: 'active subject',
+    nounPlural: 'active subjects',
+    planName: plan.displayName,
+  });
+  const curriculumLimitMessage = curriculumLimitReached
+    ? `${curriculumLimitSummary} ${curriculumLimitCheck?.upgradeCopy || ''} You can still edit, archive, or delete existing subjects, and inactive or archived records do not count toward this cap.`
+    : `${curriculumLimitSummary} Inactive or archived subjects stay available for history and do not count toward this cap.`;
+  const isCreateSubjectBlocked = !editingSubject && curriculumLimitReached;
 
   return (
     <div className="p-8">
@@ -352,16 +377,42 @@ const Curriculum = () => {
           <p className="text-[14px] text-charcoal-ink/50 font-body mt-1">Manage subjects and learning resources</p>
         </div>
         <button
-          onClick={() => setShowAddForm(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
-          style={{ backgroundColor: C.charcoal, color: '#ffffff' }}
-          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
-          onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}
+          onClick={openCreateSubjectForm}
+          disabled={!canAddCurriculumItem}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors disabled:cursor-not-allowed"
+          style={{
+            backgroundColor: canAddCurriculumItem ? C.charcoal : 'rgba(41,40,39,0.2)',
+            color: '#ffffff',
+            opacity: canAddCurriculumItem ? 1 : 0.75,
+          }}
+          onMouseEnter={e => { if (canAddCurriculumItem) e.currentTarget.style.backgroundColor = '#3a3937'; }}
+          onMouseLeave={e => { e.currentTarget.style.backgroundColor = canAddCurriculumItem ? C.charcoal : 'rgba(41,40,39,0.2)'; }}
         >
           <Plus className="w-4 h-4" />
-          Add Subject
+          {curriculumLimitReached ? 'Subject Limit Reached' : 'Add Subject'}
         </button>
       </div>
+      {curriculumLimitCheck && (
+        <div
+          className="mb-6 rounded-2xl px-4 py-3"
+          style={{
+            backgroundColor: curriculumLimitReached ? `${C.lavenderTint}` : '#fbfaf8',
+            border: `1px solid ${curriculumLimitReached ? `${C.lavender}90` : C.parchment}`,
+          }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[12px] uppercase tracking-wider font-label" style={{ color: curriculumLimitReached ? C.amethyst : 'rgba(41,40,39,0.5)' }}>
+              Active Subject Usage
+            </p>
+            <span className="text-[12px] font-label" style={{ color: curriculumLimitReached ? C.amethyst : 'rgba(41,40,39,0.45)' }}>
+              {curriculumLimitCheck.isUnlimited ? `${curriculumLimitCheck.usage} active` : `${curriculumLimitCheck.usage}/${curriculumLimitCheck.limit}`}
+            </span>
+          </div>
+          <p className="mt-1.5 text-[13px] font-body" style={{ color: curriculumLimitReached ? C.charcoal : 'rgba(41,40,39,0.68)' }}>
+            {curriculumLimitMessage}
+          </p>
+        </div>
+      )}
 
       {/* Add/Edit Modal */}
       {showAddForm && (
@@ -383,6 +434,22 @@ const Curriculum = () => {
                   <X className="w-5 h-5" />
                 </button>
               </div>
+              {!editingSubject && curriculumLimitCheck && (
+                <div
+                  className="mx-6 mb-4 rounded-xl px-4 py-3"
+                  style={{
+                    backgroundColor: isCreateSubjectBlocked ? `${C.lavenderTint}` : '#fbfaf8',
+                    border: `1px solid ${isCreateSubjectBlocked ? `${C.lavender}90` : C.parchment}`,
+                  }}
+                >
+                  <p className="text-[12px] uppercase tracking-wider font-label" style={{ color: isCreateSubjectBlocked ? C.amethyst : 'rgba(41,40,39,0.5)' }}>
+                    Active Subject Limit
+                  </p>
+                  <p className="mt-1.5 text-[13px] font-body" style={{ color: C.charcoal }}>
+                    {curriculumLimitMessage}
+                  </p>
+                </div>
+              )}
               {/* Step indicator */}
               <div className="flex items-start px-6 pb-5">
                 {STEPS.map((step, idx) => {
@@ -798,11 +865,20 @@ const Curriculum = () => {
                 <button
                   type="button"
                   onClick={handlePrimaryAction}
-                  className="flex-1 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
-                  style={{ backgroundColor: C.charcoal, color: '#ffffff' }}
-                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
-                  onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}>
-                  {currentStep === STEPS.length ? (editingSubject ? 'Update Subject' : 'Add Subject') : 'Next →'}
+                  disabled={isCreateSubjectBlocked}
+                  className="flex-1 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: isCreateSubjectBlocked ? 'rgba(41,40,39,0.2)' : C.charcoal,
+                    color: '#ffffff',
+                    opacity: isCreateSubjectBlocked ? 0.75 : 1,
+                  }}
+                  onMouseEnter={e => { if (!isCreateSubjectBlocked) e.currentTarget.style.backgroundColor = '#3a3937'; }}
+                  onMouseLeave={e => { e.currentTarget.style.backgroundColor = isCreateSubjectBlocked ? 'rgba(41,40,39,0.2)' : C.charcoal; }}>
+                  {isCreateSubjectBlocked
+                    ? 'Upgrade Required'
+                    : currentStep === STEPS.length
+                      ? (editingSubject ? 'Update Subject' : 'Add Subject')
+                      : 'Next →'}
                 </button>
               </div>
             </form>
@@ -816,12 +892,17 @@ const Curriculum = () => {
           <BookOpen className="w-10 h-10 text-charcoal-ink/20 mx-auto mb-4" />
           <h3 className="text-[18px] font-display text-charcoal-ink mb-2">No subjects yet</h3>
           <p className="text-[14px] text-charcoal-ink/40 font-body mb-6">Add your first subject to get started</p>
-          <button onClick={() => setShowAddForm(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
-            style={{ backgroundColor: C.charcoal, color: '#ffffff' }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}>
-            <Plus className="w-4 h-4" /> Add Your First Subject
+          <button onClick={openCreateSubjectForm}
+            disabled={!canAddCurriculumItem}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors disabled:cursor-not-allowed"
+            style={{
+              backgroundColor: canAddCurriculumItem ? C.charcoal : 'rgba(41,40,39,0.2)',
+              color: '#ffffff',
+              opacity: canAddCurriculumItem ? 1 : 0.75,
+            }}
+            onMouseEnter={e => { if (canAddCurriculumItem) e.currentTarget.style.backgroundColor = '#3a3937'; }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = canAddCurriculumItem ? C.charcoal : 'rgba(41,40,39,0.2)'; }}>
+            <Plus className="w-4 h-4" /> {curriculumLimitReached ? 'Subject Limit Reached' : 'Add Your First Subject'}
           </button>
         </div>
       ) : (
@@ -847,11 +928,11 @@ const Curriculum = () => {
                       className="p-1.5 text-charcoal-ink/30 hover:text-charcoal-ink transition-colors" title="Edit">
                       <Edit className="w-4 h-4" />
                     </button>
-                    <button onClick={() => handleArchive(subject.id)}
+                    <button onClick={() => archiveSubject(subject.id)}
                       className="p-1.5 text-charcoal-ink/30 hover:text-charcoal-ink transition-colors" title="Archive">
                       <Archive className="w-4 h-4" />
                     </button>
-                    <button onClick={() => handleDelete(subject.id)}
+                    <button onClick={() => deleteSubject(subject.id)}
                       className="p-1.5 text-charcoal-ink/30 hover:text-red-500 transition-colors" title="Delete">
                       <Trash2 className="w-4 h-4" />
                     </button>

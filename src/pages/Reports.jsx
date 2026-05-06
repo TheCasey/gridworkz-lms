@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  getFirestore, collection, query, where, onSnapshot, orderBy,
-  doc, deleteDoc, writeBatch
-} from 'firebase/firestore';
-import { app } from '../firebase/firebaseConfig';
 import { FileText, Calendar, Archive, Trash2, Printer, ChevronDown, ChevronRight, Filter, RotateCcw } from 'lucide-react';
+import useStudents from '../hooks/useStudents';
+import useSubjects from '../hooks/useSubjects';
+import useWeeklyActivity from '../hooks/useWeeklyActivity';
+import useWeeklyReportRecords from '../hooks/useWeeklyReportRecords';
 import {
   getWeekRangeByOffset,
   formatWeekRange,
@@ -18,11 +17,7 @@ import {
   getSchoolYearMetadataForDate,
   getSchoolYearOptionsFromReports,
 } from '../utils/schoolSettingsUtils';
-import {
-  buildStudentWeeklySnapshot,
-  buildWeeklyReportPayload,
-  getWeekKey,
-} from '../utils/reportUtils';
+import { buildStudentWeeklySnapshot } from '../utils/reportUtils';
 
 const C = {
   mysteria: '#1b1938',
@@ -236,52 +231,55 @@ const SubjectRow = ({ subjectDatum }) => {
 // ---------------------------------------------------------------------------
 const Reports = ({ parentSettings = {} }) => {
   const { currentUser } = useAuth();
-  const [students, setStudents] = useState([]);
-  const [subjects, setSubjects] = useState([]);
-  const [submissions, setSubmissions] = useState([]);
-  const [weeklyReports, setWeeklyReports] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [weekOffset, setWeekOffset] = useState(0);
-  const [savingRecord, setSavingRecord] = useState(false);
   const [showRecords, setShowRecords] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState([]);
   const [selectedSchoolYear, setSelectedSchoolYear] = useState('all');
   const [selectedQuarter, setSelectedQuarter] = useState('all');
-  const db = getFirestore(app);
   const weekConfig = useMemo(() => getWeekConfig(parentSettings), [
     parentSettings.week_reset_day,
     parentSettings.week_reset_hour,
     parentSettings.week_reset_minute,
   ]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    const q = query(collection(db, 'students'), where('parent_id', '==', currentUser.uid), orderBy('name'));
-    return onSnapshot(q, snap => setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-  }, [currentUser, db]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    const q = query(collection(db, 'subjects'), where('parent_id', '==', currentUser.uid), where('is_active', '==', true), orderBy('title'));
-    return onSnapshot(q, snap => setSubjects(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-  }, [currentUser, db]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    // Load ALL submissions — no date filter — so any week is queryable
-    const q = query(collection(db, 'submissions'), where('parent_id', '==', currentUser.uid), orderBy('timestamp', 'desc'));
-    return onSnapshot(q, snap => {
-      setSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    }, () => setLoading(false));
-  }, [currentUser, db]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    const q = query(collection(db, 'weeklyReports'), where('parent_id', '==', currentUser.uid), orderBy('week_ending', 'desc'));
-    return onSnapshot(q, snap => setWeeklyReports(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-  }, [currentUser, db]);
+  const { students, loading: studentsLoading } = useStudents({
+    parentId: currentUser?.uid,
+    enabled: Boolean(currentUser),
+    sortField: 'name',
+    sortDirection: 'asc',
+  });
+  const { subjects, loading: subjectsLoading } = useSubjects({
+    parentId: currentUser?.uid,
+    enabled: Boolean(currentUser),
+    activeOnly: true,
+    sortField: 'title',
+    sortDirection: 'asc',
+  });
+  const {
+    submissions,
+    loading: submissionsLoading,
+  } = useWeeklyActivity({
+    currentUser,
+    parentId: currentUser?.uid,
+    enabled: Boolean(currentUser),
+    students,
+    subjects,
+    weekConfig,
+  });
+  const {
+    deleteWeeklyReportRecord,
+    loading: weeklyReportsLoading,
+    saveWeeklyRecordSnapshot,
+    savingRecord,
+    weeklyReports,
+  } = useWeeklyReportRecords({
+    currentUser,
+    parentSettings,
+    students,
+    subjects,
+    enabled: Boolean(currentUser),
+  });
+  const loading = studentsLoading || subjectsLoading || submissionsLoading || weeklyReportsLoading;
 
   // Derive selected week range
   const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset, weekConfig);
@@ -295,39 +293,29 @@ const Reports = ({ parentSettings = {} }) => {
   // Save a non-destructive official record snapshot
   const handleSaveRecord = async () => {
     if (!window.confirm('Save an official record snapshot for this week? This does not affect any student data.')) return;
-    setSavingRecord(true);
-    try {
-      const batch = writeBatch(db);
-      students.forEach(student => {
-        const snapshot = studentDataMap[student.id];
-        if (!snapshot) return;
 
-        const reportId = `${currentUser.uid}_${student.id}_${getWeekKey(weekStart)}`;
-        batch.set(doc(db, 'weeklyReports', reportId), buildWeeklyReportPayload({
-          student,
-          snapshot,
-          weekStart,
-          weekEnd,
-          parentId: currentUser.uid,
-          parentSettings,
-          source: 'manual',
-        }), { merge: true });
-      });
-      await batch.commit();
+    const saved = await saveWeeklyRecordSnapshot({
+      submissions,
+      weekStart,
+      weekEnd,
+      source: 'manual',
+    });
+
+    if (saved) {
       setShowRecords(true);
       alert('Official record saved.');
-    } catch (err) {
-      console.error('Error saving record:', err);
+    } else {
       alert('Failed to save record. Please try again.');
-    } finally {
-      setSavingRecord(false);
     }
   };
 
   const handleDeleteRecord = async (id) => {
     if (!window.confirm('Permanently delete this official record?')) return;
-    try { await deleteDoc(doc(db, 'weeklyReports', id)); }
-    catch (err) { alert('Failed to delete record.'); }
+
+    const deleted = await deleteWeeklyReportRecord(id);
+    if (!deleted) {
+      alert('Failed to delete record.');
+    }
   };
 
   // Print saved weeklyReport doc (legacy / official records section)
