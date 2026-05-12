@@ -805,7 +805,7 @@ const StudentPortal = () => {
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div style={{ width: '28px', height: '2px', backgroundColor: C.lavender, margin: '0 auto 20px' }} />
           <h1 style={{ fontSize: '48px', fontWeight: 540, lineHeight: 0.96, letterSpacing: '-1.32px', color: 'rgba(255,255,255,0.95)', margin: 0 }}>
-            GRIDWORKZ
+            OWN PATH
           </h1>
           <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', marginTop: '12px', textTransform: 'uppercase', letterSpacing: '0.16em' }}>
             Student Portal

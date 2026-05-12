@@ -158,7 +158,7 @@ export const useWeeklyActivity = ({
       const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset, weekConfig);
       const weekLabel = getWeekLabel(weekOffset);
       const weekRangeText = formatWeekRange(weekStart, weekEnd);
-      let reportContent = `GridWorkz Weekly Report\nWeek: ${weekRangeText}\nGenerated: ${new Date().toLocaleString()}\n\n`;
+      let reportContent = `Own Path Weekly Report\nWeek: ${weekRangeText}\nGenerated: ${new Date().toLocaleString()}\n\n`;
 
       if (weekOffset < 0) {
         const pastSubmissionsSnapshot = await getDocs(query(
@@ -231,7 +231,7 @@ export const useWeeklyActivity = ({
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `GridWorkz-Weekly-Report-${weekLabel.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.txt`;
+      anchor.download = `Own-Path-Weekly-Report-${weekLabel.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.txt`;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);

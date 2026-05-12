@@ -6,15 +6,15 @@ Status: Draft
 
 ## Goal
 
-Define the first public-facing GridWorkz marketing site so the root experience can explain the product clearly, reduce buyer hesitation, and route visitors into signup, login, or pricing without dropping cold traffic directly onto an auth wall.
+Define the first public-facing Own Path marketing site so the root experience can explain the product clearly, reduce buyer hesitation, and route visitors into signup, login, or pricing without dropping cold traffic directly onto an auth wall.
 
 This doc is intentionally focused on the first homepage and pricing experience, not on a full long-term content-marketing system.
 
 ## Why This Exists
 
-Today, the public root experience does not tell a new visitor what GridWorkz is.
+Today, the public root experience does not tell a new visitor what Own Path is.
 
-Current route reality:
+Previous route reality:
 
 - `/` redirects into the authenticated product flow
 - `/login` is the first substantial public-facing screen
@@ -31,7 +31,7 @@ That creates avoidable friction:
 
 The homepage should reflect the existing product stance already defined in the roadmap and baseline planning docs.
 
-GridWorkz is:
+Own Path is:
 
 - a homeschool planning and student workspace product
 - optimized around weekly autonomy rather than hourly scheduling
@@ -49,7 +49,7 @@ Recommended public framing:
 
 The homepage should answer these questions in the first scroll without making a parent hunt for the basics:
 
-1. What is GridWorkz?
+1. What is Own Path?
 2. Who is it for?
 3. How is it different from a normal planner or scheduler?
 4. What does the student actually see?
@@ -65,7 +65,7 @@ If those answers are hidden below the fold, behind a pricing page, or behind sig
 
 This is the main homepage audience.
 
-They need confidence that GridWorkz can help them:
+They need confidence that Own Path can help them:
 
 - organize multiple students
 - give students more ownership
@@ -113,22 +113,26 @@ Recommended rule:
 
 Recommended public route structure:
 
-- `/`
+- `own-path.com/`
   - marketing homepage
-- `/login`
+- `dashboard.own-path.com/login`
   - auth entry for existing parents
+- `dashboard.own-path.com/dashboard`
+  - protected parent dashboard
+- `own-path.com/student/:slug`
+  - public student portal links
 - `/pricing`
   - optional later dedicated pricing page
 - `/faq`
   - optional later dedicated FAQ page
 
-Phase 1 can stay as a single scrolling homepage on `/` with anchored sections and a header link to `/login`.
+Phase 1 can stay as a single scrolling homepage on `/` with anchored sections and header links that route auth traffic to the dashboard host.
 
 Recommended immediate route behavior:
 
 - `/` should no longer redirect to `/dashboard`
 - unauthenticated users should land on the public homepage
-- authenticated users can still be routed into `/dashboard` from product CTAs or post-auth flows
+- authenticated users can still be routed into the dashboard subdomain from product CTAs or post-auth flows
 
 ## Information Architecture
 
@@ -170,7 +174,7 @@ Recommended content:
 
 - eyebrow: `Homeschool planning, student independence, and weekly proof of work`
 - headline: `Plan the week once. Let students run the day.`
-- supporting copy: `GridWorkz helps homeschool families turn curriculum into a manageable weekly workspace students can actually follow on their own.`
+- supporting copy: `Own Path helps homeschool families turn curriculum into a manageable weekly workspace students can actually follow on their own.`
 - CTAs:
   - `Start free`
   - `See pricing`
@@ -195,13 +199,13 @@ Purpose:
 Recommended framing:
 
 - many homeschool tools either feel too loose to keep students accountable or too rigid and calendar-heavy to support independence
-- GridWorkz is designed around the weekly contract instead of the hourly schedule
+- Own Path is designed around the weekly contract instead of the hourly schedule
 
 Possible headline:
 
 - `Less calendar micromanagement. More weekly clarity.`
 
-### 3. How GridWorkz Works
+### 3. How Own Path Works
 
 Purpose:
 
@@ -446,7 +450,7 @@ If lifestyle imagery is used, keep it sparse and secondary to the actual product
 
 `Plan the week once. Let students run the day.`
 
-`GridWorkz helps homeschool families organize weekly work, give students a focused workspace, and keep clear records of what got done.`
+`Own Path helps homeschool families organize weekly work, give students a focused workspace, and keep clear records of what got done.`
 
 ### How it works
 
@@ -497,7 +501,7 @@ Scope:
 ## Open Decisions
 
 1. Should public pricing go live before live-mode Stripe is ready, or should the site wait to show exact paid amounts?
-2. Should the first CTA be `Start free`, `Create account`, or `Try GridWorkz free`?
+2. Should the first CTA be `Start free`, `Create account`, or `Try Own Path free`?
 3. Should Lockdown be visible on the homepage as a full section or only as a pricing-tier differentiator in Phase 1?
 4. Should the first public site include a sample report preview to strengthen compliance and accountability trust?
 5. Should testimonials wait until real customer language is available?

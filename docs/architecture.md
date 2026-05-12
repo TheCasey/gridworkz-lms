@@ -11,8 +11,9 @@ Last updated: 2026-05-11
 
 ## Application Shape
 
-- Parent access is authenticated and lands in `/dashboard`.
-- Student access is unauthenticated and lands in `/student/:slug`.
+- Public marketing lands on the root Own Path domain.
+- Parent access is authenticated and lands in `/dashboard`, with production traffic routed through `dashboard.own-path.com`.
+- Student access is unauthenticated and lands in `/student/:slug`, with magic links generated against the public Own Path domain.
 - The parent experience now uses a nested route-backed `/dashboard/*` shell with a shared feature registry and shell metadata contract.
 - Lockdown now lives as its own dedicated dashboard module at `/dashboard/lockdown` instead of staying embedded inside the students surface.
 

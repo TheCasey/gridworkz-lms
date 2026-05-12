@@ -1,8 +1,15 @@
-import { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Suspense, lazy, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { DASHBOARD_DEFAULT_FEATURE_ID, dashboardFeaturesById } from './constants/dashboardFeatures';
+import {
+  buildDashboardUrl,
+  buildPublicUrl,
+  isDashboardHost,
+  redirectToUrl,
+  shouldUseSplitHosts,
+} from './utils/appHosts';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const MarketingHome = lazy(() => import('./pages/MarketingHome'));
@@ -42,6 +49,44 @@ const withDashboardSuspense = (node) => (
   <Suspense fallback={<DashboardRouteFallback />}>{node}</Suspense>
 );
 
+const getCurrentPath = ({ pathname, search, hash }) => `${pathname}${search}${hash}`;
+
+const ExternalRedirect = ({ to }) => {
+  useEffect(() => {
+    redirectToUrl(to);
+  }, [to]);
+
+  return <FullScreenRouteFallback />;
+};
+
+const DashboardHostRoute = ({ children }) => {
+  const location = useLocation();
+
+  if (shouldUseSplitHosts() && !isDashboardHost()) {
+    return <ExternalRedirect to={buildDashboardUrl(getCurrentPath(location))} />;
+  }
+
+  return children;
+};
+
+const PublicHostRoute = ({ children }) => {
+  const location = useLocation();
+
+  if (shouldUseSplitHosts() && isDashboardHost()) {
+    return <ExternalRedirect to={buildPublicUrl(getCurrentPath(location))} />;
+  }
+
+  return children;
+};
+
+const MarketingRoute = () => {
+  if (shouldUseSplitHosts() && isDashboardHost()) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return withFullScreenSuspense(<MarketingHome />);
+};
+
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
   const { currentUser, loading } = useAuth();
@@ -75,7 +120,15 @@ const PublicRoute = ({ children }) => {
     );
   }
 
-  return currentUser ? <Navigate to="/dashboard" replace /> : children;
+  if (currentUser) {
+    if (shouldUseSplitHosts() && !isDashboardHost()) {
+      return <ExternalRedirect to={buildDashboardUrl('/dashboard')} />;
+    }
+
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
 };
 
 function AppRoutes() {
@@ -83,22 +136,26 @@ function AppRoutes() {
     <Routes>
       <Route
         path="/"
-        element={withFullScreenSuspense(<MarketingHome />)}
+        element={<MarketingRoute />}
       />
       <Route 
         path="/login" 
         element={
-          <PublicRoute>
-            {withFullScreenSuspense(<LoginPage />)}
-          </PublicRoute>
+          <DashboardHostRoute>
+            <PublicRoute>
+              {withFullScreenSuspense(<LoginPage />)}
+            </PublicRoute>
+          </DashboardHostRoute>
         } 
       />
       <Route 
         path="/dashboard" 
         element={
-          <ProtectedRoute>
-            {withFullScreenSuspense(<ParentDashboard />)}
-          </ProtectedRoute>
+          <DashboardHostRoute>
+            <ProtectedRoute>
+              {withFullScreenSuspense(<ParentDashboard />)}
+            </ProtectedRoute>
+          </DashboardHostRoute>
         }
       >
         <Route
@@ -132,7 +189,11 @@ function AppRoutes() {
       </Route>
       <Route 
         path="/student/:slug" 
-        element={withFullScreenSuspense(<StudentPortal />)} 
+        element={
+          <PublicHostRoute>
+            {withFullScreenSuspense(<StudentPortal />)}
+          </PublicHostRoute>
+        }
       />
     </Routes>
   );

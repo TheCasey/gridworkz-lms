@@ -100,7 +100,7 @@ const printWeekReport = (students, weekStart, weekEnd, studentDataMap) => {
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>GridWorkz — Weekly Report — ${weekRangeText}</title>
+  <title>Own Path — Weekly Report — ${weekRangeText}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Georgia, 'Times New Roman', serif; color: #292827; background: #fff; padding: 48px; font-size: 13px; line-height: 1.6; }
@@ -143,7 +143,7 @@ const printWeekReport = (students, weekStart, weekEnd, studentDataMap) => {
 </head>
 <body>
   <div class="report-header">
-    <div class="report-logo">GridWorkz LMS</div>
+    <div class="report-logo">Own Path LMS</div>
     <div class="report-title">Weekly Progress Report</div>
     <div class="report-week">${weekRangeText}</div>
     <div class="report-generated">Generated ${generatedDate}</div>
@@ -823,7 +823,7 @@ function buildPrintHtml(weekRangeText, generatedDate, studentRows, reportTitle =
       <div class="subjects">${r.subjectsHtml}</div>
     </div>`).join('');
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>GridWorkz — ${weekRangeText}</title><style>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Own Path — ${weekRangeText}</title><style>
     *{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,'Times New Roman',serif;color:#292827;background:#fff;padding:48px;font-size:13px;line-height:1.6}
     .report-header{text-align:center;margin-bottom:48px;padding-bottom:24px;border-bottom:2px solid #292827}
     .report-logo{font-family:Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#714cb6;margin-bottom:8px}
@@ -854,7 +854,7 @@ function buildPrintHtml(weekRangeText, generatedDate, studentRows, reportTitle =
     @media print{body{padding:24px}.student-section{page-break-inside:avoid}}
   </style></head><body>
   <div class="report-header">
-    <div class="report-logo">GridWorkz LMS</div>
+    <div class="report-logo">Own Path LMS</div>
     <div class="report-title">${reportTitle}</div>
     <div class="report-week">${weekRangeText}</div>
     <div class="report-generated">Generated ${generatedDate}</div>

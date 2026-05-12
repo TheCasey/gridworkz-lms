@@ -104,7 +104,7 @@ const LoginPage = () => {
           margin: 0,
           fontFamily: FONT,
         }}>
-          GRIDWORKZ
+          OWN PATH
         </h1>
         <p style={{
           fontSize: '12px',

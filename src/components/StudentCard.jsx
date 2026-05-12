@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { Copy, Check, Trash2, Eye } from 'lucide-react';
+import { buildPublicUrl } from '../utils/appHosts';
 
 const StudentCard = ({ student, onDelete, onViewProgress }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopyMagicLink = async () => {
-    const magicLink = `${window.location.origin}/student/${student.slug}`;
+    const publicStudentPath = buildPublicUrl(`/student/${student.slug}`);
+    const magicLink = publicStudentPath.startsWith('/')
+      ? `${window.location.origin}${publicStudentPath}`
+      : publicStudentPath;
     try {
       await navigator.clipboard.writeText(magicLink);
       setCopied(true);

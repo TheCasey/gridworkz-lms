@@ -574,7 +574,7 @@ const ParentDashboard = () => {
           <div className="px-6 pt-7 pb-6" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
             <div className="w-6 h-[3px] rounded-full mb-3" style={{ backgroundColor: C.lavender }} />
             <h1 style={{ fontSize: 20, fontWeight: 540, lineHeight: 0.96, letterSpacing: '-0.4px', color: '#ffffff' }}>
-              GRIDWORKZ
+              OWN PATH
             </h1>
             <p className="text-[12px] mt-1.5" style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 460 }}>Parent Portal</p>
           </div>

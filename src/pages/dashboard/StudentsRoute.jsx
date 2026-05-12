@@ -41,7 +41,7 @@ const StudentsRoute = () => {
                 No students yet
               </h3>
               <p className="text-[14px] mb-6" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>
-                Add your first student to get started with GridWorkz
+                Add your first student to get started with Own Path
               </p>
               <button
                 onClick={openAddStudentModal}

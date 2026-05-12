@@ -95,7 +95,7 @@ const pricingCardMeta = Object.freeze({
   [PlanIds.FREE]: {
     eyebrow: 'Try the weekly system',
     description:
-      'For trying GridWorkz with a smaller household before you need more room or more control.',
+      'For trying Own Path with a smaller household before you need more room or more control.',
     ctaNote: 'No billing is required to begin on Free.',
     accentClassName: 'border-parchment/80 bg-white/84',
   },
@@ -136,7 +136,7 @@ const faqItems = [
   {
     question: 'Does this replace my curriculum?',
     answer:
-      'No. GridWorkz is the planning and execution layer around your curriculum. Parents turn the week’s subjects, instructions, and resources into a workspace students can actually run.',
+      'No. Own Path is the planning and execution layer around your curriculum. Parents turn the week’s subjects, instructions, and resources into a workspace students can actually run.',
   },
   {
     question: 'How do reports work?',
@@ -258,7 +258,7 @@ function MarketingHome() {
             onClick={(event) => handleAnchorNavigation(event, 'top')}
           >
             <span className="inline-block h-2 w-2 rounded-full bg-lavender-glow" />
-            GridWorkz
+            Own Path
           </a>
 
           <nav className="ml-auto hidden items-center gap-5 xl:flex" aria-label="Primary">
@@ -360,7 +360,7 @@ function MarketingHome() {
                   Plan the week once. Let students run the day.
                 </h1>
                 <p className="max-w-2xl text-lg font-body leading-8 text-charcoal-ink/78 sm:text-xl">
-                  GridWorkz is a weekly homeschool planner and student workspace for families who
+                  Own Path is a weekly homeschool planner and student workspace for families who
                   want structure without constant rescheduling. Parents set the week, students work
                   from a simpler portal, and weekly reports keep the record straight.
                 </p>
@@ -404,7 +404,7 @@ function MarketingHome() {
 
             <aside className={`${surfaceClassName} lg:sticky lg:top-24`}>
               <p className="text-xs font-label uppercase tracking-[0.24em] text-amethyst-link">
-                The GridWorkz rhythm
+                The Own Path rhythm
               </p>
               <h2 className="mt-3 text-2xl font-display tracking-normal text-mysteria">
                 Parents define the week. Students run it. Reports prove it.
@@ -428,7 +428,7 @@ function MarketingHome() {
                 </div>
                 <div className="space-y-3 p-5">
                   <p className="text-xs font-label uppercase tracking-[0.24em] text-lavender-glow">
-                    This week in GridWorkz
+                    This week in Own Path
                   </p>
                   <div className="rounded-2xl border border-white/12 bg-white/8 p-4">
                     <p className="text-xs font-label uppercase tracking-[0.2em] text-white/66">
@@ -485,7 +485,7 @@ function MarketingHome() {
               </h2>
               <p className="mt-4 max-w-2xl text-base font-body leading-8 text-charcoal-ink/78">
                 Many homeschool tools either keep the whole plan in the parent&apos;s head or push
-                families into a rigid schedule that students cannot actually own. GridWorkz is built
+                families into a rigid schedule that students cannot actually own. Own Path is built
                 around the weekly contract instead: what has to get done, what the student can open
                 right now, and what the parent can prove later.
               </p>
@@ -503,7 +503,7 @@ function MarketingHome() {
               </div>
               <div className="rounded-[28px] border border-parchment/80 bg-white/84 p-5">
                 <p className="text-xs font-label uppercase tracking-[0.2em] text-charcoal-ink/62">
-                  With GridWorkz
+                  With Own Path
                 </p>
                 <p className="mt-3 text-sm font-body leading-7 text-charcoal-ink/76">
                   The week starts with a parent plan, moves through a focused student workspace, and
@@ -527,7 +527,7 @@ function MarketingHome() {
                 A weekly handoff both parent and student can understand
               </h2>
               <p className="mt-4 max-w-2xl text-base font-body leading-8 text-charcoal-ink/78">
-                GridWorkz does not ask a parent to build an hourly classroom. It gives the family a
+                Own Path does not ask a parent to build an hourly classroom. It gives the family a
                 clear sequence: define the work, open the student workspace, and keep a report trail
                 when the week is over.
               </p>
@@ -797,7 +797,7 @@ function MarketingHome() {
                 Reports that keep the week from disappearing
               </h2>
               <p className="mt-4 max-w-2xl text-base font-body leading-8 text-charcoal-ink/78">
-                GridWorkz matters most when the work can be reviewed afterward. The reporting side
+                Own Path matters most when the work can be reviewed afterward. The reporting side
                 keeps the week tied to real records instead of asking a parent to reconstruct what
                 happened from memory, paper scraps, and browser tabs.
               </p>
@@ -1029,7 +1029,7 @@ function MarketingHome() {
                   in one place.
                 </h2>
                 <p className="mt-4 max-w-2xl text-base font-body leading-8 text-white/78">
-                  Start with the free plan if you are new to GridWorkz. If you already have a
+                  Start with the free plan if you are new to Own Path. If you already have a
                   parent account, the existing sign-in path is still the fastest way back into the
                   dashboard.
                 </p>
