@@ -1,0 +1,428 @@
+# Phase 1 Run Log
+
+## Status Snapshot
+
+- Phase: `phase-01-trusted-policy-contract-and-pairing`
+- Current status: `complete`
+- Current owner: `master-developer`
+- Next downstream role: `none`
+- Last updated: `2026-05-11`
+
+## Master Developer Reviews
+
+- 2026-05-10 review:
+  - Confirmed Phase 1 is still the correct active phase from `workflow-state.yaml`: `current_phase_number: 1`, `current_phase_slug: phase-01-trusted-policy-contract-and-pairing`, `current_role: master-developer`, `phase_status: ready_for_master_developer`, and `next_downstream_role: developer`.
+  - Confirmed the repo still matches the intended sequencing:
+    - `firestore.rules` currently allows public unauthenticated `get` on `lockdownPolicies/{policyId}`.
+    - `src/utils/lockdownPolicyUtils.js` still generates the PoC pairing payload that bundles `policy_id`, `project_id`, and `api_key`.
+    - `extensions/chrome-lockdown-poc/options.js` still accepts that raw pairing payload, and `extensions/chrome-lockdown-poc/background.js` still polls Firestore REST directly from the extension.
+    - `functions/src/index.js` currently has trusted billing and create flows, but no lockdown-specific trusted enrollment or policy-read endpoint yet.
+    - The dedicated `/dashboard/lockdown` route and shared entitlement rail already exist and should be preserved rather than redesigned in this phase.
+    - Weekly-plan docs, schema, and rules are present in the repo, but they are later inputs and not part of the Phase 1 implementation boundary.
+  - Reality check on current repo health:
+    - `npm run lint` passed on 2026-05-10.
+    - `npm run build` passed on 2026-05-10.
+  - Phase 1 was tightened during review:
+    - This phase now explicitly establishes the trusted contract and backend trust boundary first.
+    - Extension runtime migration stays in Phase 4.
+    - Parent Lockdown management-surface replacement stays in Phase 3.
+    - If the public-read PoC path remains temporarily for compatibility, it must be isolated and documented as non-production.
+- 2026-05-10 post-developer review:
+  - Reviewed the developer changes in `functions/src/index.js`, `src/utils/lockdownPolicyUtils.js`, `src/firebase/trustedOperations.js`, `src/components/LockdownPolicyPanel.jsx`, `src/constants/schema.js`, `firestore.rules`, and `docs/specs/lockdown-browser-extension-plan.md`.
+  - Confirmed the production contract now exists in code as:
+    - parent-authenticated `issueLockdownEnrollment`
+    - public `lockdownExchangeEnrollment`
+    - public credential-authenticated `readLockdownDevicePolicy`
+  - Confirmed the new production path uses server-owned `lockdownEnrollmentSessions` and `lockdownDevices` records instead of public Firestore reads.
+  - Confirmed `lockdownPolicies/{parentId}` remains in place only as an explicitly labeled PoC compatibility boundary for the still-unmigrated MV3 runtime.
+  - Confirmed the dedicated Lockdown dashboard surface and shared entitlement rail were preserved rather than replaced.
+  - Re-ran repo validation on the current tree:
+    - `npm run lint` passed on 2026-05-10.
+    - `npm run build` passed on 2026-05-10.
+  - No Phase 1 blocker was identified in master review. The implementation is ready for tester validation focused on runtime contract behavior and trust-boundary isolation.
+- 2026-05-10 post-tester review:
+  - Confirmed the tester failure is a real runtime gap, not a Phase 4 scope mix-up:
+    - the dashboard route and entitlement rail passed
+    - Firestore trust-boundary isolation passed
+    - the trusted Phase 1 runtime contract failed because the live project does not currently expose `issueLockdownEnrollment`, `lockdownExchangeEnrollment`, or `readLockdownDevicePolicy`
+  - Reality-checked local Firebase configuration:
+    - `firebase.json` points functions source at `functions`
+    - `functions/package.json` correctly points `main` at `src/index.js`
+    - no repo-side packaging mismatch was found that would explain the missing live endpoints by itself
+  - Conclusion:
+    - Phase 1 should return to `developer` for deployment reconciliation and live-runtime remediation
+    - this is not yet a permanent workflow `blocked` state because the next step is still actionable inside the Phase 1 developer role
+- 2026-05-10 post-remediation review:
+  - Verified the developer resolved the live deployment omission rather than only updating local code or docs.
+  - Confirmed live function inventory on `gridworkz-lms` now includes:
+    - `issueLockdownEnrollment`
+    - `lockdownExchangeEnrollment`
+    - `readLockdownDevicePolicy`
+  - Confirmed direct endpoint probes no longer return `404`:
+    - `issueLockdownEnrollment`: `HTTP 400 INVALID_ARGUMENT`
+    - `lockdownExchangeEnrollment`: `HTTP 405 method_not_allowed`
+    - `readLockdownDevicePolicy`: `HTTP 401 invalid_device_credential`
+  - Confirmed the remediation stays within Phase 1 scope:
+    - it fixes the trusted contract live-runtime gap
+    - it does not migrate the MV3 extension runtime
+    - it does not widen into weekly-plan derivation, kiosk mode, or dashboard redesign
+  - Conclusion:
+    - The previously blocked Phase 1 runtime checks are now actionable again.
+    - Phase 1 should return to `tester` for a focused retest of the trusted enrollment exchange and credential-authenticated policy-read behavior.
+## Developer Results
+
+- 2026-05-10 implementation:
+  - Added explicit production contract naming in shared schema and lockdown utilities:
+    - New server-owned collections: `lockdownEnrollmentSessions`, `lockdownDevices`
+    - New trusted functions: `issueLockdownEnrollment`, `lockdownExchangeEnrollment`, `readLockdownDevicePolicy`
+    - Explicit separation between `buildTrustedLockdownEnrollmentCode(...)` and the legacy `buildLockdownPocPairingCode(...)`
+  - Implemented the Phase 1 trusted backend contract in `functions/src/index.js`:
+    - Parent-authenticated callable issuance of short-lived enrollment material
+    - One-time public HTTP exchange that consumes the enrollment ticket and mints an opaque device credential
+    - Public HTTP policy-read endpoint that authenticates via the opaque device credential and reads policy server-side
+    - Enrollment exchange is transaction-protected so one-time tickets cannot be consumed twice under concurrent requests
+  - Kept `lockdownPolicies/{parentId}` only as a temporary migration boundary:
+    - Production policy reads no longer require direct public Firestore reads
+    - The trusted policy endpoint reads the parent policy document on the server side and marks the source as a legacy PoC boundary in the response
+  - Updated Firestore rules to make the trust boundary explicit:
+    - `lockdownEnrollmentSessions/*` and `lockdownDevices/*` are explicitly server-owned with no client reads or writes
+    - `lockdownPolicies/{parentId}` still allows public `get`, but the rules comment now labels it as legacy PoC compatibility only until Phase 4 migrates the extension runtime
+  - Updated the existing Lockdown dashboard panel without adding a second management surface:
+    - The panel now exposes a generated trusted enrollment code for the production contract
+    - The legacy Firestore pairing code and PoC policy id remain visible but explicitly labeled non-production compatibility material
+  - Files changed:
+    - `src/constants/schema.js`
+    - `src/utils/lockdownPolicyUtils.js`
+    - `src/firebase/trustedOperations.js`
+    - `src/components/LockdownPolicyPanel.jsx`
+    - `functions/src/index.js`
+    - `firestore.rules`
+    - `docs/specs/lockdown-browser-extension-plan.md`
+    - `docs/specs/lockdown-browser-extension-plan-workflow/phases/phase-01-trusted-policy-contract-and-pairing/run-log.md`
+  - Validation performed:
+    - `npm run lint`
+    - `npm run build`
+    - `node --check functions/src/index.js`
+  - Remaining blockers:
+    - The current MV3 PoC extension runtime still points at the legacy public Firestore polling path. That migration is intentionally deferred to Phase 4.
+  - Correct next role:
+    - `tester`
+- 2026-05-10 deployment reconciliation pass:
+  - Objective:
+    - Reconcile the tester-reported live runtime gap and make `issueLockdownEnrollment`, `lockdownExchangeEnrollment`, and `readLockdownDevicePolicy` live on the `gridworkz-lms` Firebase project without widening scope beyond Phase 1.
+  - Deployment setup inspection:
+    - Confirmed `functions/src/index.js` exports all three Phase 1 functions locally:
+      - `issueLockdownEnrollment`
+      - `lockdownExchangeEnrollment`
+      - `readLockdownDevicePolicy`
+    - Confirmed `firebase.json` still points the functions codebase at `functions`.
+    - Confirmed `functions/package.json` still points `main` at `src/index.js`.
+    - Confirmed the repo has no `.firebaserc`, so all Firebase CLI actions in this pass were run explicitly with `--project gridworkz-lms`.
+  - Exact commands run:
+    - `rg -n "export const |exports\\." functions/src/index.js`
+    - `npx firebase-tools functions:list --project gridworkz-lms`
+    - `curl -i -sS https://us-central1-gridworkz-lms.cloudfunctions.net/issueLockdownEnrollment | sed -n '1,20p'`
+    - `curl -i -sS https://us-central1-gridworkz-lms.cloudfunctions.net/lockdownExchangeEnrollment | sed -n '1,20p'`
+    - `curl -i -sS https://us-central1-gridworkz-lms.cloudfunctions.net/readLockdownDevicePolicy | sed -n '1,20p'`
+    - `npx firebase-tools deploy --only functions:issueLockdownEnrollment,functions:lockdownExchangeEnrollment,functions:readLockdownDevicePolicy --project gridworkz-lms`
+    - `npx firebase-tools functions:list --project gridworkz-lms`
+    - `curl -i -sS https://us-central1-gridworkz-lms.cloudfunctions.net/issueLockdownEnrollment | sed -n '1,24p'`
+    - `curl -i -sS https://us-central1-gridworkz-lms.cloudfunctions.net/lockdownExchangeEnrollment | sed -n '1,24p'`
+    - `curl -i -sS https://us-central1-gridworkz-lms.cloudfunctions.net/readLockdownDevicePolicy | sed -n '1,24p'`
+    - `npm run dev -- --host 127.0.0.1 --port 3001`
+    - custom `node <<'NODE'` script to:
+      - create a temporary Firebase Auth user through Identity Toolkit
+      - seed `accountEntitlements/{uid}` with plan `lockdown` through Firestore REST using the Firebase CLI OAuth token
+      - persist fixture metadata under `/tmp/gridworkz-phase1-lockdown-fixture.json`
+    - `npm install --prefix /tmp/pw-phase1 playwright@1.59.1`
+    - isolated `NODE_PATH=/tmp/pw-phase1/node_modules node <<'NODE'` Playwright script to sign in to `http://127.0.0.1:3001/dashboard/lockdown`, click `Generate Trusted Code`, and capture the callable response plus console/request failures
+    - cleanup `node <<'NODE'` scripts to delete the temporary entitlement doc, parent doc, PoC policy doc, temporary enrollment session doc, and temporary Auth user
+  - Deployment result:
+    - Selective deploy succeeded from this environment. Firebase created all three missing Phase 1 functions:
+      - `functions[issueLockdownEnrollment(us-central1)] Successful create operation.`
+      - `functions[lockdownExchangeEnrollment(us-central1)] Successful create operation.`
+      - `functions[readLockdownDevicePolicy(us-central1)] Successful create operation.`
+    - No packaging, export-shape, permission, secret, or runtime-config blocker prevented deploy for these three functions.
+  - Exact live verification results:
+    - Pre-deploy `npx firebase-tools functions:list --project gridworkz-lms` showed only:
+      - `billingWebhook`
+      - `createStudent`
+      - `createSubject`
+    - Post-deploy `npx firebase-tools functions:list --project gridworkz-lms` showed:
+      - `billingWebhook`
+      - `createStudent`
+      - `createSubject`
+      - `issueLockdownEnrollment`
+      - `lockdownExchangeEnrollment`
+      - `readLockdownDevicePolicy`
+    - Direct HTTP probes no longer return `404`:
+      - `https://us-central1-gridworkz-lms.cloudfunctions.net/issueLockdownEnrollment`: `HTTP 400` with `{"error":{"message":"Bad Request","status":"INVALID_ARGUMENT"}}`
+      - `https://us-central1-gridworkz-lms.cloudfunctions.net/lockdownExchangeEnrollment`: `HTTP 405` with `{"error":{"code":"method_not_allowed","message":"Use POST to exchange enrollment material."}}`
+      - `https://us-central1-gridworkz-lms.cloudfunctions.net/readLockdownDevicePolicy`: `HTTP 401` with `{"error":{"code":"invalid_device_credential","message":"Device credential is missing or invalid."}}`
+    - Local dashboard verification on an isolated temporary fixture account passed after deploy:
+      - Route exercised: `http://127.0.0.1:3001/dashboard/lockdown`
+      - Fixture entitlement: `accountEntitlements/{uid}.plan_id = lockdown`
+      - Browser state before click: no `internal` text present in the rendered page
+      - Browser action: clicked `Generate Trusted Code`
+      - Captured callable response:
+        - request URL: `https://us-central1-gridworkz-lms.cloudfunctions.net/issueLockdownEnrollment`
+        - status: `200`
+        - body shape: `{"result":{"contract":"trusted_lockdown_enrollment_v1","enrollment_token":"lde_1...","expires_at":"...","source_policy_kind":"lockdown_policy_poc_document","source_policy_parent_id":"<uid>"}}`
+      - Browser failure evidence after deploy:
+        - `requestFailures`: none
+        - relevant console messages containing `issueLockdownEnrollment`, `internal`, `FirebaseError`, `ERR_FAILED`, or `CORS`: none
+      - UI result after deploy:
+        - `Copy Trusted Code` became enabled
+        - no `internal` error text appeared after the click
+    - Conclusion from live verification:
+      - the tester-observed runtime gap was a deploy omission
+      - the callable endpoint is now live and reachable
+      - the local dashboard no longer fails immediately because the callable endpoint is missing
+  - Remaining blockers:
+    - No active Phase 1 deployment blocker remains for the trusted contract functions on `gridworkz-lms`.
+    - The MV3 extension runtime still has not been migrated to the trusted contract, but that remains intentionally deferred to Phase 4.
+  - Correct next role:
+    - `master-developer`
+## Tester Results
+
+- 2026-05-10 tester validation:
+  - Overall result: `FAIL`
+  - Compile and build health:
+    - `node --check functions/src/index.js`: `PASS`
+    - `npm run lint`: `PASS`
+    - `npm run build`: `PASS`
+  - Exact commands used:
+    - `node --check functions/src/index.js`
+    - `npm run lint`
+    - `npm run build`
+    - `npx firebase-tools functions:list --project gridworkz-lms`
+    - `curl -i -sS https://us-central1-gridworkz-lms.cloudfunctions.net/issueLockdownEnrollment | sed -n '1,40p'`
+    - `curl -i -sS https://us-central1-gridworkz-lms.cloudfunctions.net/lockdownExchangeEnrollment | sed -n '1,40p'`
+    - `curl -i -sS https://us-central1-gridworkz-lms.cloudfunctions.net/readLockdownDevicePolicy | sed -n '1,40p'`
+    - custom `node <<'NODE'` scripts against Firebase Auth and Firestore REST to create a temporary test fixture, seed `accountEntitlements/{uid}` and `lockdownPolicies/{uid}`, probe owner and unauthenticated Firestore access, then clean the fixture back out
+    - `npm run dev -- --host 127.0.0.1 --port 3000`
+    - isolated Playwright scripts run with `NODE_PATH=/tmp/pw-phase1/node_modules node <<'NODE'` after `npm install --prefix /tmp/pw-phase1 playwright@1.59.1`
+  - Trusted production contract runtime evidence:
+    - `npx firebase-tools functions:list --project gridworkz-lms` returned only `billingWebhook`, `createStudent`, and `createSubject`. The Phase 1 functions `issueLockdownEnrollment`, `lockdownExchangeEnrollment`, and `readLockdownDevicePolicy` were absent from the live project.
+    - Direct live endpoint probes all failed:
+      - `https://us-central1-gridworkz-lms.cloudfunctions.net/issueLockdownEnrollment`: `HTTP 404`
+      - `https://us-central1-gridworkz-lms.cloudfunctions.net/lockdownExchangeEnrollment`: `HTTP 404`
+      - `https://us-central1-gridworkz-lms.cloudfunctions.net/readLockdownDevicePolicy`: `HTTP 404`
+    - Because those functions are not deployed live, the required runtime contract steps could not be completed:
+      - trusted enrollment issuance from the production callable: `FAIL`
+      - decode or extract actual trusted enrollment material: `BLOCKED`
+      - one-time enrollment exchange against `lockdownExchangeEnrollment`: `BLOCKED`
+      - replay failure on second exchange attempt: `BLOCKED`
+      - unauthenticated policy read denial on `readLockdownDevicePolicy`: `BLOCKED`
+      - credential-authenticated trusted policy read success: `BLOCKED`
+  - Dashboard route and entitlement rail evidence from an isolated temporary fixture account:
+    - Created a throwaway Firebase Auth parent fixture plus matching `accountEntitlements/{uid}` and `lockdownPolicies/{uid}` documents, validated the route, then deleted the entitlement doc, policy doc, and auth user after the run.
+    - Entitled state on `http://127.0.0.1:3000/dashboard/lockdown`: `PASS`
+      - Route loaded successfully for the Lockdown-entitled fixture account.
+      - Panel text showed `CURRENT PLAN` -> `Lockdown`.
+      - Panel text showed `Pairing and editing enabled`.
+      - The panel rendered the production-trusted pairing section plus the explicitly labeled PoC compatibility material:
+        - `TRUSTED ENROLLMENT CODE`
+        - `LEGACY POC PAIRING CODE`
+        - `POC POLICY BOUNDARY`
+        - `Non-production compatibility only. This still bundles policy_id, project_id, and api_key...`
+      - `Generate Trusted Code` was enabled.
+      - `Copy Trusted Code` stayed disabled until material existed.
+      - `Copy PoC Code` stayed enabled.
+    - Trusted-code generation from the entitled dashboard surface: `FAIL`
+      - Clicking `Generate Trusted Code` on the local dashboard route surfaced only `internal` in the UI instead of producing trusted enrollment material.
+      - The isolated browser trace captured a failed request to `https://us-central1-gridworkz-lms.cloudfunctions.net/issueLockdownEnrollment`.
+      - Browser console evidence tied the UI failure back to the missing live deploy:
+        - `Access to fetch at 'https://us-central1-gridworkz-lms.cloudfunctions.net/issueLockdownEnrollment' ... has been blocked by CORS policy`
+        - `Failed to load resource: net::ERR_FAILED`
+        - `Error issuing trusted lockdown enrollment: FirebaseError: internal`
+    - Downgraded/read-only state on the same saved fixture data: `PASS`
+      - After admin-patching the test fixture entitlement from `lockdown` to `core`, the same route showed `LOCKED MODULE` and `LOCKDOWN READ ONLY`.
+      - Saved policy data remained visible, including the saved website allowlist and `Saved policy document found.`
+      - Active controls were disabled as intended:
+        - `Generate Trusted Code`: disabled
+        - `Copy PoC Code`: disabled
+        - `Upgrade To Edit`: disabled
+      - Pairing messaging correctly flipped to disabled:
+        - `Pairing and editing disabled`
+        - `Pairing stays disabled outside the Lockdown plan.`
+  - Firestore trust-boundary isolation evidence:
+    - Owner-scoped read path still works where intended:
+      - owner `GET accountEntitlements/{uid}` with the fixture's Firebase ID token: `HTTP 200`
+      - owner `GET lockdownPolicies/{uid}` with the fixture's Firebase ID token: `HTTP 200`
+    - Server-owned production collections are not client-readable or writable:
+      - owner `GET lockdownEnrollmentSessions/test`: `HTTP 403 PERMISSION_DENIED`
+      - owner `GET lockdownDevices/test`: `HTTP 403 PERMISSION_DENIED`
+      - owner `PATCH lockdownDevices/client-write-probe`: `HTTP 403 PERMISSION_DENIED`
+      - unauthenticated `GET lockdownEnrollmentSessions/test?key=<apiKey>`: `HTTP 403 PERMISSION_DENIED`
+      - unauthenticated `GET lockdownDevices/test?key=<apiKey>`: `HTTP 403 PERMISSION_DENIED`
+    - The legacy PoC compatibility boundary remains publicly readable:
+      - unauthenticated `GET lockdownPolicies/{uid}?key=<apiKey>`: `HTTP 200`
+      - The returned document included the saved policy payload, which confirms that the old public-read path still exists as compatibility material and is still keyed by the raw PoC `policy_id + project_id + api_key` bundle.
+  - Required validation outcome summary:
+    - compile and build health: `PASS`
+    - trusted enrollment contract behavior with live runtime evidence: `FAIL`
+    - production contract proven independent of public Firestore reads and PoC shared secret: `FAIL`, because the trusted functions are not live and could not be exercised
+    - legacy `lockdownPolicies/{parentId}` isolated as PoC-only compatibility material: `PASS` in code, rules, live public-read trace, and dashboard labeling
+    - existing dashboard route and entitlement rail behavior: `PASS`
+  - Manual-only gaps:
+    - None for the dashboard entitlement rail. Both the entitled state and the downgraded read-only state were exercised directly with a temporary live fixture.
+    - The trusted Cloud Functions contract remains unproven at runtime because the live project does not currently serve those three endpoints.
+  - Remaining blocker:
+    - Phase 1 is blocked in live runtime by a deployment gap, not by the intentionally deferred Phase 4 MV3 migration. The code references the new trusted contract, but the live Firebase project does not currently expose `issueLockdownEnrollment`, `lockdownExchangeEnrollment`, or `readLockdownDevicePolicy`.
+  - Correct next role:
+    - `master-developer`
+- 2026-05-10 tester focused runtime retest:
+  - Overall result: `PASS`
+  - Scope kept intentionally narrow:
+    - revalidated the required compile/build commands
+    - retested only the previously blocked live runtime contract checks for trusted enrollment issuance, one-time exchange, replay rejection, and credential-authenticated policy reads
+    - did not widen into MV3 runtime migration, weekly-plan derivation, kiosk mode, or dashboard redesign
+  - Compile and build health:
+    - `node --check functions/src/index.js`: `PASS`
+    - `npm run lint`: `PASS`
+    - `npm run build`: `PASS`
+  - Exact commands used:
+    - `node --check functions/src/index.js`
+    - `npm run lint`
+    - `npm run build`
+    - `npm run dev -- --host 127.0.0.1 --port 3001`
+    - `curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3001/login`
+    - custom `node <<'NODE'` fixture-setup script to:
+      - create a temporary Firebase Auth parent through Identity Toolkit
+      - seed `accountEntitlements/{uid}` with `plan_id: lockdown`
+      - seed `lockdownPolicies/{uid}` with a small live PoC policy document
+      - persist fixture metadata under `/tmp/gridworkz-phase1-lockdown-fixture.json`
+    - `npm install --prefix /tmp/pw-phase1 playwright@1.59.1`
+    - isolated `node <<'NODE'` Playwright issuance script to:
+      - sign in to `http://127.0.0.1:3001/login`
+      - navigate to `http://127.0.0.1:3001/dashboard/lockdown`
+      - click `Generate Trusted Code`
+      - capture the live `issueLockdownEnrollment` callable response
+      - extract and decode the rendered trusted enrollment code
+      - persist the trace under `/tmp/gridworkz-phase1-dashboard-issuance.json`
+    - `node <<'NODE'` runtime probe script to:
+      - `POST` the decoded enrollment token to `lockdownExchangeEnrollment`
+      - replay the exact same enrollment token once
+      - `GET` `readLockdownDevicePolicy` with no credential
+      - `GET` `readLockdownDevicePolicy` again with `Authorization: Bearer <device_credential>`
+      - persist results under `/tmp/gridworkz-phase1-runtime-results.json`
+    - cleanup `node <<'NODE'` scripts to delete the temporary `accountEntitlements/{uid}`, `lockdownPolicies/{uid}`, `parents/{uid}`, `lockdownEnrollmentSessions/{sessionId}`, `lockdownDevices/{deviceId}`, and temporary Auth user
+  - Dashboard issuance evidence from the required `/dashboard/lockdown` surface:
+    - Local route exercised while signed in as a Lockdown-entitled parent fixture:
+      - `http://127.0.0.1:3001/dashboard/lockdown`
+    - Live callable request captured from the dashboard button:
+      - request target: `https://us-central1-gridworkz-lms.cloudfunctions.net/issueLockdownEnrollment`
+      - HTTP status: `200`
+      - response shape:
+        - `result.contract = trusted_lockdown_enrollment_v1`
+        - `result.enrollment_token = lde_1...`
+        - `result.expires_at = 2026-05-11T05:22:47.903Z`
+        - `result.source_policy_kind = lockdown_policy_poc_document`
+        - `result.source_policy_parent_id = <fixture uid>`
+    - Decoded trusted enrollment code rendered by the dashboard matched the live callable material and contained only the production contract fields needed for exchange:
+      - `version = 1`
+      - `contract = trusted_lockdown_enrollment_v1`
+      - `enrollment_token = lde_1...`
+      - `enrollment_expires_at = 2026-05-11T05:22:47.903Z`
+      - `exchange_url = https://us-central1-gridworkz-lms.cloudfunctions.net/lockdownExchangeEnrollment`
+      - `policy_url = https://us-central1-gridworkz-lms.cloudfunctions.net/readLockdownDevicePolicy`
+    - Dashboard sanity check:
+      - `Copy Trusted Code` became enabled after issuance
+      - no `internal` text surfaced before or after generation
+      - no relevant console errors mentioning `issueLockdownEnrollment`, `internal`, `FirebaseError`, `ERR_FAILED`, or `CORS`
+    - Tooling note:
+      - the Codex in-app browser input helper hit an email-input clipboard wrapper issue, so the final route exercise used an isolated Playwright run against the same local dashboard surface. This was a browser-tooling quirk, not an app defect.
+  - Trusted runtime contract evidence:
+    - One-time enrollment exchange success:
+      - request: `POST https://us-central1-gridworkz-lms.cloudfunctions.net/lockdownExchangeEnrollment`
+      - request body used the exact dashboard-issued `enrollment_token` plus device metadata
+      - HTTP status: `200`
+      - response shape:
+        - `contract = trusted_lockdown_enrollment_v1`
+        - `device_id = 11ca0cb422c6d525897bcce8`
+        - `device_credential = ldc_1...`
+        - `policy_read_contract = trusted_lockdown_device_policy_v1`
+        - `initial_policy.contract = trusted_lockdown_device_policy_v1`
+        - `initial_policy.policy_state = active`
+        - `initial_policy.source_policy.kind = lockdown_policy_poc_document`
+        - `initial_policy.source_policy.is_legacy_poc_boundary = true`
+        - `initial_policy.source_policy.document_exists = true`
+    - Replay protection on the exact same enrollment token:
+      - second request: `POST https://us-central1-gridworkz-lms.cloudfunctions.net/lockdownExchangeEnrollment`
+      - HTTP status: `409`
+      - response body:
+        - `error.code = enrollment_consumed`
+        - `error.message = Enrollment ticket has already been used.`
+    - No-credential policy read denial:
+      - request: `GET https://us-central1-gridworkz-lms.cloudfunctions.net/readLockdownDevicePolicy`
+      - HTTP status: `401`
+      - response body:
+        - `error.code = invalid_device_credential`
+        - `error.message = Device credential is missing or invalid.`
+    - Credential-authenticated policy read success:
+      - request: `GET https://us-central1-gridworkz-lms.cloudfunctions.net/readLockdownDevicePolicy`
+      - auth mechanism used: `Authorization: Bearer <device_credential>`
+      - raw `policy_id + project_id + api_key` were not supplied and were not needed
+      - HTTP status: `200`
+      - response shape:
+        - `contract = trusted_lockdown_device_policy_v1`
+        - `contract_version = 1`
+        - `device_id = 11ca0cb422c6d525897bcce8`
+        - `policy_state = active`
+        - `policy.parent_id = <fixture uid>`
+        - `policy.is_enabled = true`
+        - `policy.allowed_origins = ["https://www.khanacademy.org", "https://www.example.com"]`
+        - `policy.allowed_youtube_channels[0].channel_id = UCONtPx56PSebXJOxbFv-2jQ`
+        - `source_policy.kind = lockdown_policy_poc_document`
+        - `source_policy.parent_id = <fixture uid>`
+        - `source_policy.is_legacy_poc_boundary = true`
+        - `source_policy.document_exists = true`
+        - `source_policy_updated_at = 2026-05-11T05:02:12.695Z`
+  - Required validation outcome summary:
+    - compile and build health: `PASS`
+    - dashboard callable trusted enrollment issuance: `PASS`
+    - decode or extract live enrollment material needed for exchange: `PASS`
+    - one-time trusted enrollment exchange: `PASS`
+    - replay rejection on second exchange: `PASS`
+    - denied no-credential policy read: `PASS`
+    - credential-authenticated trusted policy read: `PASS`
+    - trusted read path no longer relies on raw `policy_id + project_id + api_key`: `PASS`
+    - legacy `lockdownPolicies/{parentId}` remains isolated as an explicit PoC boundary: `PASS`
+  - Manual-only gaps:
+    - None. The required dashboard issuance and all runtime contract checks were exercised directly with a temporary live fixture.
+  - Remaining blockers:
+    - None for Phase 1 runtime contract behavior.
+    - The MV3 extension runtime still has not been migrated to the trusted contract, but that remains intentionally deferred to Phase 4 and is not a blocker for this Phase 1 retest.
+  - Correct next role:
+    - `master-developer`
+
+## Next Handoff
+
+- Return control to `master-developer`.
+- The focused tester retest completed the previously blocked live runtime checks:
+  - real trusted enrollment material was issued from `/dashboard/lockdown`
+  - the enrollment token exchanged successfully once
+  - replay on the exact same token was rejected as consumed
+  - no-credential policy reads were denied
+  - credential-authenticated policy reads succeeded with the expected trusted contract response
+- Any next step should stay inside Phase 1 review and closeout boundaries, not drift into MV3 runtime migration, weekly-plan derivation, kiosk mode, or dashboard redesign.
+
+## Open Questions Or Blockers
+
+- No active deployment or config blocker remains for `issueLockdownEnrollment`, `lockdownExchangeEnrollment`, or `readLockdownDevicePolicy` on the live `gridworkz-lms` project.
+- No Phase 1 runtime blocker remains after the focused tester retest.
+- Phase 4 still has to migrate the MV3 extension runtime to the trusted contract, but that is intentionally out of scope for this Phase 1 retest.
+
+## Completion Summary
+
+- Phase 1 now has its trusted runtime contract deployed live on `gridworkz-lms` for:
+  - `issueLockdownEnrollment`
+  - `lockdownExchangeEnrollment`
+  - `readLockdownDevicePolicy`
+- The dashboard route, entitlement rail, and trusted runtime contract now validate end to end:
+  - dashboard issuance returns live trusted enrollment material
+  - one-time exchange returns a device credential plus initial trusted policy payload
+  - replay protection rejects the second exchange attempt
+  - credential-authenticated policy reads succeed without raw PoC shared-secret material
+- The remaining browser-extension runtime migration work is still Phase 4 scope, but the specific Phase 1 live deployment gap and the previously blocked runtime checks are now resolved.

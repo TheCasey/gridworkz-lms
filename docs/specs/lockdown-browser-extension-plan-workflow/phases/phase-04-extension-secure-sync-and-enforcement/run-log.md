@@ -1,0 +1,524 @@
+# Phase 4 Run Log
+
+## Status Snapshot
+
+- Phase: `phase-04-extension-secure-sync-and-enforcement`
+- Current status: `complete`
+- Current owner: `master-developer`
+- Next downstream role: `none`
+- Last updated: `2026-05-11`
+
+## Master Developer Reviews
+
+- 2026-05-11 review:
+  - Confirmed Phase 3 is complete and Phase 4 is now the correct active phase.
+  - Confirmed the trusted backend contract and parent Lockdown surface are ready for extension-runtime migration:
+    - trusted enrollment and exchange endpoints are live
+    - trusted device-policy reads are live
+    - parent pairing now produces student-bound trusted enrollment material
+    - published weekly-plan derivation is the trusted source of policy state
+  - Confirmed the browser extension is still on the PoC sync contract in the current repo:
+    - [extensions/chrome-lockdown-poc/background.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/background.js) still fetches a Firestore document directly through `buildFirestorePolicyUrl(...)`
+    - [extensions/chrome-lockdown-poc/policy.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/policy.js) still treats pairing as `policy_id + project_id + api_key`
+    - [extensions/chrome-lockdown-poc/options.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/options.js) still accepts and stores the legacy PoC pairing payload
+    - [extensions/chrome-lockdown-poc/popup.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/popup.js) still describes polling Firestore for the latest parent policy
+  - Phase 4 should therefore stay tightly focused on replacing the MV3 pairing and sync path with the trusted enrollment, exchange, and credential-authenticated policy-read flow while preserving current enforcement strengths and cached fallback behavior.
+- 2026-05-11 acceptance review:
+  - Confirmed the implementation stays inside Phase 4 scope:
+    - extension runtime pairing and sync were migrated
+    - popup/options copy was updated for trusted pairing
+    - no kiosk work or dashboard redesign was pulled forward
+  - Confirmed the active extension runtime contract changed in code:
+    - [extensions/chrome-lockdown-poc/background.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/background.js) now exchanges trusted enrollment material and reads policy with `Authorization: Bearer <device_credential>`
+    - [extensions/chrome-lockdown-poc/policy.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/policy.js) now distinguishes trusted-device, trusted-enrollment, and legacy-PoC pairing states
+    - legacy PoC pairings are now migration-only and no longer drive active sync
+  - Re-verified current-tree validation on 2026-05-11:
+    - `npm run lint`: PASS
+    - `npm run build`: PASS
+  - Re-verified live function inventory on `gridworkz-lms`:
+    - `issueLockdownEnrollment`
+    - `lockdownExchangeEnrollment`
+    - `readLockdownDevicePolicy`
+  - Accepted the developer’s recorded runtime evidence as sufficient to move Phase 4 to `tester`:
+    - trusted enrollment exchange stores an opaque device credential
+    - secure sync reads policy through the trusted device-policy endpoint
+    - cached-policy fallback remains active across restart and simulated sync failure
+    - approved-origin and approved-YouTube enforcement behavior remains intact under the new sync path
+  - No Phase 4 code blocker found in master review. The correct next role is `tester`.
+- 2026-05-11 tester-blocked review:
+  - Confirmed the tester did reach the live Phase 4 runtime boundary and captured real extension-side evidence:
+    - the unpacked extension now presents trusted pairing and trusted sync terminology
+    - legacy PoC pairing is rejected as migration-only
+    - a trusted enrollment artifact triggers a real `POST` to `lockdownExchangeEnrollment`
+  - Confirmed the tester did not find a new code regression in the checked-in Phase 4 runtime. The failure was environmental and prevented proving the remaining success path.
+  - Concrete live-environment blockers recorded by the tester:
+    - the real parent account currently signed into the dashboard is on the `Free` plan, so `/dashboard/lockdown` cannot issue a fresh trusted enrollment code
+    - disposable live fixture seeding from this machine is blocked because Firestore REST rejects the cached Firebase CLI token with `ACCESS_TOKEN_TYPE_UNSUPPORTED`
+    - previously captured live artifacts are no longer reusable for success-path validation:
+      - saved Phase 3 fixture accounts now return `INVALID_LOGIN_CREDENTIALS`
+      - the saved Phase 1 device credential now returns `device_not_found`
+  - Phase 4 therefore cannot advance or re-enter another downstream coding/testing loop until one of the environment blockers is resolved.
+  - The correct next state is `blocked`, not another `developer` or `tester` handoff.
+- 2026-05-11 validation-unblock acceptance review:
+  - Confirmed the live validation environment is now unblocked for Phase 4:
+    - a reusable seeding script exists at [scripts/seed-lockdown-phase4-validation.mjs](/Users/caseyburesh/caseyrepo/gridworkz-lms/scripts/seed-lockdown-phase4-validation.mjs)
+    - a canonical Lockdown-entitled parent fixture can sign into `/dashboard/lockdown`
+    - that canonical fixture can issue fresh trusted enrollment material
+    - that same canonical fixture completes live `issue -> exchange -> read` successfully
+  - Confirmed this was an environment/setup unblock pass, not a runtime-contract redesign.
+  - Accepted the unblock pass as sufficient to return Phase 4 to `tester` for the real unpacked-extension success-path rerun.
+  - No remaining environment blocker was found in master review. The correct next role is `tester`.
+- 2026-05-11 completion review:
+  - Confirmed the focused tester rerun passed with real unpacked-extension runtime evidence.
+  - Confirmed the completed Phase 4 outcomes now hold in real browser validation:
+    - trusted pairing succeeds through the real options flow and stores trusted-device state
+    - secure sync succeeds through `readLockdownDevicePolicy` without Firestore REST dependence
+    - cached-policy fallback remains active across restart and forced sync failure
+    - approved-origin allow, blocked-navigation redirect, and approved-YouTube creator behavior all still work under the secure-sync path
+  - Phase 4 is complete. The correct next phase is Phase 5, with `developer` next.
+## Developer Results
+
+- 2026-05-11 implementation pass:
+  - Overall result: `PASS`
+  - Scope held to the MV3 extension runtime and local extension UI. No kiosk work, dashboard redesign, or backend policy-source redesign was added.
+  - Files changed:
+    - [extensions/chrome-lockdown-poc/manifest.json](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/manifest.json)
+    - [extensions/chrome-lockdown-poc/background.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/background.js)
+    - [extensions/chrome-lockdown-poc/policy.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/policy.js)
+    - [extensions/chrome-lockdown-poc/options.html](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/options.html)
+    - [extensions/chrome-lockdown-poc/options.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/options.js)
+    - [extensions/chrome-lockdown-poc/popup.html](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/popup.html)
+    - [extensions/chrome-lockdown-poc/popup.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/popup.js)
+    - [extensions/chrome-lockdown-poc/allowlist.html](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/allowlist.html)
+    - [extensions/chrome-lockdown-poc/blocked.html](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/blocked.html)
+    - [extensions/chrome-lockdown-poc/youtube-content.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/extensions/chrome-lockdown-poc/youtube-content.js)
+  - Extension storage and state model:
+    - `lockdownPairing` now stores a trusted-device record instead of the PoC `policy_id + project_id + api_key` tuple.
+    - Trusted paired state fields now include:
+      - `pairing_kind = trusted_device`
+      - `pairing_contract = trusted_lockdown_enrollment_v1`
+      - `policy_read_contract = trusted_lockdown_device_policy_v1`
+      - `exchange_url`
+      - `policy_url`
+      - `device_id`
+      - `device_credential`
+      - `student_id`
+      - `device_name`
+      - `device_platform`
+      - `extension_version`
+      - `paired_at`
+      - `last_exchange_at`
+    - Legacy saved PoC pairings are no longer used for sync. They normalize to `pairing_kind = legacy_poc` plus `migration_required = true` so cached enforcement can remain active while the UI requires re-pairing with a trusted enrollment code.
+    - `lockdownPolicy` still stores the last good enforceable policy locally and remains the source used on startup before any network work.
+    - `lockdownSyncState` now tracks secure-sync metadata instead of Firestore-polling state:
+      - `status`
+      - `using_cached_policy`
+      - `remote_policy_state`
+      - `binding_status`
+      - `binding_error`
+      - `student_id`
+      - `source_policy_kind`
+      - `device_id`
+      - timestamps and last error text
+  - Runtime changes delivered:
+    - Removed the active Firestore REST policy-read path from the service worker.
+    - Added trusted enrollment exchange through `lockdownExchangeEnrollment`.
+    - Added credential-authenticated policy reads through `readLockdownDevicePolicy` using `Authorization: Bearer <device_credential>`.
+    - Kept cached fallback behavior by applying the last saved policy on load and on sync failure before changing any enforcement state.
+    - Updated options and popup copy so the extension now speaks in terms of trusted enrollment, device credentials, secure sync, cached fallback, and explicit legacy migration messaging.
+    - Preserved the existing allowlist enforcement strengths:
+      - top-level allowlist + block redirect rules still build from cached policy
+      - YouTube main-frame allow rules still stay broad enough for in-page creator checks
+      - creator enforcement still resolves locally through `channel_id`
+  - Exact validation commands run:
+    - `npm run lint`
+    - `npm run build`
+    - `node --input-type=module <<'NODE' ... extension secure-sync harness using /tmp/gridworkz-phase1-dashboard-issuance.json and /tmp/gridworkz-phase1-runtime-results.json ... NODE`
+  - Validation results:
+    - `npm run lint`: `PASS`
+    - `npm run build`: `PASS`
+    - extension secure-sync harness: `PASS`
+  - Trusted pairing evidence:
+    - Current extension parser accepted the exact dashboard-issued trusted enrollment code captured in [/tmp/gridworkz-phase1-dashboard-issuance.json](</tmp/gridworkz-phase1-dashboard-issuance.json>):
+      - `trustedCodeAccepted = true`
+      - `trustedEnrollmentTokenMatchesArtifact = true`
+      - decoded contract remained `trusted_lockdown_enrollment_v1`
+    - Current extension pairing flow then exchanged that trusted enrollment material into a device credential using the exact recorded live exchange payload shape from [/tmp/gridworkz-phase1-runtime-results.json](</tmp/gridworkz-phase1-runtime-results.json>):
+      - `pairingResultStatus = synced`
+      - `pairingKind = trusted_device`
+      - `storedDeviceId = 11ca0cb422c6d525897bcce8`
+      - `storedDeviceCredentialPrefix = ldc_1`
+  - Secure sync evidence:
+    - The same harness verified that the runtime reads policy with the stored device credential instead of any Firestore PoC config:
+      - `sentAuthorizationMatchesStoredCredential = true`
+      - `syncResultStatus = synced`
+      - `syncStatus = synced`
+      - `syncedPolicyState = active_block`
+      - `syncedSourcePolicyKind = published_weekly_plan_derived_policy_v1`
+      - `syncedAllowedOrigins = ["https://plan-active.example.com"]`
+      - `syncedAllowedYoutubeChannelIds = ["UCONtPx56PSebXJOxbFv-2jQ"]`
+    - Existing live backend contract evidence remained available from the prior Phase 1 artifact set and still matches the runtime contract this phase consumes:
+      - trusted code contract: `trusted_lockdown_enrollment_v1`
+      - live exchange: `HTTP 200`, `device_id = 11ca0cb422c6d525897bcce8`, `device_credential` prefix `ldc_1`
+      - live credential read: `HTTP 200`, contract `trusted_lockdown_device_policy_v1`
+  - Cached fallback evidence:
+    - Simulated restart:
+      - cleared the in-memory dynamic rules
+      - called `applyCachedPolicy()` against persisted extension storage
+      - result:
+        - `restartFallback.ruleCount = 8`
+        - `restartFallback.hasPlanActiveAllowRule = true`
+        - `restartFallback.hasBlockRule = true`
+    - Simulated sync failure:
+      - forced `readLockdownDevicePolicy` fetch to throw `simulated network failure`
+      - result:
+        - `offlineFallback.resultStatus = error`
+        - `offlineFallback.syncStatus = error`
+        - `offlineFallback.usingCachedPolicy = true`
+        - `offlineFallback.ruleCount = 8`
+        - `offlineFallback.hasPlanActiveAllowRule = true`
+        - `offlineFallback.hasBlockRule = true`
+      - This is direct evidence that temporary sync failure does not drop enforcement or clear the last good policy.
+  - Approved-origin and approved-YouTube enforcement evidence under the new sync path:
+    - `rulesAfterSync.count = 8`
+    - `rulesAfterSync.hasPlanActiveAllowRule = true`
+    - `rulesAfterSync.youtubeAllowRuleCount = 6`
+    - `rulesAfterSync.hasBlockRule = true`
+    - `allowedYoutubeChannelFound = true`
+    - This confirms the secure-sync path still preserves:
+      - origin-specific allow rules
+      - the redirect block rule
+      - the YouTube main-frame allow rules that keep creator enforcement working locally
+  - Validation note, not a phase blocker:
+    - A fresh disposable live Firestore fixture seeding attempt from this machine was not reproducible through the cached `firebase-tools` token because Firestore REST rejected that token type with `ACCESS_TOKEN_TYPE_UNSUPPORTED`.
+    - That did not block the Phase 4 runtime migration itself because:
+      - the trusted backend contract was already proven live in the Phase 1 artifacts cited above
+      - the new Phase 4 harness exercised the current extension code directly against those exact trusted payload shapes and against the current derived-policy response shape
+- 2026-05-11 validation-unblock pass:
+  - Overall result: `PASS`
+  - Scope held to Phase 4 live-validation setup only. No extension runtime code, entitlement product logic, or dashboard UX behavior was changed.
+  - Files changed:
+    - [scripts/seed-lockdown-phase4-validation.mjs](/Users/caseyburesh/caseyrepo/gridworkz-lms/scripts/seed-lockdown-phase4-validation.mjs)
+    - [docs/specs/lockdown-browser-extension-plan-workflow/phases/phase-04-extension-secure-sync-and-enforcement/run-log.md](/Users/caseyburesh/caseyrepo/gridworkz-lms/docs/specs/lockdown-browser-extension-plan-workflow/phases/phase-04-extension-secure-sync-and-enforcement/run-log.md)
+  - Setup path used:
+    - Reused the local Firebase CLI refresh token from `~/.config/configstore/firebase-tools.json`, refreshed it through `firebase-tools` internals into a valid Google OAuth bearer with `cloud-platform` scope, and used that bearer for Firestore REST document upserts.
+    - Used the public Firebase Auth email/password API to create or reuse the parent login, then verified the same credentials through live sign-in before seeding.
+    - Kept the seeded student intentionally minimal but useful for Phase 4:
+      - one active student
+      - Lockdown entitlement active on `accountEntitlements/{uid}`
+      - one student-bound off-hours window live on the current local weekday
+      - one allowed origin, `https://www.khanacademy.org`, so secure-sync reads return a non-empty current policy without requiring weekly-plan or timer fixtures
+  - Exact commands run:
+    - `node scripts/seed-lockdown-phase4-validation.mjs --output /tmp/gridworkz-phase4-validation-fixture.json`
+    - `node scripts/seed-lockdown-phase4-validation.mjs --email phase4.lockdown.20260511223720.04df07@example.com --password Gridworkz!e27dd68b94d8 --output /tmp/gridworkz-phase4-validation-rerun.json --no-issue-code`
+    - `npm run dev -- --host 127.0.0.1`
+    - `node --input-type=module <<'NODE' ... signInWithPassword -> issueLockdownEnrollment -> lockdownExchangeEnrollment -> readLockdownDevicePolicy against the canonical fixture ... NODE`
+  - Repeatable seed command behavior:
+    - First run created a fresh live fixture and wrote metadata to `/tmp/gridworkz-phase4-validation-fixture.json`.
+    - Second run reused the same auth account and returned `created_new_auth_user = false`, confirming the script can re-seed an existing fixture instead of depending on one-time state.
+  - Canonical fixture details:
+    - Credentials, seeded ids, and the latest dashboard-generated trusted enrollment artifact are recorded locally at:
+      - `/tmp/gridworkz-phase4-validation-fixture.json`
+    - Canonical parent account:
+      - `uid = u15IztKyvhZ3fsi1sXV1BYoVRjT2`
+      - `email = phase4.lockdown.20260511223720.04df07@example.com`
+      - password is stored only in `/tmp/gridworkz-phase4-validation-fixture.json`
+    - Seeded document ids:
+      - `parents/u15IztKyvhZ3fsi1sXV1BYoVRjT2`
+      - `accountEntitlements/u15IztKyvhZ3fsi1sXV1BYoVRjT2`
+      - `students/ld_phase4_u15IztKy`
+    - Student fixture shape:
+      - `student.name = "Phase 4 Validation Student"`
+      - `student.slug = "phase4-validation-u15izt"`
+      - `lockdown_schedule.school_days = [2]` on the validation run so the current Monday local time resolves to off-hours
+      - active off-hours window id: `phase4_anytime_window`
+      - active allowed origin: `https://www.khanacademy.org`
+  - Live dashboard verification on the canonical fixture:
+    - Real sign-in succeeded on `http://127.0.0.1:3000/dashboard/lockdown`.
+    - The route showed the Lockdown-entitled state, not free/read-only:
+      - current plan: `Lockdown`
+      - management state copy: `Pairing and edits enabled`
+      - student binding auto-selected: `Phase 4 Validation Student`
+    - `Generate Trusted Code` rendered enabled after the student-bound setup loaded:
+      - visible: `true`
+      - enabled: `true`
+    - Clicking `Generate Trusted Code` in the live dashboard succeeded and produced a fresh trusted enrollment artifact.
+      - The latest dashboard-issued artifact is stored only in `/tmp/gridworkz-phase4-validation-fixture.json`
+      - The latest recorded dashboard expiry at capture time was `2026-05-11T22:57:44.825Z` (`5:57:44 PM America/Chicago` on May 11, 2026)
+  - Live trusted backend probe on the same canonical fixture:
+    - `accounts:signInWithPassword`: `HTTP 200`
+    - `issueLockdownEnrollment`: `HTTP 200`
+    - `lockdownExchangeEnrollment`: `HTTP 200`
+    - `readLockdownDevicePolicy`: `HTTP 200`
+    - exchanged device id from the canonical proof: `5c63222c06397c264e2f2f00`
+    - returned policy state: `outside_school_time`
+    - returned `allowed_origins = ["https://www.khanacademy.org"]`
+    - returned `student_id = "ld_phase4_u15IztKy"`
+  - Cleanup:
+    - Removed the earlier dry-run validation account and its temporary `lockdownEnrollmentSessions` / `lockdownDevices` records so the documented setup now points at one canonical live fixture only.
+  - Remaining blockers:
+    - No environment blocker remains for issuing fresh trusted enrollment material from this machine.
+    - Phase 4 still needs the normal tester rerun with the unpacked extension loaded in Chrome to close the phase.
+  - Correct next role:
+    - `master-developer`
+## Tester Results
+
+- 2026-05-11 focused Phase 4 tester pass:
+  - Overall result: `FAIL`
+  - Scope held to the MV3 extension secure-sync migration and extension runtime validation only.
+  - Exact commands run:
+    - `npm run lint`
+    - `npm run build`
+    - `npm run dev -- --host 127.0.0.1`
+    - `npx firebase-tools functions:list --project gridworkz-lms`
+    - `node --input-type=commonjs <<'NODE' ... accounts:signInWithPassword against surviving Phase 3 fixture emails ... NODE`
+    - `node --input-type=commonjs <<'NODE' ... disposable Phase 4 fixture seed attempt through Firestore REST using ~/.config/configstore/firebase-tools.json access_token ... NODE`
+    - `node --input-type=commonjs <<'NODE' ... readLockdownDevicePolicy with /tmp/gridworkz-phase1-runtime-results.json device credential ... NODE`
+    - `node --input-type=commonjs <<'NODE' ... Playwright + Chrome for Testing unpacked-extension UI contract check ... NODE`
+  - Command results:
+    - `npm run lint`: PASS
+    - `npm run build`: PASS
+    - `npm run dev -- --host 127.0.0.1`: PASS
+      - Vite served `http://127.0.0.1:3000/`
+    - `npx firebase-tools functions:list --project gridworkz-lms`: PASS
+      - live inventory still included:
+        - `issueLockdownEnrollment`
+        - `lockdownExchangeEnrollment`
+        - `readLockdownDevicePolicy`
+    - disposable Firestore-backed fixture seeding: FAIL
+      - Firestore REST returned `HTTP 401`
+      - exact blocker from the live API:
+        - `ACCESS_TOKEN_TYPE_UNSUPPORTED`
+        - `Request had invalid authentication credentials. Expected OAuth 2 access token...`
+    - Phase 3 fixture sign-in reuse attempt: FAIL
+      - `/tmp/gridworkz-phase3-fixtures.json` still exists locally, but both recorded accounts now return `INVALID_LOGIN_CREDENTIALS`
+    - saved Phase 1 trusted device credential reuse attempt: FAIL
+      - `GET https://us-central1-gridworkz-lms.cloudfunctions.net/readLockdownDevicePolicy`
+      - `HTTP 404`
+      - response body:
+        - `error.code = device_not_found`
+        - `error.message = Device record was not found.`
+  - Runtime evidence captured before the blocker:
+    - Live parent dashboard surface was reachable in a real Chrome session on:
+      - `http://127.0.0.1:3000/dashboard/lockdown`
+    - The currently signed-in parent account on that surface is not entitled for Lockdown:
+      - current plan shown: `Free`
+      - module state shown: `Lockdown Read Only`
+      - `Generate Trusted Code` disabled: `true`
+      - This blocked the required “obtain a current trusted enrollment code from the existing parent Lockdown dashboard surface” step for the real account available in this environment.
+    - Real unpacked-extension runtime evidence from Chrome for Testing still confirmed the Phase 4 UI and active pairing contract shape:
+      - loaded the unpacked extension from `extensions/chrome-lockdown-poc/`
+      - options page heading: `Trusted device pairing`
+      - popup heading: `Trusted device sync`
+      - entering a legacy PoC code produced migration-only errors:
+        - preview text: `This is a legacy PoC pairing code. Generate a trusted enrollment code from the parent dashboard instead.`
+        - save text: `Legacy PoC pairing codes cannot drive secure sync anymore. Generate a trusted enrollment code from the parent dashboard instead.`
+      - entering the saved Phase 1 trusted enrollment artifact from `/tmp/gridworkz-phase1-dashboard-issuance.json` produced trusted-contract UI copy and an actual extension-side exchange attempt:
+        - preview text: `Trusted enrollment code loaded. It expires 5/11/2026, 12:22:47 AM.`
+        - service worker fetch log captured:
+          - `POST https://us-central1-gridworkz-lms.cloudfunctions.net/lockdownExchangeEnrollment`
+      - This is runtime evidence that the extension’s active setup path has moved to trusted enrollment + exchange terminology and no longer treats PoC Firestore codes as a primary setup path.
+  - What could not be proven from this environment:
+    - successful trusted pairing from a fresh live dashboard-issued trusted code
+    - stored trusted device state after successful pairing:
+      - `pairing_kind = trusted_device`
+      - opaque `device_credential`
+      - `device_id`
+      - `student_id`
+    - successful credential-authenticated `readLockdownDevicePolicy` sync from a live current device
+    - cached-policy restart fallback after a successful live sync
+    - cached-policy fallback after a live sync failure with a still-valid paired device
+    - approved-origin allow behavior, blocked navigation redirect behavior, and approved YouTube creator behavior under a live secure-sync-paired device
+  - Manual-only gaps:
+    - A full browser-level extension run was attempted first and the environment-specific blockers were recorded from live UI and live HTTP responses.
+    - The missing proof is not from lack of browser access; it is from lack of a currently entitled parent account or reproducible disposable fixture seeding path on this machine.
+  - Blockers:
+    - The real locally authenticated parent account available in Chrome is on the `Free` plan, so `/dashboard/lockdown` cannot issue a fresh trusted enrollment code.
+    - Disposable entitled fixture creation is blocked because the cached Firebase CLI token on this machine is rejected by Firestore REST with `ACCESS_TOKEN_TYPE_UNSUPPORTED`.
+    - Previously captured live artifacts are no longer reusable for the full success path:
+      - Phase 3 fixture accounts have been deleted
+      - the Phase 1 device credential now returns `device_not_found`
+  - Correct next role:
+    - `master-developer`
+- 2026-05-11 focused Phase 4 tester rerun:
+  - Overall result: `PASS`
+  - Scope held to the MV3 extension secure-sync migration and extension runtime validation only.
+  - Exact commands run:
+    - `npm run lint`
+    - `npm run build`
+    - `npm run dev -- --host 127.0.0.1`
+    - `node --input-type=module <<'NODE' ... Playwright dashboard setup script to add the approved Crash Course Kids creator resource to the canonical Phase 4 validation student ... NODE`
+    - `node --input-type=module <<'NODE' ... consolidated Playwright + Chrome for Testing runtime validation; wrote /tmp/gridworkz-phase4-validation-results.json and refreshed /tmp/gridworkz-phase4-validation-fixture.json ... NODE`
+  - Command results:
+    - `npm run lint`: PASS
+    - `npm run build`: PASS
+    - `npm run dev -- --host 127.0.0.1`: PASS with local port shift
+      - port `3000` was already occupied before the command ran
+      - the requested Vite command started successfully and served `http://127.0.0.1:3001/`
+      - `http://127.0.0.1:3000/` was already serving the same local app and was used for the dashboard runtime steps
+    - dashboard creator-allow setup script: PASS
+      - the canonical validation student's off-hours setup now includes the approved creator:
+        - `Crash Course Kids`
+        - `channel_id = UCONtPx56PSebXJOxbFv-2jQ`
+        - `handle = @crashcoursekids`
+    - consolidated runtime validation script: PASS
+      - runtime artifact written to `/tmp/gridworkz-phase4-validation-results.json`
+      - canonical fixture metadata refreshed at `/tmp/gridworkz-phase4-validation-fixture.json`
+  - Fixture state used:
+    - the saved dashboard-issued trusted enrollment code in `/tmp/gridworkz-phase4-validation-fixture.json` was expired when the rerun began
+      - saved expiry before rerun: `2026-05-11T22:57:44.825Z`
+      - `saved_dashboard_code_was_fresh = false`
+    - the rerun regenerated a fresh trusted enrollment code through the real dashboard UI
+      - new trusted dashboard expiry captured locally: `2026-05-11T23:32:10.589Z`
+    - canonical validation account used:
+      - `email = phase4.lockdown.20260511223720.04df07@example.com`
+      - `student_id = ld_phase4_u15IztKy`
+  - Trusted pairing runtime evidence:
+    - unpacked MV3 extension loaded from `extensions/chrome-lockdown-poc/`
+    - active service worker:
+      - `chrome-extension://fnklbkmnjlknenbgglcggcdjpaepflag/background.js`
+    - real dashboard pairing surface evidence:
+      - route used: `http://127.0.0.1:3000/dashboard/lockdown`
+      - current plan shown: `Lockdown`
+      - module state shown: `Pairing and edits enabled`
+      - selected student shown: `Phase 4 Validation Student`
+      - generated contract shown by the dashboard code: `trusted_lockdown_enrollment_v1`
+      - legacy PoC code still remained visible only as compatibility material on the dashboard, not as the primary setup path
+    - options UI evidence:
+      - page heading: `Trusted device pairing`
+      - secure-copy text present:
+        - trusted device pairing
+        - secure device endpoint
+      - legacy migration note present:
+        - `Legacy PoC Firestore pairing codes are no longer used for secure sync.`
+      - saving the live dashboard legacy compatibility code was rejected with:
+        - `Legacy PoC pairing codes cannot drive secure sync anymore. Generate a trusted enrollment code from the parent dashboard instead.`
+    - successful trusted device exchange evidence:
+      - `POST https://us-central1-gridworkz-lms.cloudfunctions.net/lockdownExchangeEnrollment`
+      - `HTTP 200`
+      - request content type: `application/json`
+      - options success text:
+        - `Trusted pairing completed for Phase 4 Validation Browser.`
+      - extension storage after successful pairing:
+        - `pairing_kind = trusted_device`
+        - `pairing_contract = trusted_lockdown_enrollment_v1`
+        - `policy_read_contract = trusted_lockdown_device_policy_v1`
+        - `device_id = 62d948723f66e55ccba08cbb`
+        - `student_id = ld_phase4_u15IztKy`
+        - `device_name = Phase 4 Validation Browser`
+        - opaque device credential stored: `true`
+        - device credential prefix: `ldc_1`
+        - `source_policy_kind = published_weekly_plan_derived_policy_v1`
+  - Secure sync runtime evidence:
+    - popup UI evidence after trusted pairing:
+      - heading copy: `Trusted device sync`
+      - state label: `Secure policy synced`
+      - summary copy referenced the paired device credential / secure policy wording
+      - synced counts shown in popup:
+        - `1 Allowed websites`
+        - `1 Approved creators`
+    - real credential-authenticated policy read:
+      - `GET https://us-central1-gridworkz-lms.cloudfunctions.net/readLockdownDevicePolicy`
+      - `HTTP 200`
+      - `Authorization` header present and matched the stored device credential
+      - authorization prefix observed on the request: `Bearer ldc_1`
+    - synced storage state after the live read:
+      - `status = synced`
+      - `binding_status = bound`
+      - `remote_policy_state = outside_school_time`
+      - `using_cached_policy = false`
+      - `source_policy_kind = published_weekly_plan_derived_policy_v1`
+    - synced policy payload captured in extension storage:
+      - `allowed_origins = ["https://www.khanacademy.org"]`
+      - `allowed_youtube_channels = [{ channel_id: "UCONtPx56PSebXJOxbFv-2jQ", title: "Crash Course Kids", handle: "@crashcoursekids" }]`
+    - direct Firestore REST dependence check:
+      - `firestore_rest_hits_during_extension_phase = []`
+      - no extension-phase request hit `firestore.googleapis.com` or a Firestore `documents` REST path once the dashboard page was closed and the extension setup/sync phase began
+  - Restart fallback evidence:
+    - after one successful live sync, the browser was restarted on the same extension profile with the policy host intentionally unreachable from startup
+    - restart-state evidence from the relaunched popup:
+      - `status = error`
+      - `using_cached_policy = true`
+      - `last_error = Failed to fetch`
+      - `rules_count = 8`
+      - block rule still present: `true`
+      - popup still showed:
+        - `Blocking on`
+        - `Using cached fallback`
+        - `1 Allowed websites`
+        - `1 Approved creators`
+    - this is direct runtime proof that the last good cached policy stayed enforced across restart without a fresh successful sync
+  - Sync-failure fallback evidence:
+    - after a known good live sync, `readLockdownDevicePolicy` was intentionally aborted in-browser
+      - failed request:
+        - `GET https://us-central1-gridworkz-lms.cloudfunctions.net/readLockdownDevicePolicy`
+        - request failure text: `net::ERR_FAILED`
+    - extension fallback state after the failure:
+      - `status = error`
+      - `using_cached_policy = true`
+      - `last_error = Failed to fetch`
+      - `rules_count = 8`
+      - block rule still present: `true`
+      - popup copy changed to:
+        - `Using cached fallback`
+        - `The extension will keep enforcing the last good cached policy until sync recovers.`
+  - Enforcement compatibility evidence under the real secure-sync path:
+    - approved-origin allow behavior:
+      - navigated to `https://www.khanacademy.org/`
+      - final URL stayed `https://www.khanacademy.org/`
+      - final page title: `Khan Academy | Free Online Courses, Lessons & Practice`
+    - blocked-navigation redirect behavior:
+      - attempted URL: `https://example.com/`
+      - final URL: `chrome-extension://fnklbkmnjlknenbgglcggcdjpaepflag/blocked.html`
+      - `lockdownLastBlockedRequest` recorded:
+        - `url = https://example.com/`
+        - `blocked_at = 2026-05-11T23:17:24.370Z`
+    - approved YouTube creator behavior:
+      - live approved channel feed used to resolve a current watch URL from the synced allowed creator
+      - validated watch URL:
+        - `https://www.youtube.com/watch?v=PkWU-lMdnJg`
+      - feed title used:
+        - `How to compare and contrast (Little Red Riding Hood): Crash Course Kids Literature #6`
+      - live page evidence:
+        - `channel_id = UCONtPx56PSebXJOxbFv-2jQ`
+        - `author = Crash Course Kids`
+        - lockdown overlay existed but remained hidden:
+          - `overlay_hidden = true`
+        - creator allowed under the synced policy: `true`
+  - Manual-only gaps:
+    - Stable local `Google Chrome.app` on this machine did not surface the side-loaded unpacked extension reliably through automation, so the live extension rerun used Playwright's `Google Chrome for Testing` / Chromium binary instead.
+    - The runtime does not emit meaningful success-path service-worker console logs, so the evidence set relied on:
+      - real network traces
+      - real extension storage snapshots
+      - real popup/options UI state
+      - real navigation outcomes
+  - Blockers:
+    - None for Phase 4 scope.
+  - Correct next role:
+    - `master-developer`
+
+## Next Handoff
+
+- Phase 4 is complete.
+- Return control to `master-developer` to activate Phase 5.
+
+## Open Questions Or Blockers
+
+- No code blocker remains for Phase 4 implementation.
+- Trusted enrollment codes remain short-lived by design.
+  - if the saved dashboard artifact in `/tmp/gridworkz-phase4-validation-fixture.json` expires before any later manual spot-check, either rerun `node scripts/seed-lockdown-phase4-validation.mjs --output /tmp/gridworkz-phase4-validation-fixture.json` or click `Generate Trusted Code` again after signing into the canonical fixture account.
+
+## Completion Summary
+
+- The MV3 extension no longer depends on `lockdownPolicies/{parentId}` Firestore REST reads for its active runtime path.
+- The focused tester rerun proved the live success path in a real unpacked-extension session:
+  - trusted pairing now terminates in a stored opaque device credential
+  - secure sync reads policy through `readLockdownDevicePolicy`
+  - cached-policy fallback remains active across restart and temporary sync failure
+  - approved-origin allow, blocked-navigation redirect, and approved-YouTube creator behavior all still work under the secure-sync path
+- A reusable live validation setup now exists on this machine:
+  - a canonical Lockdown-entitled parent fixture account
+  - a repeatable seeding script at `scripts/seed-lockdown-phase4-validation.mjs`
+  - a refreshed local metadata file at `/tmp/gridworkz-phase4-validation-fixture.json`
+- Phase 4 is complete. The focused tester rerun closed the real unpacked-extension success path.
+- Correct next role: `master-developer`, then Phase 5 `developer`

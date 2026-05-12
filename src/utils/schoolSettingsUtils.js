@@ -1,4 +1,11 @@
+import { getDateTimePartsInTimeZone } from './weekUtils.js';
+
 const DEFAULT_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Chicago';
+const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
+
+export const DEFAULT_LOCKDOWN_SCHOOL_DAYS = [1, 2, 3, 4, 5];
+export const DEFAULT_LOCKDOWN_SCHOOL_DAY_START_TIME = '08:00';
+export const DEFAULT_LOCKDOWN_SCHOOL_DAY_END_TIME = '15:00';
 
 export const RESET_DAY_OPTIONS = [
   { value: 0, label: 'Sunday' },
@@ -42,6 +49,11 @@ export const formatTimeInputValue = (hour = 0, minute = 0) => (
   `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
 );
 
+export const buildSettingsFormState = (settings = {}) => ({
+  ...settings,
+  reset_time: formatTimeInputValue(settings.week_reset_hour, settings.week_reset_minute),
+});
+
 export const parseTimeInputValue = (value) => {
   const [rawHour = '0', rawMinute = '0'] = String(value || '').split(':');
   const hour = Number.parseInt(rawHour, 10);
@@ -57,6 +69,151 @@ export const formatResetSchedule = (settings = {}) => {
   const day = RESET_DAY_OPTIONS.find(option => option.value === settings.week_reset_day)?.label || 'Monday';
   const time = formatTimeInputValue(settings.week_reset_hour, settings.week_reset_minute);
   return `${day} at ${time}`;
+};
+
+const cloneSettingsValue = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(cloneSettingsValue);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nestedValue]) => [key, cloneSettingsValue(nestedValue)])
+    );
+  }
+
+  return value;
+};
+
+const normalizeDayList = (value, fallback = DEFAULT_LOCKDOWN_SCHOOL_DAYS) => {
+  const normalizedDays = Array.from(
+    new Set(
+      (Array.isArray(value) ? value : fallback)
+        .map((dayValue) => Number.parseInt(dayValue, 10))
+        .filter((dayValue) => Number.isInteger(dayValue) && dayValue >= 0 && dayValue <= 6)
+    )
+  );
+
+  return normalizedDays.length ? normalizedDays : [...fallback];
+};
+
+export const parseDailyTimeValue = (value, fallbackValue = '00:00') => {
+  const normalizedValue = typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : fallbackValue;
+  const [rawHour = '0', rawMinute = '0'] = normalizedValue.split(':');
+  const hour = Number.parseInt(rawHour, 10);
+  const minute = Number.parseInt(rawMinute, 10);
+  const safeHour = Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : 0;
+  const safeMinute = Number.isInteger(minute) && minute >= 0 && minute <= 59 ? minute : 0;
+
+  return {
+    hour: safeHour,
+    minute: safeMinute,
+    totalMinutes: (safeHour * 60) + safeMinute,
+    value: `${String(safeHour).padStart(2, '0')}:${String(safeMinute).padStart(2, '0')}`,
+  };
+};
+
+export const isMinutesWithinWindow = (value, startMinutes, endMinutes) => {
+  if (!Number.isInteger(value) || !Number.isInteger(startMinutes) || !Number.isInteger(endMinutes)) {
+    return false;
+  }
+
+  if (startMinutes === endMinutes) {
+    return false;
+  }
+
+  if (startMinutes < endMinutes) {
+    return value >= startMinutes && value < endMinutes;
+  }
+
+  return value >= startMinutes || value < endMinutes;
+};
+
+const normalizeLockdownWindow = (windowConfig = {}, index = 0) => {
+  const start = parseDailyTimeValue(windowConfig.start_time, '00:00');
+  const end = parseDailyTimeValue(windowConfig.end_time, '23:59');
+
+  return {
+    id: typeof windowConfig.id === 'string' && windowConfig.id.trim().length > 0
+      ? windowConfig.id.trim()
+      : `off_hours_window_${index + 1}`,
+    label: typeof windowConfig.label === 'string' ? windowConfig.label.trim() : '',
+    days: normalizeDayList(windowConfig.days, EVERY_DAY),
+    start_time: start.value,
+    end_time: end.value,
+    resources: Array.isArray(windowConfig.resources)
+      ? cloneSettingsValue(windowConfig.resources)
+      : [],
+  };
+};
+
+export const normalizeLockdownSchedule = (value = {}, fallbackTimezone = DEFAULT_TIMEZONE) => {
+  const rawSchedule = value?.lockdown_schedule && typeof value.lockdown_schedule === 'object' && !Array.isArray(value.lockdown_schedule)
+    ? value.lockdown_schedule
+    : value;
+  const start = parseDailyTimeValue(
+    rawSchedule.school_day_start_time,
+    DEFAULT_LOCKDOWN_SCHOOL_DAY_START_TIME
+  );
+  const end = parseDailyTimeValue(
+    rawSchedule.school_day_end_time,
+    DEFAULT_LOCKDOWN_SCHOOL_DAY_END_TIME
+  );
+
+  return {
+    timezone: typeof rawSchedule.timezone === 'string' && rawSchedule.timezone.trim().length > 0
+      ? rawSchedule.timezone.trim()
+      : fallbackTimezone,
+    school_days: normalizeDayList(rawSchedule.school_days, DEFAULT_LOCKDOWN_SCHOOL_DAYS),
+    school_day_start_time: start.value,
+    school_day_end_time: end.value,
+    off_hours_resource_windows: (Array.isArray(rawSchedule.off_hours_resource_windows)
+      ? rawSchedule.off_hours_resource_windows
+      : [])
+      .map((windowConfig, index) => normalizeLockdownWindow(windowConfig, index)),
+  };
+};
+
+export const resolveLockdownTimeContext = ({
+  referenceDate = new Date(),
+  schedule = {},
+  timezone = '',
+} = {}) => {
+  const normalizedSchedule = normalizeLockdownSchedule(schedule, timezone || DEFAULT_TIMEZONE);
+  const localParts = getDateTimePartsInTimeZone(referenceDate, normalizedSchedule.timezone);
+  const localTimeMinutes = (localParts.hour * 60) + localParts.minute;
+  const schoolStart = parseDailyTimeValue(normalizedSchedule.school_day_start_time);
+  const schoolEnd = parseDailyTimeValue(normalizedSchedule.school_day_end_time);
+  const schoolDayActive = normalizedSchedule.school_days.includes(localParts.weekday);
+  const inSchoolTime = schoolDayActive && isMinutesWithinWindow(
+    localTimeMinutes,
+    schoolStart.totalMinutes,
+    schoolEnd.totalMinutes
+  );
+  const activeOffHoursWindow = inSchoolTime
+    ? null
+    : normalizedSchedule.off_hours_resource_windows.find((windowConfig) => (
+      windowConfig.days.includes(localParts.weekday)
+      && isMinutesWithinWindow(
+        localTimeMinutes,
+        parseDailyTimeValue(windowConfig.start_time).totalMinutes,
+        parseDailyTimeValue(windowConfig.end_time).totalMinutes
+      )
+    )) || null;
+
+  return {
+    timezone: normalizedSchedule.timezone,
+    localDate: localParts.localDate,
+    localDay: localParts.weekday,
+    localTime: localParts.localTime,
+    localTimeMinutes,
+    schoolDayActive,
+    inSchoolTime,
+    activeOffHoursWindow,
+    schedule: normalizedSchedule,
+  };
 };
 
 export const normalizeDateString = (value) => {

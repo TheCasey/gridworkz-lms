@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GridWorkz Lockdown Setup</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="options-shell">
+    <main class="page-shell">
+      <section class="panel">
+        <p class="eyebrow">GridWorkz Lockdown</p>
+        <h1>Trusted device pairing</h1>
+        <p class="muted">
+          Paste the trusted enrollment code from the parent Lockdown panel. The extension exchanges it once for a device credential, then reads policy through the secure device endpoint.
+        </p>
+
+        <div class="section">
+          <h2>Pair this browser</h2>
+          <div class="form-stack">
+            <div class="field-group">
+              <label for="pairing-code">Trusted enrollment code</label>
+              <textarea id="pairing-code" placeholder="Paste the trusted enrollment code from the parent dashboard"></textarea>
+              <p class="field-help">
+                This code carries the one-time enrollment token plus the secure exchange and policy-read URLs the extension needs.
+              </p>
+            </div>
+            <div class="field-group">
+              <label for="device-name">Device name</label>
+              <input id="device-name" type="text" placeholder="Kitchen Chromebook" />
+              <p class="field-help">
+                Optional. This label is stored with the device record created during enrollment exchange.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="cluster">
+          <button class="primary-button" id="save-button" type="button">Save pairing</button>
+          <button class="secondary-button" id="clear-button" type="button">Clear pairing</button>
+          <button class="secondary-button" id="popup-button" type="button">Back to popup</button>
+        </div>
+
+        <p class="status-message" id="status-message"></p>
+
+        <div class="note">
+          Legacy PoC Firestore pairing codes are no longer used for secure sync. If this browser still has one saved, clear it here and pair again with a trusted enrollment code.
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

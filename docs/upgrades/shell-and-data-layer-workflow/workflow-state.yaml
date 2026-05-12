@@ -1,0 +1,23 @@
+workflow_name: shell-and-data-layer
+workflow_title: "Shell And Data Layer Workflow"
+workflow_summary: "Refactor the parent shell into route-backed modules, introduce a feature registry and shell slots, extract domain hooks from the largest screens, and add a reusable student access-policy layer without redoing the already-live entitlement backend."
+workflow_status: complete
+source_plan_path: "docs/upgrades/shell-and-data-layer.md"
+current_phase_number: 6
+current_phase_slug: phase-06-student-access-policy-layer
+current_role: none
+phase_status: done
+owner: none
+last_completed_phase_number: 6
+last_completed_phase_slug: phase-06-student-access-policy-layer
+blocked_reason: none
+last_updated: 2026-05-06
+active_phase_path: "docs/upgrades/shell-and-data-layer-workflow/phases/phase-06-student-access-policy-layer/phase.md"
+active_run_log_path: "docs/upgrades/shell-and-data-layer-workflow/phases/phase-06-student-access-policy-layer/run-log.md"
+phase_sequence:
+  - phase-01-route-backed-shell-foundation
+  - phase-02-shell-slots-and-rail-decoupling
+  - phase-03-students-and-settings-domain-hooks
+  - phase-04-subjects-reports-and-rollover-hooks
+  - phase-05-entitlement-shell-integration-and-lockdown-route
+  - phase-06-student-access-policy-layer

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   getFirestore, collection, addDoc, query, where, onSnapshot, orderBy, limit,
@@ -13,6 +13,12 @@ import {
   loadTimerFromStorage, clearTimerFromStorage, getTimerKey, formatRemainingTime,
   getTimerSessionDocId, hydrateStoredTimer
 } from '../utils/timerUtils';
+import useStudentAccessPolicy, { StudentAccessPolicyReasonCodes } from '../hooks/useStudentAccessPolicy';
+import useStudentPortalWeeklyPlan from '../hooks/useStudentPortalWeeklyPlan';
+import {
+  buildPublishedWeeklyPlanPortalSubjects,
+  buildPublishedWeeklyPlanPortalWorkItems,
+} from '../utils/weeklyPlanUtils';
 
 const ALARM_SOUNDS = [
   { file: 'alarm-clock.mp3', label: 'Alarm Clock' },
@@ -47,6 +53,9 @@ const C = {
   lavenderTint: '#f0eaff',
 };
 
+const getPortalSubjectTitle = (subject) => subject?.portal_display_title || subject?.title || 'Untitled Block';
+const getSubmissionSubjectName = (subject) => subject?.legacy_subject_title || subject?.title || '';
+
 const StudentPortal = () => {
   const { slug } = useParams();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -54,7 +63,7 @@ const StudentPortal = () => {
   const [error, setError] = useState('');
   const [student, setStudent] = useState(null);
   const [subjects, setSubjects] = useState([]);
-  const [submissions, setSubmissions] = useState([]);
+  const [, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [selectedBlockIndex, setSelectedBlockIndex] = useState(null);
@@ -80,13 +89,42 @@ const StudentPortal = () => {
   const timerRemovalInFlightRef = useRef({});
 
   const db = getFirestore(app);
-  const subjectMap = useMemo(() => Object.fromEntries(subjects.map(subject => [subject.id, subject])), [subjects]);
+  const rawSubjectMap = useMemo(() => Object.fromEntries(subjects.map(subject => [subject.id, subject])), [subjects]);
   const weekConfig = useMemo(() => getWeekConfig(student || {}), [
     student?.week_reset_day,
     student?.week_reset_hour,
     student?.week_reset_minute,
   ]);
+  const {
+    weeklyPlan: publishedWeeklyPlan,
+    loading: publishedWeeklyPlanLoading,
+  } = useStudentPortalWeeklyPlan({
+    student,
+    enabled: Boolean(student?.id && student?.parent_id),
+  });
+  const hasPublishedWeeklyPlan = Boolean(publishedWeeklyPlan);
+  const publishedWorkItems = useMemo(() => buildPublishedWeeklyPlanPortalWorkItems({
+    weeklyPlan: publishedWeeklyPlan,
+    subjectsById: rawSubjectMap,
+  }), [publishedWeeklyPlan, rawSubjectMap]);
+  const portalSubjects = useMemo(() => (
+    hasPublishedWeeklyPlan
+      ? buildPublishedWeeklyPlanPortalSubjects(publishedWorkItems)
+      : subjects
+  ), [hasPublishedWeeklyPlan, publishedWorkItems, subjects]);
+  const subjectMap = useMemo(
+    () => Object.fromEntries(portalSubjects.map(subject => [subject.id, subject])),
+    [portalSubjects]
+  );
+  const { portalAccess, getNextAvailableBlock, getSubjectPolicy, getWorkItemPolicy } = useStudentAccessPolicy({
+    student,
+    subjects: portalSubjects,
+    completedBlocks,
+    activeTimers,
+    submissionLocksRef,
+  });
   const getSoundUrl = (file) => `${import.meta.env.BASE_URL}sounds/${file}`;
+  const portalLoading = loading || (Boolean(student?.id && student?.parent_id) && publishedWeeklyPlanLoading);
 
   const ensureAlarmAudio = () => {
     if (!alarmAudioRef.current) {
@@ -168,10 +206,14 @@ const StudentPortal = () => {
   }, [slug, db]);
 
   useEffect(() => {
-    if (!student || subjects.length === 0) return;
+    if (!student) return;
+    if (portalSubjects.length === 0) {
+      setCompletedBlocks({});
+      return;
+    }
     const { weekStart } = getCurrentWeekRange(new Date(), weekConfig);
     const completedBlocksData = {};
-    const unsubscribers = subjects.map(subject => {
+    const unsubscribers = portalSubjects.map(subject => {
       const q = query(collection(db, 'submissions'),
         where('student_id', '==', student.id), where('subject_id', '==', subject.id),
         where('timestamp', '>=', weekStart), orderBy('timestamp', 'desc'));
@@ -182,12 +224,16 @@ const StudentPortal = () => {
       });
     });
     return () => unsubscribers.forEach(u => u());
-  }, [student, subjects, db, weekConfig]);
+  }, [student, portalSubjects, db, weekConfig]);
 
   useEffect(() => {
-    if (!student || subjects.length === 0) return;
+    if (!student) return;
+    if (portalSubjects.length === 0) {
+      setActiveTimers({});
+      return;
+    }
 
-    const unsubscribers = subjects.map((subject) => {
+    const unsubscribers = portalSubjects.map((subject) => {
       const timerRef = doc(db, 'timerSessions', getTimerSessionDocId(student.id, subject.id));
 
       return onSnapshot(timerRef, async (snapshot) => {
@@ -246,7 +292,7 @@ const StudentPortal = () => {
     });
 
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [student, subjects, completedBlocks, db]);
+  }, [student, portalSubjects, completedBlocks, db, getNextAvailableBlock]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -418,26 +464,24 @@ const StudentPortal = () => {
     }
   };
 
-  const getNextAvailableBlock = (subject) => {
-    if (!subject) return null;
-    const total = subject?.block_count || 10;
-    const completed = completedBlocks[subject.id] || [];
-    for (let i = 0; i < total; i++) { if (!completed.includes(i)) return i; }
-    return null;
-  };
-
   const startTimer = async (subject, preferredBlockIndex = null) => {
     if (!subject) return;
+    const subjectPolicy = getSubjectPolicy(subject, { blockIndex: preferredBlockIndex });
+    const timerStartPolicy = subjectPolicy.canStartTimer;
+    if (!timerStartPolicy.allowed) {
+      if (
+        timerStartPolicy.blockedReason?.code === StudentAccessPolicyReasonCodes.NO_AVAILABLE_BLOCKS
+        || timerStartPolicy.blockedReason?.code === StudentAccessPolicyReasonCodes.SUBJECT_COMPLETE
+      ) {
+        alert('All blocks completed!');
+      } else if (timerStartPolicy.blockedReason?.message) {
+        setError(timerStartPolicy.blockedReason.message);
+      }
+      return;
+    }
+
     await primeAlarmAudio();
-    const otherRunning = Object.keys(activeTimers).some(id => id !== subject.id);
-    if (otherRunning) return;
-    const nextBlock = getNextAvailableBlock(subject);
-    const candidateBlock = (
-      preferredBlockIndex !== null &&
-      preferredBlockIndex !== undefined &&
-      !isBlockCompleted(subject, preferredBlockIndex)
-    ) ? preferredBlockIndex : nextBlock;
-    if (candidateBlock === null || candidateBlock === undefined) { alert('All blocks completed!'); return; }
+    const candidateBlock = timerStartPolicy.meta?.candidateBlockIndex;
 
     const config = {
       ...createTimerConfig(subject?.block_length || 30),
@@ -573,21 +617,42 @@ const StudentPortal = () => {
   };
 
   const handleBlockSelect = (subject, blockIndex) => {
-    if (!subject || isBlockCompleted(subject, blockIndex) || isSubjectLocked(subject)) return;
+    const subjectPolicy = getSubjectPolicy(subject, { blockIndex });
+    if (!subject || isBlockCompleted(subject, blockIndex) || !subjectPolicy.subjectAvailability.allowed) return;
     setExpandedSubjectId(subject.id);
     setExpandedBlockIndex(blockIndex);
     setError('');
   };
 
+  const handleWorkItemSelect = (workItem) => {
+    const compatibilitySubject = workItem?.compatibilitySubject;
+    const compatibilityBlockIndex = workItem?.compatibilityBlockIndex;
+    const workItemPolicy = getWorkItemPolicy(workItem);
+
+    if (
+      !compatibilitySubject
+      || compatibilityBlockIndex === null
+      || compatibilityBlockIndex === undefined
+      || isBlockCompleted(compatibilitySubject, compatibilityBlockIndex)
+      || !workItemPolicy.subjectAvailability.allowed
+    ) {
+      return;
+    }
+
+    setExpandedSubjectId(compatibilitySubject.id);
+    setExpandedBlockIndex(compatibilityBlockIndex);
+    setError('');
+  };
+
   const openCompletionModal = (subject, blockIndex) => {
     if (!subject || blockIndex === null || blockIndex === undefined) return;
-    if (isSubmissionLocked(subject.id, blockIndex)) { setError('Submission in progress...'); return; }
+    const subjectPolicy = getSubjectPolicy(subject, { blockIndex });
+    if (!subjectPolicy.canSubmitBlock.allowed) {
+      setError(subjectPolicy.canSubmitBlock.blockedReason?.message || 'Unable to submit this block right now.');
+      return;
+    }
     if (subject.require_timer) {
       const timer = activeTimers[subject.id];
-      if (!timer || timer.blockIndex !== blockIndex || timer.remainingTime > 0) {
-        setError('Finish this block timer before submitting.');
-        return;
-      }
       setActiveTimers(prev => ({ ...prev, [subject.id]: { ...timer, isFinished: true, isRunning: false } }));
     }
 
@@ -605,12 +670,56 @@ const StudentPortal = () => {
     const timerBlock = activeTimers[subject.id]?.blockIndex;
     const selectedBlock = expandedSubjectId === subject.id ? expandedBlockIndex : null;
     const targetBlock = timerBlock ?? selectedBlock ?? getNextAvailableBlock(subject);
-    if (targetBlock === null || targetBlock === undefined) { alert('All blocks completed!'); return; }
+    const subjectPolicy = getSubjectPolicy(subject, { blockIndex: targetBlock });
+    if (!subjectPolicy.canSubmitBlock.allowed) {
+      if (subjectPolicy.canSubmitBlock.blockedReason?.code === StudentAccessPolicyReasonCodes.SUBJECT_COMPLETE) {
+        alert('All blocks completed!');
+      } else if (subjectPolicy.canSubmitBlock.blockedReason?.message) {
+        setError(subjectPolicy.canSubmitBlock.blockedReason.message);
+      }
+      return;
+    }
     openCompletionModal(subject, targetBlock);
+  };
+
+  const handleCompleteWorkItem = (workItem) => {
+    const compatibilitySubject = workItem?.compatibilitySubject;
+    const compatibilityBlockIndex = workItem?.compatibilityBlockIndex;
+    const activeSubjectTimer = compatibilitySubject ? activeTimers[compatibilitySubject.id] : null;
+
+    if (!compatibilitySubject || compatibilityBlockIndex === null || compatibilityBlockIndex === undefined) {
+      return;
+    }
+
+    if (activeSubjectTimer && activeSubjectTimer.blockIndex !== compatibilityBlockIndex) {
+      setError(`Timer is currently active for Block ${activeSubjectTimer.blockIndex + 1}. Finish or reset that timer first.`);
+      return;
+    }
+
+    stopAlarm();
+
+    const workItemPolicy = getWorkItemPolicy(workItem);
+
+    if (!workItemPolicy.canSubmitBlock.allowed) {
+      if (workItemPolicy.canSubmitBlock.blockedReason?.code === StudentAccessPolicyReasonCodes.SUBJECT_COMPLETE) {
+        alert('All blocks completed!');
+      } else if (workItemPolicy.canSubmitBlock.blockedReason?.message) {
+        setError(workItemPolicy.canSubmitBlock.blockedReason.message);
+      }
+      return;
+    }
+
+    openCompletionModal(compatibilitySubject, compatibilityBlockIndex);
   };
 
   const submitBlock = async (subject, blockIndex, summary) => {
     stopAlarm();
+    const subjectPolicy = getSubjectPolicy(subject, { blockIndex, ignoreSubmissionLock: true });
+    if (!subjectPolicy.canSubmitBlock.allowed) {
+      setError(subjectPolicy.canSubmitBlock.blockedReason?.message || 'Unable to submit this block right now.');
+      clearSubmissionLock(subject.id, blockIndex);
+      return;
+    }
     setSubmissionLock(subject.id, blockIndex);
     setSubmitting(true);
     try {
@@ -628,7 +737,7 @@ const StudentPortal = () => {
       }
       await addDoc(collection(db, 'submissions'), {
         student_id: student.id, parent_id: student.parent_id,
-        subject_name: subject.title, subject_id: subject.id,
+        subject_name: getSubmissionSubjectName(subject), subject_id: subject.id,
         block_index: blockIndex, timestamp: serverTimestamp(),
         summary_text: subject.require_input !== false ? summary : null,
         block_duration: subject.block_length || 30, is_locked: true,
@@ -651,15 +760,22 @@ const StudentPortal = () => {
   };
 
   const isBlockCompleted = useMemo(() => (subject, blockIndex) => completedBlocks[subject.id]?.includes(blockIndex) || false, [completedBlocks]);
-  const isSubjectLocked = useMemo(() => (subject) => (completedBlocks[subject.id]?.length || 0) >= (subject?.block_count || 4), [completedBlocks]);
   const getSubjectProgress = useMemo(() => (subject) => completedBlocks[subject.id]?.length || 0, [completedBlocks]);
-  const getWeeklyProgress = useMemo(() => () => {
-    const total = subjects.reduce((s, sub) => s + (sub?.block_count || 0), 0);
-    const completed = subjects.reduce((s, sub) => s + (completedBlocks[sub.id]?.length || 0), 0);
-    return total > 0 ? (completed / total) * 100 : 0;
-  }, [subjects, completedBlocks]);
+  const totalCompletedBlocks = useMemo(() => (
+    hasPublishedWeeklyPlan
+      ? publishedWorkItems.reduce((count, workItem) => (
+        count + (isBlockCompleted(workItem.compatibilitySubject, workItem.compatibilityBlockIndex) ? 1 : 0)
+      ), 0)
+      : subjects.reduce((count, subject) => count + (completedBlocks[subject.id]?.length || 0), 0)
+  ), [completedBlocks, hasPublishedWeeklyPlan, isBlockCompleted, publishedWorkItems, subjects]);
+  const totalBlocks = useMemo(() => (
+    hasPublishedWeeklyPlan
+      ? publishedWorkItems.length
+      : subjects.reduce((count, subject) => count + (subject.block_count || 0), 0)
+  ), [hasPublishedWeeklyPlan, publishedWorkItems, subjects]);
+  const weeklyPct = totalBlocks > 0 ? Math.round((totalCompletedBlocks / totalBlocks) * 100) : 0;
 
-  if (loading) {
+  if (portalLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="animate-spin rounded-full h-7 w-7" style={{ border: '2px solid transparent', borderBottomColor: C.lavender }} />
@@ -726,10 +842,6 @@ const StudentPortal = () => {
     );
   }
 
-  const totalCompletedBlocks = subjects.reduce((s, sub) => s + (completedBlocks[sub.id]?.length || 0), 0);
-  const totalBlocks = subjects.reduce((s, sub) => s + (sub.block_count || 0), 0);
-  const weeklyPct = Math.round(getWeeklyProgress());
-
   return (
     <div className="min-h-screen bg-white" style={{ fontFamily: FONT }}>
       {/* Header */}
@@ -766,7 +878,7 @@ const StudentPortal = () => {
 
       <main className="max-w-6xl mx-auto py-8 px-6">
         {/* Weekly Progress */}
-        {subjects.length > 0 && (
+        {totalBlocks > 0 && (
           <div className="rounded-2xl p-6 mb-7 bg-white" style={{ border: `1px solid ${C.parchment}` }}>
             <div className="flex items-center justify-between mb-3">
               <h2 style={{ fontSize: 16, fontWeight: 540, color: C.charcoal }}>Weekly Progress</h2>
@@ -781,262 +893,519 @@ const StudentPortal = () => {
           </div>
         )}
 
-        {subjects.length === 0 ? (
+        {hasPublishedWeeklyPlan && (
+          <div className="rounded-2xl p-4 mb-7" style={{ backgroundColor: '#fbf8ff', border: `1px solid ${C.lavender}` }}>
+            <p style={{ fontSize: 14, color: C.charcoal, fontWeight: 540 }}>This week is running from a published plan.</p>
+            <p className="mt-1" style={{ fontSize: 13, color: 'rgba(41,40,39,0.55)', fontWeight: 460 }}>
+              Timers, submissions, and completion checks still use your existing subject records behind the scenes.
+            </p>
+          </div>
+        )}
+
+        {!portalAccess.canViewSubjects.allowed || (hasPublishedWeeklyPlan ? publishedWorkItems.length === 0 : subjects.length === 0) ? (
           <div className="text-center py-16">
             <BookOpen className="w-10 h-10 mx-auto mb-4" style={{ color: 'rgba(41,40,39,0.2)' }} />
-            <h3 style={{ fontSize: 18, fontWeight: 540, color: C.charcoal }} className="mb-2">No subjects available</h3>
-            <p style={{ fontSize: 14, color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>Your parent needs to set up your subjects first.</p>
+            <h3 style={{ fontSize: 18, fontWeight: 540, color: C.charcoal }} className="mb-2">
+              {hasPublishedWeeklyPlan ? 'No blocks available' : 'No subjects available'}
+            </h3>
+            <p style={{ fontSize: 14, color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>
+              {portalAccess.canViewSubjects.allowed
+                ? (
+                  hasPublishedWeeklyPlan
+                    ? 'This published week does not contain any live blocks yet.'
+                    : 'Your parent needs to set up your subjects first.'
+                )
+                : (portalAccess.canViewSubjects.blockedReason?.message || 'Subject access is currently unavailable.')}
+            </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {subjects.map((subject) => {
-              const progress = getSubjectProgress(subject);
-              const locked = isSubjectLocked(subject);
-              const completed = progress >= (subject?.block_count || 0);
-              const timer = activeTimers[subject.id];
-              const selectedBlockForSubject = expandedSubjectId === subject.id ? expandedBlockIndex : null;
-              const selectedBlockObjective = selectedBlockForSubject !== null ? getBlockObjective(subject, selectedBlockForSubject) : null;
-              const selectedBlockInstruction = selectedBlockForSubject !== null ? getEffectiveInstruction(subject, selectedBlockForSubject) : null;
-              const selectedBlockFields = selectedBlockForSubject !== null ? getEffectiveCustomFields(subject, selectedBlockForSubject) : [];
-              const selectionMatchesTimer = timer && timer.blockIndex === selectedBlockForSubject;
-              const hasSelectedDetails = selectedBlockForSubject !== null && !isBlockCompleted(subject, selectedBlockForSubject);
+          hasPublishedWeeklyPlan ? (
+            <div className="space-y-5">
+              {publishedWorkItems.map((workItem, index) => {
+                const subject = workItem.compatibilitySubject;
+                const timer = activeTimers[subject.id];
+                const blockCompleted = isBlockCompleted(subject, workItem.compatibilityBlockIndex);
+                const workItemPolicy = getWorkItemPolicy(workItem);
+                const timerCompletionPolicy = timer && timer.blockIndex === workItem.compatibilityBlockIndex
+                  ? getWorkItemPolicy(workItem, { blockIndex: timer.blockIndex })
+                  : null;
+                const blockLocked = !blockCompleted && !workItemPolicy.subjectAvailability.allowed;
+                const timerMatchesBlock = timer && timer.blockIndex === workItem.compatibilityBlockIndex;
+                const timerOnOtherBlock = timer && timer.blockIndex !== workItem.compatibilityBlockIndex;
+                const statusLabel = blockCompleted
+                  ? 'Complete'
+                  : timerMatchesBlock && timer.remainingTime === 0
+                    ? 'Ready to submit'
+                    : timerMatchesBlock && timer.isRunning
+                      ? 'Timer active'
+                      : timerMatchesBlock
+                        ? 'Timer paused'
+                        : timerOnOtherBlock
+                          ? `Timer on Block ${timer.blockIndex + 1}`
+                          : 'Ready';
+                const statusColor = blockCompleted
+                  ? C.amethyst
+                  : timerMatchesBlock
+                    ? C.charcoal
+                    : blockLocked
+                      ? 'rgba(41,40,39,0.35)'
+                      : 'rgba(41,40,39,0.7)';
 
-              return (
-                <div key={subject.id} className="rounded-2xl p-6 transition-all bg-white"
-                  style={{
-                    border: `1px solid ${completed ? C.lavender : C.parchment}`,
-                    backgroundColor: completed ? '#f8f5ff' : '#ffffff',
-                  }}>
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <h3 style={{ fontSize: 16, fontWeight: 540, color: C.charcoal, lineHeight: 1.2 }} className="mb-1">
-                        {subject.title}
-                      </h3>
-                      <p style={{ fontSize: 13, color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>
-                        {progress} / {subject?.block_count} blocks this week
-                      </p>
+                return (
+                  <div key={workItem.id} className="rounded-2xl p-6 bg-white"
+                    style={{
+                      border: `1px solid ${blockCompleted ? C.lavender : C.parchment}`,
+                      backgroundColor: blockCompleted ? '#f8f5ff' : '#ffffff',
+                    }}>
+                    <div className="flex items-start justify-between gap-4 mb-4">
+                      <div className="flex-1">
+                        <p className="text-[11px] uppercase tracking-wider mb-1.5" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>
+                          {workItem.legacySubjectTitle} • Block {workItem.compatibilityBlockIndex + 1}
+                        </p>
+                        <h3 style={{ fontSize: 18, fontWeight: 540, color: C.charcoal, lineHeight: 1.2 }} className="mb-1">
+                          {getPortalSubjectTitle(subject)}
+                        </h3>
+                        <p style={{ fontSize: 13, color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>
+                          Queue item {index + 1} of {publishedWorkItems.length}
+                        </p>
+                      </div>
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: blockCompleted ? 'rgba(203,183,251,0.3)' : blockLocked ? C.cream : C.lavenderTint }}>
+                        {blockCompleted ? <Check className="w-5 h-5" style={{ color: C.amethyst }} />
+                          : blockLocked ? <Lock className="w-5 h-5" style={{ color: 'rgba(41,40,39,0.4)' }} />
+                          : <BookOpen className="w-5 h-5" style={{ color: C.amethyst }} />}
+                      </div>
                     </div>
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ml-3"
-                      style={{ backgroundColor: completed ? 'rgba(203,183,251,0.3)' : locked ? C.cream : C.lavenderTint }}>
-                      {completed ? <Check className="w-5 h-5" style={{ color: C.amethyst }} />
-                        : locked ? <Lock className="w-5 h-5" style={{ color: 'rgba(41,40,39,0.4)' }} />
-                        : <BookOpen className="w-5 h-5" style={{ color: C.amethyst }} />}
-                    </div>
-                  </div>
 
-                  {/* Progress bar */}
-                  <div className="w-full rounded-full h-1.5 mb-4 overflow-hidden" style={{ backgroundColor: C.parchment }}>
-                    <div className="h-full rounded-full transition-all"
-                      style={{ width: `${Math.round((progress / (subject?.block_count || 1)) * 100)}%`, backgroundColor: C.lavender }} />
-                  </div>
-
-                  <div className="space-y-2.5 mb-4">
-                    <div className="flex justify-between text-[13px]">
-                      <span style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>Status</span>
-                      <span style={{ fontWeight: 460, color: completed ? C.amethyst : locked ? 'rgba(41,40,39,0.3)' : 'rgba(41,40,39,0.7)' }}>
-                        {completed ? 'Complete' : locked ? 'Locked' : 'In Progress'}
-                      </span>
+                    <div className="space-y-2.5 mb-4">
+                      <div className="flex justify-between text-[13px]">
+                        <span style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>Status</span>
+                        <span style={{ fontWeight: 460, color: statusColor }}>{statusLabel}</span>
+                      </div>
+                      <div className="flex justify-between text-[13px]">
+                        <span style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>Planned Time</span>
+                        <span style={{ color: C.charcoal, fontWeight: 460 }}>{workItem.plannedDurationMinutes} min</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between text-[13px]">
-                      <span style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>Block Length</span>
-                      <span style={{ color: C.charcoal, fontWeight: 460 }}>{subject?.block_length || 30} min</span>
-                    </div>
-                  </div>
 
-                  {/* Blocks grid */}
-                  <div className="pt-3" style={{ borderTop: `1px solid ${C.parchment}` }}>
-                    <p className="text-[11px] uppercase tracking-wider mb-2.5" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Weekly Blocks</p>
-                    <div className="flex gap-1.5 flex-wrap">
-                      {Array.from({ length: subject?.block_count || 10 }, (_, i) => {
-                        const blockCompleted = isBlockCompleted(subject, i);
-                        const isWorkingOn = timer && timer.blockIndex === i && timer.isRunning && timer.remainingTime > 0;
-                        const hasObjective = !!(subject.block_objectives?.[i]?.student_overrides?.[student?.id]?.instruction || subject.block_objectives?.[i]?.instruction);
-                        const isSelected = selectedBlockForSubject === i;
-                        return (
-                          <button key={i}
-                            onClick={() => handleBlockSelect(subject, i)}
-                            disabled={blockCompleted || isSubjectLocked(subject) || isSubmissionLocked(subject.id, i) || (!!timer && timer.blockIndex !== i)}
-                            className={`w-10 h-10 rounded-lg text-[12px] transition-all relative ${isWorkingOn ? 'animate-pulse' : ''}`}
-                            title={hasObjective ? 'Guided block — has specific instructions' : undefined}
-                            style={{
-                              backgroundColor: blockCompleted ? C.lavenderTint : isSelected ? `${C.lavender}26` : isSubjectLocked(subject) ? C.cream : isWorkingOn ? 'rgba(203,183,251,0.2)' : '#ffffff',
-                              border: `1px solid ${blockCompleted ? C.lavender : isSelected ? C.amethyst : isWorkingOn ? C.lavender : hasObjective ? `${C.lavender}99` : C.parchment}`,
-                              color: blockCompleted ? C.amethyst : isSubjectLocked(subject) ? 'rgba(41,40,39,0.3)' : isSelected || isWorkingOn ? C.amethyst : 'rgba(41,40,39,0.5)',
-                              cursor: blockCompleted || isSubjectLocked(subject) || (!!timer && timer.blockIndex !== i) ? 'not-allowed' : 'pointer',
-                              fontWeight: 460,
-                            }}
-                          >
-                            {blockCompleted ? '✓' : i + 1}
-                            {hasObjective && !blockCompleted && (
-                              <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full"
-                                style={{ backgroundColor: C.amethyst }} />
-                            )}
-                            {isWorkingOn && (
-                              <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full animate-ping"
-                                style={{ backgroundColor: C.lavender }} />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {locked && <p className="text-[12px] mt-2" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>All blocks completed this week!</p>}
-                  </div>
+                    {workItem.instruction && (
+                      <div className="rounded-lg p-3 mb-4" style={{ backgroundColor: `${C.lavender}1f`, borderLeft: `3px solid ${C.lavender}` }}>
+                        <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: C.amethyst, fontWeight: 700 }}>Goals</p>
+                        <p className="text-[14px]" style={{ color: C.charcoal, fontWeight: 460 }}>{workItem.instruction}</p>
+                      </div>
+                    )}
 
-                  {hasSelectedDetails && (
-                    <div className="pt-4 mt-4 space-y-4" style={{ borderTop: `1px solid ${C.parchment}` }}>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-[11px] uppercase tracking-wider" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Selected Block</p>
-                          <p className="text-[14px]" style={{ color: C.charcoal, fontWeight: 540 }}>Block {selectedBlockForSubject + 1}</p>
+                    {workItem.resources.length > 0 && (
+                      <div className="mb-4">
+                        <p className="text-[11px] uppercase tracking-wider mb-2" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Resources</p>
+                        <div className="space-y-1.5">
+                          {workItem.resources.map((resource, resourceIndex) => (
+                            resource.url ? (
+                              <a key={resourceIndex} href={resource.url} target="_blank" rel="noopener noreferrer"
+                                className="flex items-center gap-1.5 text-[12px]"
+                                style={{ color: C.amethyst, fontWeight: 460, textDecoration: 'none' }}>
+                                <ExternalLink className="w-3 h-3" />{resource.name}
+                              </a>
+                            ) : (
+                              <div key={resourceIndex} className="flex items-center gap-1.5 text-[12px]" style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>
+                                <BookOpen className="w-3 h-3" />{resource.name}
+                              </div>
+                            )
+                          ))}
                         </div>
-                        {selectedBlockObjective && (
-                          <span className="text-[11px] px-2 py-1 rounded-full" style={{ backgroundColor: `${C.lavender}26`, color: C.amethyst, fontWeight: 700 }}>
-                            Guided
-                          </span>
+                      </div>
+                    )}
+
+                    {workItem.customFields.length > 0 && (
+                      <div className="mb-4">
+                        <p className="text-[11px] uppercase tracking-wider mb-1.5" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Completion Requirements</p>
+                        <p className="text-[12px]" style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>
+                          This block will ask for {workItem.customFields.length} response{workItem.customFields.length === 1 ? '' : 's'} when you submit it.
+                        </p>
+                      </div>
+                    )}
+
+                    {timerOnOtherBlock && (
+                      <p className="text-[12px] mb-4" style={{ color: C.amethyst, fontWeight: 460 }}>
+                        Timer is currently active for Block {timer.blockIndex + 1}. Finish or reset that timer before switching blocks.
+                      </p>
+                    )}
+
+                    {blockLocked && (
+                      <p className="text-[12px] mb-4" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>
+                        {workItemPolicy.subjectAvailability.blockedReason?.message || 'This block is unavailable right now.'}
+                      </p>
+                    )}
+
+                    <div className="rounded-lg p-4" style={{ backgroundColor: '#faf9f8' }}>
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-[11px] uppercase tracking-wider" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Timer</p>
+                        <span className="text-[11px]" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>
+                          Block {workItem.compatibilityBlockIndex + 1}
+                        </span>
+                      </div>
+                      <div className="text-center mb-3">
+                        {timerMatchesBlock ? (
+                          <div className={`text-[28px] font-mono ${timer.remainingTime === 0 ? 'animate-pulse' : ''}`}
+                            style={{ fontWeight: 540, color: timer.remainingTime === 0 ? C.amethyst : C.charcoal }}>
+                            {formatRemainingTime(timer.remainingTime)}
+                          </div>
+                        ) : (
+                          <div className="text-[22px] font-mono" style={{ fontWeight: 540, color: 'rgba(41,40,39,0.2)' }}>--:--</div>
+                        )}
+                        {timerMatchesBlock && timer?.remainingTime === 0 && (
+                          <p className="text-[12px] mt-1" style={{ color: C.amethyst, fontWeight: 460 }}>Time's up — ready to submit?</p>
+                        )}
+                        {workItem.requireTimer && timerMatchesBlock && timer?.remainingTime > 0 && (
+                          <p className="text-[11px] uppercase tracking-wider mt-1" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Timer required</p>
                         )}
                       </div>
 
-                      {selectedBlockInstruction && (
-                        <div className="rounded-lg p-3" style={{ backgroundColor: `${C.lavender}1f`, borderLeft: `3px solid ${C.lavender}` }}>
-                          <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: C.amethyst, fontWeight: 700 }}>Goals</p>
-                          <p className="text-[14px]" style={{ color: C.charcoal, fontWeight: 460 }}>{selectedBlockInstruction}</p>
-                        </div>
-                      )}
-
-                      {subject.resources?.length > 0 && (
-                        <div>
-                          <p className="text-[11px] uppercase tracking-wider mb-2" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Resources</p>
-                          <div className="space-y-1.5">
-                            {subject.resources.map((r, i) => (
-                              r.url ? (
-                                <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
-                                  className="flex items-center gap-1.5 text-[12px] transition-colors"
-                                  style={{ color: C.amethyst, fontWeight: 460, textDecoration: 'none' }}>
-                                  <ExternalLink className="w-3 h-3" />{r.name}
-                                </a>
-                              ) : (
-                                <div key={i} className="flex items-center gap-1.5 text-[12px]" style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>
-                                  <BookOpen className="w-3 h-3" />{r.name}
-                                </div>
-                              )
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {selectedBlockFields.length > 0 && (
-                        <div>
-                          <p className="text-[11px] uppercase tracking-wider mb-1.5" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Completion Requirements</p>
-                          <p className="text-[12px]" style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>
-                            This block will ask for {selectedBlockFields.length} response{selectedBlockFields.length === 1 ? '' : 's'} when you submit it.
-                          </p>
-                        </div>
-                      )}
-
-                      {!!timer && !selectionMatchesTimer && (
-                        <p className="text-[12px]" style={{ color: C.amethyst, fontWeight: 460 }}>
-                          Timer is currently active for Block {timer.blockIndex + 1}. Finish or reset that timer to switch blocks.
-                        </p>
-                      )}
-
-                      <div className="rounded-lg p-4" style={{ backgroundColor: '#faf9f8' }}>
-                        <div className="flex items-center justify-between mb-3">
-                          <p className="text-[11px] uppercase tracking-wider" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Timer</p>
-                          {timer && (
-                            <span className="text-[11px]" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>Block {timer.blockIndex + 1}</span>
-                          )}
-                        </div>
-                        <div className="text-center mb-3">
-                          {timer ? (
-                            <div className={`text-[28px] font-mono ${timer.remainingTime === 0 ? 'animate-pulse' : ''}`}
-                              style={{ fontWeight: 540, color: timer.remainingTime === 0 ? C.amethyst : C.charcoal }}>
-                              {formatRemainingTime(timer.remainingTime)}
-                            </div>
-                          ) : (
-                            <div className="text-[22px] font-mono" style={{ fontWeight: 540, color: 'rgba(41,40,39,0.2)' }}>--:--</div>
-                          )}
-                          {timer?.remainingTime === 0 && (
-                            <p className="text-[12px] mt-1" style={{ color: C.amethyst, fontWeight: 460 }}>Time's up — ready to submit?</p>
-                          )}
-                          {subject.require_timer && timer?.remainingTime > 0 && (
-                            <p className="text-[11px] uppercase tracking-wider mt-1" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Timer required</p>
-                          )}
-                        </div>
-
-                        <div className="flex gap-2">
-                          {!timer ? (
-                            <button onClick={() => startTimer(subject, selectedBlockForSubject)} disabled={locked || Object.keys(activeTimers).some(id => id !== subject.id)}
+                      <div className="flex gap-2">
+                        {!timerMatchesBlock ? (
+                          <>
+                            <button
+                              onClick={() => {
+                                handleWorkItemSelect(workItem);
+                                startTimer(subject, workItem.compatibilityBlockIndex);
+                              }}
+                              disabled={timerOnOtherBlock || !workItemPolicy.canStartTimer.allowed}
                               className="flex-1 px-3 py-2 rounded-lg text-[13px] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                               style={{ backgroundColor: C.cream, color: C.charcoal, fontWeight: 700, fontFamily: FONT }}
-                              onMouseEnter={e => { if (!locked) e.currentTarget.style.backgroundColor = C.parchment; }}
+                              onMouseEnter={e => { if (!timerOnOtherBlock && workItemPolicy.canStartTimer.allowed) e.currentTarget.style.backgroundColor = C.parchment; }}
                               onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
                               Start Timer
                             </button>
-                          ) : timer.remainingTime > 0 ? (
-                            <>
-                              {timer.isRunning ? (
-                                <button onClick={() => pauseTimer(subject)}
-                                  className="flex-1 px-3 py-2 rounded-lg text-[13px] transition-colors"
-                                  style={{ backgroundColor: C.cream, color: C.charcoal, fontWeight: 700, fontFamily: FONT }}
-                                  onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
-                                  onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
-                                  Pause
-                                </button>
-                              ) : (
-                                <button onClick={() => resumeTimer(subject)}
-                                  className="flex-1 px-3 py-2 rounded-lg text-[13px] transition-colors"
-                                  style={{ backgroundColor: C.charcoal, color: '#fff', fontWeight: 700, fontFamily: FONT }}
-                                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
-                                  onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}>
-                                  Resume
-                                </button>
-                              )}
-                              <button onClick={() => resetTimer(subject)}
-                                className="px-3 py-2 rounded-lg text-[13px] transition-colors"
-                                style={{ backgroundColor: C.cream, color: 'rgba(41,40,39,0.6)', fontWeight: 700, fontFamily: FONT }}
-                                onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
-                                onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
-                                Reset
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button onClick={() => handleCompleteBlock(subject)}
-                                disabled={submitting || isSubmissionLocked(subject.id, timer?.blockIndex)}
-                                className="flex-1 px-3 py-2 rounded-lg text-[13px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5 animate-pulse"
+                            {!workItem.requireTimer && !blockCompleted && (
+                              <button
+                                onClick={() => {
+                                  handleWorkItemSelect(workItem);
+                                  handleCompleteWorkItem(workItem);
+                                }}
+                                disabled={timerOnOtherBlock || submitting || !workItemPolicy.canSubmitBlock.allowed}
+                                className="flex-1 px-3 py-2 rounded-lg text-[13px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
                                 style={{ backgroundColor: C.charcoal, color: '#fff', fontWeight: 700, fontFamily: FONT }}
-                                onMouseEnter={e => { if (!submitting) e.currentTarget.style.backgroundColor = '#3a3937'; }}
+                                onMouseEnter={e => { if (!timerOnOtherBlock && !submitting && workItemPolicy.canSubmitBlock.allowed) e.currentTarget.style.backgroundColor = '#3a3937'; }}
                                 onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}>
                                 {submitting ? <><div className="w-3.5 h-3.5 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(255,255,255,0.5)', borderTopColor: '#fff' }} /> Submitting...</> : 'Complete Block'}
                               </button>
-                              <button onClick={() => resetTimer(subject)}
-                                className="px-3 py-2 rounded-lg text-[13px] transition-colors"
-                                style={{ backgroundColor: C.cream, color: 'rgba(41,40,39,0.6)', fontWeight: 700, fontFamily: FONT }}
+                            )}
+                          </>
+                        ) : timer.remainingTime > 0 ? (
+                          <>
+                            {timer.isRunning ? (
+                              <button onClick={() => pauseTimer(subject)}
+                                className="flex-1 px-3 py-2 rounded-lg text-[13px] transition-colors"
+                                style={{ backgroundColor: C.cream, color: C.charcoal, fontWeight: 700, fontFamily: FONT }}
                                 onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
                                 onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
-                                Reset
+                                Pause
                               </button>
-                            </>
-                          )}
-
-                          {!subject.require_timer && !timer && !locked && (
-                            <button onClick={() => handleCompleteBlock(subject)}
-                              disabled={submitting || selectedBlockForSubject === null || isSubmissionLocked(subject.id, selectedBlockForSubject)}
-                              className="flex-1 px-3 py-2 rounded-lg text-[13px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
-                              style={{ backgroundColor: C.charcoal, color: '#fff', fontWeight: 700, fontFamily: FONT }}
-                              onMouseEnter={e => { if (!submitting) e.currentTarget.style.backgroundColor = '#3a3937'; }}
-                              onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}>
-                              {submitting ? <><div className="w-3.5 h-3.5 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(255,255,255,0.5)', borderTopColor: '#fff' }} /> Submitting...</> : `Complete Block ${selectedBlockForSubject + 1}`}
+                            ) : (
+                              <button onClick={() => resumeTimer(subject)}
+                                className="flex-1 px-3 py-2 rounded-lg text-[13px] transition-colors"
+                                style={{ backgroundColor: C.charcoal, color: '#fff', fontWeight: 700, fontFamily: FONT }}
+                                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
+                                onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}>
+                                Resume
+                              </button>
+                            )}
+                            <button onClick={() => resetTimer(subject)}
+                              className="px-3 py-2 rounded-lg text-[13px] transition-colors"
+                              style={{ backgroundColor: C.cream, color: 'rgba(41,40,39,0.6)', fontWeight: 700, fontFamily: FONT }}
+                              onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
+                              onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
+                              Reset
                             </button>
-                          )}
-                        </div>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => {
+                                handleWorkItemSelect(workItem);
+                                handleCompleteWorkItem(workItem);
+                              }}
+                              disabled={submitting || isSubmissionLocked(subject.id, timer?.blockIndex) || !timerCompletionPolicy?.canSubmitBlock.allowed}
+                              className="flex-1 px-3 py-2 rounded-lg text-[13px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5 animate-pulse"
+                              style={{ backgroundColor: C.charcoal, color: '#fff', fontWeight: 700, fontFamily: FONT }}
+                              onMouseEnter={e => { if (!submitting && timerCompletionPolicy?.canSubmitBlock.allowed) e.currentTarget.style.backgroundColor = '#3a3937'; }}
+                              onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}>
+                              {submitting ? <><div className="w-3.5 h-3.5 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(255,255,255,0.5)', borderTopColor: '#fff' }} /> Submitting...</> : 'Complete Block'}
+                            </button>
+                            <button onClick={() => resetTimer(subject)}
+                              className="px-3 py-2 rounded-lg text-[13px] transition-colors"
+                              style={{ backgroundColor: C.cream, color: 'rgba(41,40,39,0.6)', fontWeight: 700, fontFamily: FONT }}
+                              onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
+                              onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
+                              Reset
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {subjects.map((subject) => {
+                const progress = getSubjectProgress(subject);
+                const timer = activeTimers[subject.id];
+                const selectedBlockForSubject = expandedSubjectId === subject.id ? expandedBlockIndex : null;
+                const subjectPolicy = getSubjectPolicy(subject, { blockIndex: selectedBlockForSubject });
+                const subjectAvailability = subjectPolicy.subjectAvailability;
+                const locked = !subjectAvailability.allowed;
+                const completed = subjectAvailability.status === 'completed';
+                const timerCompletionPolicy = timer ? getSubjectPolicy(subject, { blockIndex: timer.blockIndex }) : null;
+                const selectedBlockObjective = selectedBlockForSubject !== null ? getBlockObjective(subject, selectedBlockForSubject) : null;
+                const selectedBlockInstruction = selectedBlockForSubject !== null ? getEffectiveInstruction(subject, selectedBlockForSubject) : null;
+                const selectedBlockFields = selectedBlockForSubject !== null ? getEffectiveCustomFields(subject, selectedBlockForSubject) : [];
+                const selectionMatchesTimer = timer && timer.blockIndex === selectedBlockForSubject;
+                const hasSelectedDetails = selectedBlockForSubject !== null && !isBlockCompleted(subject, selectedBlockForSubject);
+
+                return (
+                  <div key={subject.id} className="rounded-2xl p-6 transition-all bg-white"
+                    style={{
+                      border: `1px solid ${completed ? C.lavender : C.parchment}`,
+                      backgroundColor: completed ? '#f8f5ff' : '#ffffff',
+                    }}>
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <h3 style={{ fontSize: 16, fontWeight: 540, color: C.charcoal, lineHeight: 1.2 }} className="mb-1">
+                          {subject.title}
+                        </h3>
+                        <p style={{ fontSize: 13, color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>
+                          {progress} / {subject?.block_count} blocks this week
+                        </p>
+                      </div>
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ml-3"
+                        style={{ backgroundColor: completed ? 'rgba(203,183,251,0.3)' : locked ? C.cream : C.lavenderTint }}>
+                        {completed ? <Check className="w-5 h-5" style={{ color: C.amethyst }} />
+                          : locked ? <Lock className="w-5 h-5" style={{ color: 'rgba(41,40,39,0.4)' }} />
+                          : <BookOpen className="w-5 h-5" style={{ color: C.amethyst }} />}
+                      </div>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="w-full rounded-full h-1.5 mb-4 overflow-hidden" style={{ backgroundColor: C.parchment }}>
+                      <div className="h-full rounded-full transition-all"
+                        style={{ width: `${Math.round((progress / (subject?.block_count || 1)) * 100)}%`, backgroundColor: C.lavender }} />
+                    </div>
+
+                    <div className="space-y-2.5 mb-4">
+                      <div className="flex justify-between text-[13px]">
+                        <span style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>Status</span>
+                        <span style={{ fontWeight: 460, color: completed ? C.amethyst : locked ? 'rgba(41,40,39,0.3)' : 'rgba(41,40,39,0.7)' }}>
+                          {completed ? 'Complete' : locked ? 'Locked' : 'In Progress'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-[13px]">
+                        <span style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>Block Length</span>
+                        <span style={{ color: C.charcoal, fontWeight: 460 }}>{subject?.block_length || 30} min</span>
+                      </div>
+                    </div>
+
+                    {/* Blocks grid */}
+                    <div className="pt-3" style={{ borderTop: `1px solid ${C.parchment}` }}>
+                      <p className="text-[11px] uppercase tracking-wider mb-2.5" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Weekly Blocks</p>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {Array.from({ length: subject?.block_count || 10 }, (_, i) => {
+                          const blockCompleted = isBlockCompleted(subject, i);
+                          const blockPolicy = getSubjectPolicy(subject, { blockIndex: i });
+                          const isWorkingOn = timer && timer.blockIndex === i && timer.isRunning && timer.remainingTime > 0;
+                          const hasObjective = !!(subject.block_objectives?.[i]?.student_overrides?.[student?.id]?.instruction || subject.block_objectives?.[i]?.instruction);
+                          const isSelected = selectedBlockForSubject === i;
+                          return (
+                            <button key={i}
+                              onClick={() => handleBlockSelect(subject, i)}
+                              disabled={blockCompleted || !blockPolicy.subjectAvailability.allowed || isSubmissionLocked(subject.id, i) || (!!timer && timer.blockIndex !== i)}
+                              className={`w-10 h-10 rounded-lg text-[12px] transition-all relative ${isWorkingOn ? 'animate-pulse' : ''}`}
+                              title={hasObjective ? 'Guided block — has specific instructions' : undefined}
+                              style={{
+                                backgroundColor: blockCompleted ? C.lavenderTint : isSelected ? `${C.lavender}26` : !blockPolicy.subjectAvailability.allowed ? C.cream : isWorkingOn ? 'rgba(203,183,251,0.2)' : '#ffffff',
+                                border: `1px solid ${blockCompleted ? C.lavender : isSelected ? C.amethyst : isWorkingOn ? C.lavender : hasObjective ? `${C.lavender}99` : C.parchment}`,
+                                color: blockCompleted ? C.amethyst : !blockPolicy.subjectAvailability.allowed ? 'rgba(41,40,39,0.3)' : isSelected || isWorkingOn ? C.amethyst : 'rgba(41,40,39,0.5)',
+                                cursor: blockCompleted || !blockPolicy.subjectAvailability.allowed || (!!timer && timer.blockIndex !== i) ? 'not-allowed' : 'pointer',
+                                fontWeight: 460,
+                              }}
+                            >
+                              {blockCompleted ? '✓' : i + 1}
+                              {hasObjective && !blockCompleted && (
+                                <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full"
+                                  style={{ backgroundColor: C.amethyst }} />
+                              )}
+                              {isWorkingOn && (
+                                <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full animate-ping"
+                                  style={{ backgroundColor: C.lavender }} />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {locked && (
+                        <p className="text-[12px] mt-2" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>
+                          {subjectAvailability.blockedReason?.message || 'All blocks completed this week!'}
+                        </p>
+                      )}
+                    </div>
+
+                    {hasSelectedDetails && (
+                      <div className="pt-4 mt-4 space-y-4" style={{ borderTop: `1px solid ${C.parchment}` }}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-[11px] uppercase tracking-wider" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Selected Block</p>
+                            <p className="text-[14px]" style={{ color: C.charcoal, fontWeight: 540 }}>Block {selectedBlockForSubject + 1}</p>
+                          </div>
+                          {selectedBlockObjective && (
+                            <span className="text-[11px] px-2 py-1 rounded-full" style={{ backgroundColor: `${C.lavender}26`, color: C.amethyst, fontWeight: 700 }}>
+                              Guided
+                            </span>
+                          )}
+                        </div>
+
+                        {selectedBlockInstruction && (
+                          <div className="rounded-lg p-3" style={{ backgroundColor: `${C.lavender}1f`, borderLeft: `3px solid ${C.lavender}` }}>
+                            <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: C.amethyst, fontWeight: 700 }}>Goals</p>
+                            <p className="text-[14px]" style={{ color: C.charcoal, fontWeight: 460 }}>{selectedBlockInstruction}</p>
+                          </div>
+                        )}
+
+                        {subject.resources?.length > 0 && (
+                          <div>
+                            <p className="text-[11px] uppercase tracking-wider mb-2" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Resources</p>
+                            <div className="space-y-1.5">
+                              {subject.resources.map((r, i) => (
+                                r.url ? (
+                                  <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
+                                    className="flex items-center gap-1.5 text-[12px] transition-colors"
+                                    style={{ color: C.amethyst, fontWeight: 460, textDecoration: 'none' }}>
+                                    <ExternalLink className="w-3 h-3" />{r.name}
+                                  </a>
+                                ) : (
+                                  <div key={i} className="flex items-center gap-1.5 text-[12px]" style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>
+                                    <BookOpen className="w-3 h-3" />{r.name}
+                                  </div>
+                                )
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {selectedBlockFields.length > 0 && (
+                          <div>
+                            <p className="text-[11px] uppercase tracking-wider mb-1.5" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Completion Requirements</p>
+                            <p className="text-[12px]" style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>
+                              This block will ask for {selectedBlockFields.length} response{selectedBlockFields.length === 1 ? '' : 's'} when you submit it.
+                            </p>
+                          </div>
+                        )}
+
+                        {!!timer && !selectionMatchesTimer && (
+                          <p className="text-[12px]" style={{ color: C.amethyst, fontWeight: 460 }}>
+                            Timer is currently active for Block {timer.blockIndex + 1}. Finish or reset that timer to switch blocks.
+                          </p>
+                        )}
+
+                        <div className="rounded-lg p-4" style={{ backgroundColor: '#faf9f8' }}>
+                          <div className="flex items-center justify-between mb-3">
+                            <p className="text-[11px] uppercase tracking-wider" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Timer</p>
+                            {timer && (
+                              <span className="text-[11px]" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>Block {timer.blockIndex + 1}</span>
+                            )}
+                          </div>
+                          <div className="text-center mb-3">
+                            {timer ? (
+                              <div className={`text-[28px] font-mono ${timer.remainingTime === 0 ? 'animate-pulse' : ''}`}
+                                style={{ fontWeight: 540, color: timer.remainingTime === 0 ? C.amethyst : C.charcoal }}>
+                                {formatRemainingTime(timer.remainingTime)}
+                              </div>
+                            ) : (
+                              <div className="text-[22px] font-mono" style={{ fontWeight: 540, color: 'rgba(41,40,39,0.2)' }}>--:--</div>
+                            )}
+                            {timer?.remainingTime === 0 && (
+                              <p className="text-[12px] mt-1" style={{ color: C.amethyst, fontWeight: 460 }}>Time's up — ready to submit?</p>
+                            )}
+                            {subject.require_timer && timer?.remainingTime > 0 && (
+                              <p className="text-[11px] uppercase tracking-wider mt-1" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Timer required</p>
+                            )}
+                          </div>
+
+                          <div className="flex gap-2">
+                            {!timer ? (
+                              <button onClick={() => startTimer(subject, selectedBlockForSubject)} disabled={!subjectPolicy.canStartTimer.allowed}
+                                className="flex-1 px-3 py-2 rounded-lg text-[13px] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                style={{ backgroundColor: C.cream, color: C.charcoal, fontWeight: 700, fontFamily: FONT }}
+                                onMouseEnter={e => { if (subjectPolicy.canStartTimer.allowed) e.currentTarget.style.backgroundColor = C.parchment; }}
+                                onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
+                                Start Timer
+                              </button>
+                            ) : timer.remainingTime > 0 ? (
+                              <>
+                                {timer.isRunning ? (
+                                  <button onClick={() => pauseTimer(subject)}
+                                    className="flex-1 px-3 py-2 rounded-lg text-[13px] transition-colors"
+                                    style={{ backgroundColor: C.cream, color: C.charcoal, fontWeight: 700, fontFamily: FONT }}
+                                    onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
+                                    onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
+                                    Pause
+                                  </button>
+                                ) : (
+                                  <button onClick={() => resumeTimer(subject)}
+                                    className="flex-1 px-3 py-2 rounded-lg text-[13px] transition-colors"
+                                    style={{ backgroundColor: C.charcoal, color: '#fff', fontWeight: 700, fontFamily: FONT }}
+                                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
+                                    onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}>
+                                    Resume
+                                  </button>
+                                )}
+                                <button onClick={() => resetTimer(subject)}
+                                  className="px-3 py-2 rounded-lg text-[13px] transition-colors"
+                                  style={{ backgroundColor: C.cream, color: 'rgba(41,40,39,0.6)', fontWeight: 700, fontFamily: FONT }}
+                                  onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
+                                  onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
+                                  Reset
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button onClick={() => handleCompleteBlock(subject)}
+                                  disabled={submitting || isSubmissionLocked(subject.id, timer?.blockIndex) || !timerCompletionPolicy?.canSubmitBlock.allowed}
+                                  className="flex-1 px-3 py-2 rounded-lg text-[13px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5 animate-pulse"
+                                  style={{ backgroundColor: C.charcoal, color: '#fff', fontWeight: 700, fontFamily: FONT }}
+                                  onMouseEnter={e => { if (!submitting) e.currentTarget.style.backgroundColor = '#3a3937'; }}
+                                  onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}>
+                                  {submitting ? <><div className="w-3.5 h-3.5 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(255,255,255,0.5)', borderTopColor: '#fff' }} /> Submitting...</> : 'Complete Block'}
+                                </button>
+                                <button onClick={() => resetTimer(subject)}
+                                  className="px-3 py-2 rounded-lg text-[13px] transition-colors"
+                                  style={{ backgroundColor: C.cream, color: 'rgba(41,40,39,0.6)', fontWeight: 700, fontFamily: FONT }}
+                                  onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
+                                  onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
+                                  Reset
+                                </button>
+                              </>
+                            )}
+
+                            {!subject.require_timer && !timer && !locked && (
+                              <button onClick={() => handleCompleteBlock(subject)}
+                                disabled={submitting || !subjectPolicy.canSubmitBlock.allowed}
+                                className="flex-1 px-3 py-2 rounded-lg text-[13px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
+                                style={{ backgroundColor: C.charcoal, color: '#fff', fontWeight: 700, fontFamily: FONT }}
+                                onMouseEnter={e => { if (!submitting) e.currentTarget.style.backgroundColor = '#3a3937'; }}
+                                onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}>
+                                {submitting ? <><div className="w-3.5 h-3.5 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(255,255,255,0.5)', borderTopColor: '#fff' }} /> Submitting...</> : `Complete Block ${selectedBlockForSubject + 1}`}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )
         )}
       </main>
 
@@ -1046,7 +1415,7 @@ const StudentPortal = () => {
           <div className="bg-white rounded-2xl w-full max-w-md mx-4" style={{ border: `1px solid ${C.parchment}` }}>
             <div className="flex items-center justify-between p-6" style={{ borderBottom: `1px solid ${C.parchment}` }}>
               <div>
-                <h2 style={{ fontSize: 18, fontWeight: 540, color: C.charcoal, lineHeight: 1.2 }}>{selectedSubject.title}</h2>
+                <h2 style={{ fontSize: 18, fontWeight: 540, color: C.charcoal, lineHeight: 1.2 }}>{getPortalSubjectTitle(selectedSubject)}</h2>
                 <p className="text-[13px] mt-0.5" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>Block {selectedBlockIndex + 1}</p>
               </div>
               <button onClick={closeSubmissionModal}
@@ -1142,7 +1511,7 @@ const StudentPortal = () => {
               ) : (
                 <div className="text-center py-3">
                   <p className="text-[14px]" style={{ color: 'rgba(41,40,39,0.6)', fontWeight: 460 }}>
-                    Completing 1 block of {selectedSubject.title} ({selectedSubject?.block_length || 30} min)
+                    Completing 1 block of {getPortalSubjectTitle(selectedSubject)} ({selectedSubject?.block_length || 30} min)
                   </p>
                   <p className="text-[12px] mt-1" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>No summary required</p>
                 </div>

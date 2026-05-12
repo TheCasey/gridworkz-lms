@@ -1,46 +1,129 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides guidance to Codex when working with code in this repository.
+
+## First Read
+
+For planning or documentation tasks, start here:
+
+1. `docs/roadmap.md`
+2. `docs/architecture.md`
+3. A focused doc under `docs/features/`, `docs/specs/`, `docs/upgrades/`, or `docs/audits/`
+
+`gridworkz-lms-plan.md` is now only a pointer to the docs system. Do not treat it as the active roadmap.
 
 ## Commands
 
 ```bash
 npm run dev          # Start dev server (Vite, port 3000)
 npm run build        # Production build
-npm run lint         # ESLint (zero warnings allowed)
-npm run lint:fix     # ESLint with auto-fix
+npm run lint         # Intended lint command, but currently unusable until ESLint config is added
+npm run lint:fix     # Intended auto-fix lint command, same config caveat
 firebase deploy --only firestore:rules  # Deploy Firestore security rules
 ```
 
-No test suite is configured.
+Notes:
+
+- No automated test suite is configured.
+- As of 2026-05-04, `npm run build` passes.
+- As of 2026-05-04, `npm run lint` fails because the repo has no ESLint config file yet.
 
 ## Architecture
 
-GridWorkz LMS is a homeschool learning management system. It's a React 18 SPA backed entirely by Firebase (Firestore + Auth), deployed to Cloudflare Pages.
+GridWorkz LMS is a homeschool learning management system built as a React 18 SPA with Vite, backed by Firebase Auth and Firestore, and intended for deployment to Cloudflare Pages.
 
-**Key data hierarchy:** Parents → Students → Subjects → Submissions → WeeklyReports
+### User flows
 
-**Two user types, two access patterns:**
-- **Parents** — authenticated via Firebase email/password, access `/dashboard`, `/curriculum`, `/reports`
-- **Students** — unauthenticated, access portal via magic link slug: `/student/:slug`
+- Parents authenticate with Firebase email/password and use the app through `/dashboard`.
+- Students use the public portal at `/student/:slug`.
+- Optional `access_pin` protection exists for student access.
 
-`App.jsx` defines all routes with `ProtectedRoute` (requires auth) and `PublicRoute` (redirects if already authed) wrappers.
+Important route note:
 
-**State management:** React Context (`AuthContext`, `ThemeContext`) + local component state. No Redux or Zustand. Firestore data is fetched per-page using `onSnapshot()` real-time listeners with manual `unsubscribe()` cleanup in `useEffect` returns.
+- `/dashboard` is the main authenticated route.
+- Curriculum, reports, and settings are internal dashboard sections, not separate top-level routes.
 
-**Schema:** `src/constants/schema.js` is the single source of truth for all Firestore collection structures. It includes a `validateSchema()` helper and documents all collections: `students`, `subjects`, `submissions`, `weeklyReports`, `parents`, `dailyLogs`.
+### Current app shape
 
-**Timer system** (`src/utils/timerUtils.js`): Background-safe — stores target end time rather than counting down with an interval. Persists to localStorage with key `timer_${studentId}_${subjectId}`, expires after 24 hours.
+- `src/App.jsx`: route wiring and auth guards
+- `src/pages/ParentDashboard.jsx`: parent shell, student overview, live activity, rollover orchestration
+- `src/pages/Curriculum.jsx`: subject builder/editor
+- `src/pages/Reports.jsx`: weekly reports, filters, print/export
+- `src/pages/Settings.jsx`: school year and weekly reset settings
+- `src/pages/StudentPortal.jsx`: student flow, timers, summaries, resources, block completion
 
-**Week handling** (`src/utils/weekUtils.js`): Weeks are Monday–Sunday (not ISO Sunday–Saturday). All weekly report logic uses `getCurrentWeekRange()` which returns `{ weekStart, weekEnd }`.
+### Data model
 
-**Firestore security rules** (`firestore.rules`): Currently permissive for `students`, `subjects`, and `submissions` (open read/write). The `parents` collection is locked to the owner's UID.
+Core collections:
 
-## Key Conventions
+- `parents`
+- `students`
+- `subjects`
+- `submissions`
+- `weeklyReports`
+- `dailyLogs`
+- `timerSessions`
 
-- Pages own their own Firestore queries directly (no shared data layer)
-- Student slugs are generated as `nanoid()` appended to the student name, used as the magic link URL
-- Subjects support multi-student assignment via `student_ids: []` array
-- Dark mode uses Tailwind's `class` strategy — toggled via `ThemeContext`, persisted to localStorage
-- `src/utils/deduplicationUtils.js` handles occasional duplicate submission cleanup
-- `DebugInfo.jsx` is a dev-only overlay; `src/firebase/firebaseTest.js` tests Firebase connectivity
+`src/constants/schema.js` is the schema source of truth.
+
+Important data conventions:
+
+- Subjects support multi-student assignment through `student_ids`.
+- Some logic still supports legacy single-student `student_id` subject records.
+- Student slugs are generated from the student name plus a `nanoid()` suffix.
+- Weekly reports cache school-year and quarter metadata for filtering/reporting.
+
+### State and data loading
+
+- State management is React Context (`AuthContext`, `ThemeContext`) plus page-local state.
+- There is no shared data layer; pages own Firestore queries directly.
+- Real-time Firestore listeners are set up with `onSnapshot()` and cleaned up in `useEffect` returns.
+
+### Week and rollover logic
+
+- Week calculations live in `src/utils/weekUtils.js`.
+- Weeks are based on configurable `week_reset_day`, `week_reset_hour`, and `week_reset_minute`.
+- Default behavior is Monday at 00:00 if no custom reset is present.
+- Weekly rollover currently runs from client logic in `src/pages/ParentDashboard.jsx`; it is not handled by Cloud Functions yet.
+
+### Timer system
+
+- Timer logic lives in `src/utils/timerUtils.js`.
+- Timers are target-end-time based, not interval-drift based.
+- Timer state persists to local storage and is also synced through the `timerSessions` Firestore collection.
+
+### Reporting
+
+- Report-building helpers live in `src/utils/reportUtils.js`.
+- School-year and quarter metadata logic lives in `src/utils/schoolSettingsUtils.js`.
+- Reports exist, but the original “Evidence Drawer” file-attachment flow is still not implemented.
+
+## Firestore Rules Reality
+
+Do not assume the rules are fully hardened.
+
+Current high-level posture:
+
+- `parents`: owner-only access
+- `students`: public read, owner-controlled create/update/delete
+- `subjects`: public read, owner-controlled create/update/delete
+- `submissions`: public read and create, authenticated update/delete
+- `timerSessions`: unauthenticated access with assignment and shape checks
+- `weeklyReports`: parent-scoped
+
+If you touch the student portal or reporting architecture, check `firestore.rules` directly before making assumptions.
+
+## UI And Design Conventions
+
+- The active visual language is defined by the Tailwind theme tokens and the page-level palette constants already used in `ParentDashboard`, `Curriculum`, `Reports`, `Settings`, and `StudentPortal`.
+- Prefer the current palette: `mysteria`, `lavender-glow`, `charcoal-ink`, `amethyst-link`, `warm-cream`, `parchment`.
+- Prefer the current typography setup: `Super Sans VF` with `font-body`, `font-display`, and `font-label` weight conventions from `tailwind.config.js`.
+- `src/index.css` still contains older generic `.btn-*`, `.card`, and `.input-field` styles; treat those as legacy utilities, not the source of truth for new UI.
+- The parent experience is a structured editorial dashboard, not a default Tailwind admin template.
+- The student experience should stay simpler, warmer, and more action-focused than the parent shell.
+
+## Working Conventions
+
+- Preserve the existing page-owned query pattern unless you are intentionally refactoring architecture.
+- When documentation changes affect planning or implementation status, update the relevant file under `docs/` instead of only editing a legacy top-level note.
+- If a task claims “lint passes,” verify whether the repo has actually gained an ESLint config first.

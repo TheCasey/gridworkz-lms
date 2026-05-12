@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "GridWorkz Lockdown",
+  "version": "0.3.0",
+  "description": "Trusted device pairing, secure policy sync, and cached enforcement for GridWorkz Lockdown.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "scripting",
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_page": "options.html",
+  "action": {
+    "default_title": "GridWorkz Lockdown",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/watch*",
+        "https://www.youtube.com/shorts/*",
+        "https://youtube.com/watch*",
+        "https://youtube.com/shorts/*",
+        "https://m.youtube.com/watch*",
+        "https://m.youtube.com/shorts/*"
+      ],
+      "js": [
+        "youtube-content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "blocked.html",
+        "styles.css"
+      ],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ]
+    }
+  ]
+}

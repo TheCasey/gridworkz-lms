@@ -1,0 +1,42 @@
+workflow_name: lockdown-browser-extension-finalization
+workflow_title: "Lockdown Browser Extension Finalization Workflow"
+workflow_summary: "Finish the browser-extension track by replacing the PoC public-read pairing path with a trusted device-policy model, deriving device policy from published weekly plans and school-time rules, upgrading the parent Lockdown module away from prototype-only controls, and validating the browser extension end to end. Kiosk-mode follow-on stays out of scope until the browser-extension path is production-safe."
+workflow_status: complete
+source_plan_path: "docs/specs/lockdown-browser-extension-plan.md"
+master_developer_start_prompt_path: "docs/specs/lockdown-browser-extension-plan-workflow/start-master-developer-chat.md"
+current_phase_number: 5
+current_phase_slug: phase-05-end-to-end-validation-and-launch-docs
+current_role: master-developer
+phase_status: complete
+owner: master-developer
+next_downstream_role: none
+last_completed_phase_number: 5
+last_completed_phase_slug: phase-05-end-to-end-validation-and-launch-docs
+last_completed_role: tester
+last_handoff_role: tester
+blocked_reason: none
+last_updated: 2026-05-11
+active_phase_path: "docs/specs/lockdown-browser-extension-plan-workflow/phases/phase-05-end-to-end-validation-and-launch-docs/phase.md"
+active_run_log_path: "docs/specs/lockdown-browser-extension-plan-workflow/phases/phase-05-end-to-end-validation-and-launch-docs/run-log.md"
+phase_sequence:
+  - phase-01-trusted-policy-contract-and-pairing
+  - phase-02-published-weekly-plan-policy-derivation
+  - phase-03-parent-lockdown-management-surface
+  - phase-04-extension-secure-sync-and-enforcement
+  - phase-05-end-to-end-validation-and-launch-docs
+phase_role_sequences:
+  phase-01-trusted-policy-contract-and-pairing:
+    - developer
+    - tester
+  phase-02-published-weekly-plan-policy-derivation:
+    - developer
+    - tester
+  phase-03-parent-lockdown-management-surface:
+    - developer
+    - tester
+  phase-04-extension-secure-sync-and-enforcement:
+    - developer
+    - tester
+  phase-05-end-to-end-validation-and-launch-docs:
+    - developer
+    - tester

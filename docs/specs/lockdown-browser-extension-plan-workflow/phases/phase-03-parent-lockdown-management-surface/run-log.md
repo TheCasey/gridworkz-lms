@@ -1,0 +1,460 @@
+# Phase 3 Run Log
+
+## Status Snapshot
+
+- Phase: `phase-03-parent-lockdown-management-surface`
+- Current status: `complete`
+- Current owner: `master-developer`
+- Next downstream role: `none`
+- Last updated: `2026-05-11`
+
+## Master Developer Reviews
+
+- 2026-05-11 review:
+  - Confirmed Phase 2 is complete and Phase 3 is now the correct active phase.
+  - Confirmed the current backend contract is ahead of the parent UI:
+    - trusted enrollment and trusted policy reads are live
+    - published weekly-plan derivation is now the trusted source
+    - multi-student accounts now require explicit backend `student_id` binding
+  - Confirmed the current `/dashboard/lockdown` surface is still prototype-shaped:
+    - [src/pages/Lockdown.jsx](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/pages/Lockdown.jsx) still frames the module as a newly route-backed premium module with prototype messaging
+    - [src/components/LockdownPolicyPanel.jsx](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/components/LockdownPolicyPanel.jsx) still centers a raw PoC policy editor, legacy PoC pairing material, and direct allowlist editing
+    - `issueTrustedLockdownEnrollment()` is still called without a `student_id`, which is no longer sufficient for multi-student accounts after Phase 2
+  - Phase 3 should therefore stay focused on upgrading the existing Lockdown module into the parent-facing production management surface:
+    - show derived policy visibility instead of treating raw policy editing as the primary model
+    - add enrollment or pairing UI that can satisfy the new student-binding requirement
+    - expose off-hours approved-resource management if it remains parent-managed
+    - preserve downgrade-safe read-only behavior on the same entitlement rail
+- 2026-05-11 acceptance review:
+  - Confirmed the implemented Phase 3 surface stays on the existing `/dashboard/lockdown` route and does not introduce a second parent management surface.
+  - Confirmed the primary interaction model now matches the Phase 3 contract:
+    - student selection is required before trusted pairing
+    - trusted enrollment issuance now sends `student_id`
+    - derived policy visibility is foregrounded instead of raw PoC policy editing
+    - off-hours controls now edit student-bound `lockdown_schedule` inputs
+    - legacy PoC pairing and policy material remain visible only as compatibility support for the pre-Phase-4 MV3 runtime
+  - Re-verified current-tree validation on 2026-05-11:
+    - `npm run lint`: PASS
+    - `npm run build`: PASS
+  - No Phase 3 code blocker found in master review. The correct next role is `tester`, with validation focused on entitled and downgraded route behavior, multi-student student-binding setup, and compatibility material remaining secondary.
+- 2026-05-11 tester-failure review:
+  - Confirmed Phase 3 remains the correct active phase. The tester failure is a remediation loop inside the parent Lockdown management surface, not a reason to advance to Phase 4.
+  - Confirmed one Phase 3 bug directly in the current local UI code:
+    - [src/components/LockdownPolicyPanel.jsx](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/components/LockdownPolicyPanel.jsx) still auto-selects `students[0].id` when no explicit selection exists, so pairing becomes available before the parent makes an intentional student choice.
+  - Confirmed the tester’s backend failure does not match the current local callable implementation:
+    - [functions/src/index.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/functions/src/index.js) currently writes `student_id: binding.studentId` and `source_policy_kind: published_weekly_plan_derived_policy_v1` during `issueLockdownEnrollment`
+    - the tester still observed live enrollment records with `student_id: null` and `source_policy_kind: lockdown_policy_poc_document`
+    - that means the next developer pass must reconcile live runtime behavior with the repository code, not just adjust UI copy
+  - Confirmed the tester’s derived-policy visibility failure is still unresolved:
+    - a published `weeklyPlans/{parentId}_{studentId}_{weekKey}` doc existed at the helper-computed identity path
+    - the `/dashboard/lockdown` surface still showed `No published plan for this week`
+    - the next developer pass must reproduce and fix the actual weekly-plan visibility path used by Phase 3
+  - Confirmed the following Phase 3 behavior already passed and should be preserved during remediation:
+    - the route-backed dashboard shell and page framing
+    - entitled off-hours schedule saves to the selected student’s `lockdown_schedule`
+    - downgrade-safe read-only behavior on the existing entitlement rail
+  - The correct next role is `developer`.
+- 2026-05-11 remediation acceptance review:
+  - Confirmed the Phase 3 remediation stays inside the parent Lockdown management surface and does not pull Phase 4 MV3 runtime work forward.
+  - Confirmed the explicit-selection UI fix is now present in local code:
+    - [src/components/LockdownPolicyPanel.jsx](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/components/LockdownPolicyPanel.jsx) now clears selection for multi-student accounts until the parent makes an intentional choice
+    - single-student accounts still streamline to the only available student without reintroducing a parent-wide pairing model
+  - Confirmed the weekly-plan read-path fix is now present in local code:
+    - [src/hooks/useStudentPortalWeeklyPlan.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/hooks/useStudentPortalWeeklyPlan.js) now accepts authoritative `parentId` and `weekConfig`, so the Lockdown route can resolve the correct `weeklyPlans/{parentId}_{studentId}_{weekKey}` identity instead of stale student-copied reset fields
+  - Re-verified current-tree validation on 2026-05-11:
+    - `npm run lint`: PASS
+    - `npm run build`: PASS
+  - Re-verified live deployment state on `gridworkz-lms`:
+    - `npx firebase-tools functions:list --project gridworkz-lms` includes:
+      - `issueLockdownEnrollment`
+      - `lockdownExchangeEnrollment`
+      - `readLockdownDevicePolicy`
+  - Accepted the developer’s runtime remediation evidence as sufficient to return Phase 3 to `tester`:
+    - multi-student first render now shows no selected student and disables trusted pairing
+    - live trusted enrollment records now persist the selected `student_id` and `published_weekly_plan_derived_policy_v1`
+    - the derived-policy panel now surfaces the selected student’s published weekly plan at the expected identity path
+    - previously passing off-hours saves and downgraded read-only behavior still hold
+  - No new Phase 3 blocker found in master review. The correct next role is `tester`.
+- 2026-05-11 completion review:
+  - Confirmed the focused tester retest passed with no remaining Phase 3 blocker.
+  - Confirmed the completed Phase 3 runtime outcomes:
+    - multi-student pairing now requires an explicit parent choice before pairing becomes available
+    - live trusted enrollment records persist the selected `student_id` and `published_weekly_plan_derived_policy_v1`
+    - the derived-policy panel surfaces the selected student’s published weekly plan at the expected identity path
+    - the off-hours save path and downgraded read-only behavior both still hold
+  - Phase 3 is complete. The correct next phase is Phase 4, with `developer` next.
+## Developer Results
+
+- 2026-05-11 implementation:
+  - Upgraded the existing route-backed Lockdown module into a student-bound management surface instead of a prototype policy editor.
+  - Chose this Phase 3 UI model:
+    - keep `/dashboard/lockdown` as the single parent-facing shell
+    - make student selection and student-bound pairing the first action
+    - show current derived policy visibility from the published-weekly-plan source as the main read model
+    - move off-hours approved-resource management onto the selected student record
+    - keep the legacy PoC Firestore payload visible only as a clearly secondary compatibility section
+  - Reworked [src/components/LockdownPolicyPanel.jsx](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/components/LockdownPolicyPanel.jsx):
+    - removed raw PoC allowlist editing as the primary interaction model
+    - added student selection with clear multi-student binding guidance
+    - changed trusted enrollment issuance to call `issueTrustedLockdownEnrollment({ student_id })`
+    - added a live derived-policy visibility surface driven by the selected student's published weekly plan, timer sessions, school-time rules, and off-hours windows
+    - added student-bound `lockdown_schedule` editing for school-time rules plus off-hours approved-resource windows
+    - kept the legacy PoC pairing code, policy boundary, and saved compatibility snapshot visible in a compatibility-only section
+  - Updated [src/utils/lockdownPolicyUtils.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/utils/lockdownPolicyUtils.js):
+    - added a client-side derived-policy preview helper that mirrors the trusted contract shape for parent visibility
+    - added helper builders and validation for off-hours windows and approved resources
+  - Updated route/supporting copy:
+    - [src/pages/Lockdown.jsx](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/pages/Lockdown.jsx)
+    - [src/hooks/useEntitlements.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/hooks/useEntitlements.js)
+    - [src/constants/dashboardFeatures.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/constants/dashboardFeatures.js)
+  - Passed `subjects` through the existing dashboard outlet context in [src/pages/ParentDashboard.jsx](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/pages/ParentDashboard.jsx) so the Lockdown route can resolve timer-bound derived state without inventing a second page flow.
+  - Files changed:
+    - [src/components/LockdownPolicyPanel.jsx](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/components/LockdownPolicyPanel.jsx)
+    - [src/constants/dashboardFeatures.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/constants/dashboardFeatures.js)
+    - [src/hooks/useEntitlements.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/hooks/useEntitlements.js)
+    - [src/pages/Lockdown.jsx](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/pages/Lockdown.jsx)
+    - [src/pages/ParentDashboard.jsx](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/pages/ParentDashboard.jsx)
+    - [src/utils/lockdownPolicyUtils.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/utils/lockdownPolicyUtils.js)
+    - [docs/specs/lockdown-browser-extension-plan-workflow/phases/phase-03-parent-lockdown-management-surface/run-log.md](/Users/caseyburesh/caseyrepo/gridworkz-lms/docs/specs/lockdown-browser-extension-plan-workflow/phases/phase-03-parent-lockdown-management-surface/run-log.md)
+  - Multi-student trusted enrollment handling now:
+    - the parent must select a student in the Lockdown module before generating a trusted enrollment code
+    - the UI always sends the selected `student_id` to the callable enrollment function
+    - the pairing copy makes it explicit that multi-student households need one student-bound code per device or browser profile
+  - Downgrade-safe behavior preserved:
+    - the same `lockdownAccess` entitlement rail still controls pairing and edit permissions
+    - read-only mode leaves student schedules, derived-state visibility, and legacy compatibility material visible
+    - the UI blocks schedule saves and trusted pairing when entitlement access is inactive and uses the existing restore/upgrade copy rail
+  - Validation commands run:
+    - `npm run lint`
+    - `npm run build`
+  - Validation results:
+    - `npm run lint`: PASS
+    - `npm run build`: PASS
+## Tester Results
+
+- 2026-05-11 validation:
+  - Overall result: `FAIL`
+  - Exact commands run:
+    - `npm run lint`
+    - `npm run build`
+    - `npm run dev -- --host 127.0.0.1 --port 3000`
+  - Command results:
+    - `npm run lint`: PASS
+    - `npm run build`: PASS
+    - `npm run dev -- --host 127.0.0.1 --port 3000`: PASS, Vite served `http://127.0.0.1:3000/`
+  - Entitled route and shell evidence:
+    - `/dashboard/lockdown` loaded inside the existing dashboard shell with the shared left-nav, account rail, and route-backed Lockdown banner.
+    - The parent-facing copy is Phase-3-shaped, not prototype-shaped:
+      - `Manage student-bound pairing, derived policy state, and off-hours access from one module.`
+      - `Student-bound setup for the trusted Lockdown contract`
+      - `Keep the PoC runtime material secondary`
+    - The primary sections for student binding, trusted pairing, derived policy visibility, allowed-right-now visibility, off-hours controls, and legacy compatibility were all present on the live route.
+  - Multi-student runtime evidence and failures:
+    - Used an entitled multi-student fixture with two active students (`Alpha Student`, `Beta Student`).
+    - On first render, `Alpha Student` was auto-selected and `Generate Trusted Code` was immediately enabled. The page did not require an explicit parent selection before pairing, which does not satisfy the Phase 3 validation requirement that the parent select a student before trusted enrollment.
+    - The live UI rendered a `trusted_lockdown_enrollment_v1` code after Generate was clicked, but decoding that displayed code and reading the corresponding Firestore record showed the server is still issuing legacy-style enrollment state:
+      - decoded enrollment ticket doc id: `lockdownEnrollmentSessions/f230436987b5d464548ab5da`
+      - direct Firestore read returned:
+        - `student_id: null`
+        - `status: pending`
+        - `source_policy_kind: lockdown_policy_poc_document`
+        - `source_policy_parent_id: YdLHn3DYwfQlVd3Ml6LzpBBFEMi2`
+    - That is a Phase 3 contract failure. The live trusted enrollment path is not persisting the selected `student_id`, and it is still tagging the enrollment source as the legacy PoC policy boundary instead of the derived weekly-plan source.
+    - Manual-only gap:
+      - I did not capture a clean automated in-place switch from Alpha to Beta inside the native student select control. The native select control was unreliable in the available browser harnesses.
+      - This gap did not change the verdict because the enrollment issuance contract already failed on the default selected student.
+  - Single-student runtime evidence:
+    - Used a separate entitled single-student fixture with one active student (`Solo Student`).
+    - The route still rendered the flow as student-bound rather than parent-wide:
+      - `1 student on this account`
+      - binding card showed `Solo Student`
+      - binding id showed `phase3_single_i3o4xt`
+    - Generating a trusted code on the single-student fixture reproduced the same backend regression:
+      - decoded enrollment ticket doc id: `lockdownEnrollmentSessions/40ecf8bb05036eb343780fcd`
+      - direct Firestore read returned:
+        - `student_id: null`
+        - `status: pending`
+        - `source_policy_kind: lockdown_policy_poc_document`
+        - `source_policy_parent_id: yqsyJageVAa11P3q79Rd0TUIb593`
+    - So the UI is student-bound locally, but the live callable path is still parent-wide/PoC in persisted backend behavior.
+  - Derived-policy visibility failure:
+    - I seeded a published weekly-plan doc for the multi-student fixture at the exact helper-computed identity path:
+      - `weeklyPlans/YdLHn3DYwfQlVd3Ml6LzpBBFEMi2_phase3_multi_alpha_i3o4xt_2026-05-11`
+      - `status: published`
+    - The repository helper confirmed the computed identity for that student and date is the same doc id.
+    - Despite that, the live `/dashboard/lockdown` UI continued to show:
+      - `No published plan for this week`
+      - `No current weekly-plan document`
+      - `No active block`
+      - `0` allowed origins / `0` approved creators
+    - That means the primary derived-policy visibility surface is not actually surfacing the published weekly-plan-derived source for the selected student, which fails the Phase 3 read-model requirement.
+  - Off-hours save evidence:
+    - Used the entitled single-student fixture to validate the selected-student save path.
+    - Edited the selected student’s off-hours resource URL in the live UI:
+      - before: `https://www.youtube.com/@crashcoursekids`
+      - after: `https://www.wikipedia.org/`
+    - The Save button enabled after the edit, and saving succeeded.
+    - Live UI evidence after save:
+      - `Last student update: 5/11/2026, 1:18:43 PM`
+      - `Destination URL ... https://www.wikipedia.org/`
+    - Direct Firestore evidence after save:
+      - `students/phase3_single_i3o4xt.lockdown_schedule.off_hours_resource_windows[0].resources[0].url = https://www.wikipedia.org/`
+      - `students/phase3_single_i3o4xt.updated_at = 2026-05-11T18:18:43.425Z`
+    - The derived preview remained `No active block` / `No active off-hours window`, which is consistent with the unchanged Monday school-time window (`08:00 - 15:00`) and unchanged off-hours window (`18:00 - 20:00`).
+  - Downgraded/read-only evidence:
+    - Reused the same single-student fixture and changed its entitlement doc to `plan_id: core`.
+    - Reloaded `/dashboard/lockdown` and confirmed the downgrade-safe behavior stayed coherent:
+      - nav showed `Lockdown Locked`
+      - page banner showed `Locked Module`
+      - module header showed `Lockdown Read Only`
+      - current plan showed `Core`
+      - saved setup remained visible, including the saved `https://www.wikipedia.org/` URL
+      - trusted pairing buttons were disabled
+      - all off-hours controls and `Save Off-Hours Setup` were disabled
+      - derived state remained visible and shifted to `Entitlement inactive`
+    - This part of Phase 3 passed.
+  - Fixture cleanup:
+    - Deleted all temporary Firestore docs created for the validation:
+      - `parents/*`
+      - `accountEntitlements/*`
+      - `students/*`
+      - `subjects/*`
+      - `weeklyPlans/*`
+      - `timerSessions/*`
+      - `lockdownPolicies/*`
+      - `lockdownEnrollmentSessions/*`
+    - Deleted both temporary Firebase Auth users after evidence capture.
+
+## Developer Remediation
+
+- 2026-05-11 remediation pass:
+  - Kept the fix inside Phase 3. No Phase 4 MV3 migration work or kiosk expansion was introduced.
+  - Files changed in this pass:
+    - [src/components/LockdownPolicyPanel.jsx](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/components/LockdownPolicyPanel.jsx)
+    - [src/hooks/useStudentPortalWeeklyPlan.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/src/hooks/useStudentPortalWeeklyPlan.js)
+    - [docs/specs/lockdown-browser-extension-plan-workflow/phases/phase-03-parent-lockdown-management-surface/run-log.md](/Users/caseyburesh/caseyrepo/gridworkz-lms/docs/specs/lockdown-browser-extension-plan-workflow/phases/phase-03-parent-lockdown-management-surface/run-log.md)
+  - Live deploys used to reconcile runtime drift from the current checked-in backend and rules:
+    - [functions/src/index.js](/Users/caseyburesh/caseyrepo/gridworkz-lms/functions/src/index.js)
+    - [firestore.rules](/Users/caseyburesh/caseyrepo/gridworkz-lms/firestore.rules)
+  - Local code fixes:
+    - Multi-student Lockdown setup no longer silently binds `students[0]`; the panel now requires an explicit student choice before pairing or derived-policy review in multi-student accounts.
+    - The Lockdown weekly-plan hook now accepts the dashboard’s authoritative parent week config and parent id so `/dashboard/lockdown` reads the correct `weeklyPlans/{parentId}_{studentId}_{weekKey}` document instead of relying on possibly stale student-copied week reset fields.
+    - The derived-policy card now keeps showing the resolved weekly-plan identity path even before a plan is found, which makes the selected student’s source path visible on the panel.
+  - Live runtime drift found and reconciled:
+    - The callable code in the repository was already student-bound, but the live project still returned legacy PoC enrollment records until the Lockdown functions were redeployed.
+    - The derived-policy UI miss was not only a client identity issue; live Firestore rules were also behind the repository. A signed-in parent could read `parents/{uid}` but still received `permission-denied` on `weeklyPlans/{parentId}_{studentId}_{weekKey}` until the current [firestore.rules](/Users/caseyburesh/caseyrepo/gridworkz-lms/firestore.rules) file was deployed.
+  - Exact commands run:
+    - `npm run lint`
+    - `npm run build`
+    - `npx firebase-tools functions:list --project gridworkz-lms`
+    - `npx firebase-tools deploy --only functions:issueLockdownEnrollment,functions:lockdownExchangeEnrollment,functions:readLockdownDevicePolicy --project gridworkz-lms`
+    - `npx firebase-tools deploy --only firestore:rules --project gridworkz-lms`
+    - `node --input-type=module <<'NODE' ... createUserWithEmailAndPassword + getDoc(doc(db, 'weeklyPlans', planId)) diagnostic ... NODE`
+    - `npm run dev -- --host 127.0.0.1 --port 3000`
+      - Vite reported port `3000` in use and served the validation run on `http://127.0.0.1:3001/`
+    - `node --input-type=module <<'NODE' ... Playwright + Firebase fixture validation ... NODE`
+  - Command results:
+    - `npm run lint`: PASS
+    - `npm run build`: PASS
+    - `npx firebase-tools deploy --only functions:issueLockdownEnrollment,functions:lockdownExchangeEnrollment,functions:readLockdownDevicePolicy --project gridworkz-lms`: PASS
+      - `functions[issueLockdownEnrollment(us-central1)] Successful update operation.`
+      - `functions[lockdownExchangeEnrollment(us-central1)] Successful update operation.`
+      - `functions[readLockdownDevicePolicy(us-central1)] Successful update operation.`
+    - `npx firebase-tools deploy --only firestore:rules --project gridworkz-lms`: PASS
+      - `firestore: released rules firestore.rules to cloud.firestore`
+      - CLI warning only: `44:11 - Invalid type. Received one of [null]. Expected one of [map].`
+    - Weekly-plan client-read diagnostic after the rules deploy: PASS
+      - signed-in parent read `parents/{uid}` successfully
+      - signed-in parent read `weeklyPlans/{parentId}_{studentId}_{weekKey}` successfully through the Firebase web SDK
+  - Required runtime proof:
+    - Multi-student explicit choice now required:
+      - disposable entitled fixture used two active students with ids:
+        - `phase3_alpha_mp1l14g345uzd2`
+        - `phase3_beta_mp1l14g345uzd2`
+      - first render on `/dashboard/lockdown` showed:
+        - select value: `""`
+        - binding card: `No student selected`
+        - `Generate Trusted Code` disabled: `true`
+      - That is the required Phase 3 behavior: the first student is no longer auto-selected in multi-student mode.
+    - Trusted enrollment now persists the real student binding and derived source marker:
+      - selected student: `phase3_alpha_mp1l14g345uzd2`
+      - live callable response from `issueLockdownEnrollment` returned:
+        - `status = 200`
+        - `student_id = phase3_alpha_mp1l14g345uzd2`
+        - `source_policy_kind = published_weekly_plan_derived_policy_v1`
+      - decoded enrollment doc id from the returned token:
+        - `lockdownEnrollmentSessions/b8fac20db850faf4e0bb52f0`
+      - direct Firestore read of that live enrollment record returned:
+        - `student_id = phase3_alpha_mp1l14g345uzd2`
+        - `source_policy_kind = published_weekly_plan_derived_policy_v1`
+        - `status = pending`
+      - That is the actual runtime enrollment record used by the trusted validation path, not just local UI copy.
+    - Derived-policy panel now surfaces the published weekly plan at the expected identity path:
+      - fixture parent week reset stayed authoritative at `week_reset_day = 1` (Monday)
+      - selected student’s copied week reset was intentionally stale at `week_reset_day = 2` (Tuesday)
+      - seeded published plan id:
+        - `weeklyPlans/dBJI0UTvaQfWQUXMrQWcLdi28at2_phase3_alpha_mp1l14g345uzd2_2026-05-11`
+      - live panel after selecting that student showed:
+        - `Published plan found`
+        - `dBJI0UTvaQfWQUXMrQWcLdi28at2_phase3_alpha_mp1l14g345uzd2_2026-05-11`
+      - This proves the parent surface is now reading the expected selected-student published plan path instead of reporting `No published plan for this week`.
+  - Preserve-and-regress checks:
+    - Off-hours save path still holds:
+      - changed the selected student’s approved resource URL to `https://www.wikipedia.org/`
+      - direct Firestore read confirmed:
+        - `students/phase3_alpha_mp1l14g345uzd2.lockdown_schedule.off_hours_resource_windows[0].resources[0].url = https://www.wikipedia.org/`
+    - Downgraded read-only behavior still holds:
+      - changed the fixture entitlement to `plan_id = core`
+      - reloaded `/dashboard/lockdown`
+      - live UI showed:
+        - `Lockdown Read Only`
+        - `Generate Trusted Code` disabled: `true`
+        - `Save Off-Hours Setup` disabled: `true`
+        - saved URL still visible: `https://www.wikipedia.org/`
+  - Live deployment required:
+    - Yes.
+    - Narrowest safe deploys used:
+      - Lockdown-only functions deploy for the three trusted runtime endpoints
+      - Firestore rules deploy for the weekly-plan read contract
+  - Remaining blockers:
+    - None found in this remediation pass for Phase 3 runtime behavior.
+    - Phase 4 MV3 runtime migration remains intentionally out of scope.
+  - Correct next role:
+    - `master-developer`
+
+## Tester Retest
+
+- 2026-05-11 focused Phase 3 retest:
+  - Overall result: `PASS`
+  - Scope held to the Phase 3 parent Lockdown management surface on `/dashboard/lockdown`.
+  - Exact commands run:
+    - `npm run lint`
+    - `npm run build`
+    - `npm run dev -- --host 127.0.0.1 --port 3000`
+    - `npx firebase-tools functions:list --project gridworkz-lms`
+    - `node <<'NODE' ... Firebase CLI OAuth + Firestore REST fixture seeding for parents/accountEntitlements/students/subjects/weeklyPlans ... NODE`
+    - `node <<'NODE' ... accounts:signInWithPassword + issueLockdownEnrollment + Firestore REST enrollment-session verification ... NODE`
+    - `node <<'NODE' ... Firestore REST student lockdown_schedule verification ... NODE`
+    - `node <<'NODE' ... Firestore REST entitlement patch to plan_id = core ... NODE`
+    - `node <<'NODE' ... Firestore REST cleanup + accounts:delete cleanup ... NODE`
+  - Command results:
+    - `npm run lint`: PASS
+    - `npm run build`: PASS
+    - `npm run dev -- --host 127.0.0.1 --port 3000`: PASS
+      - Vite served `http://127.0.0.1:3000/`
+    - `npx firebase-tools functions:list --project gridworkz-lms`: PASS
+      - live inventory still included:
+        - `issueLockdownEnrollment`
+        - `lockdownExchangeEnrollment`
+        - `readLockdownDevicePolicy`
+  - Focused runtime evidence:
+    - Multi-student explicit selection:
+      - used a disposable entitled multi-student fixture:
+        - parent id: `Ip2Bvv3NXpbsJO27789sYDJbtcv2`
+        - students:
+          - `phase3_alpha_mp1mipfq3l9hlh`
+          - `phase3_beta_mp1mipfq3l9hlh`
+      - first render on `/dashboard/lockdown` showed:
+        - the select placeholder option `Select a student before pairing or reviewing the derived policy` selected
+        - binding card: `No student selected`
+        - `Generate Trusted Code` disabled: `true`
+      - after explicitly selecting `Alpha Student`, the live panel showed:
+        - binding card: `Alpha Student`
+        - binding id: `phase3_alpha_mp1mipfq3l9hlh`
+        - `Generate Trusted Code` enabled: `true`
+    - Live trusted enrollment persistence:
+      - UI pairing flow on the selected student generated a live trusted code on `/dashboard/lockdown`.
+      - Decoded only the minimum required enrollment material from the displayed code:
+        - extracted `enrollment_token`
+        - derived live enrollment doc id: `lockdownEnrollmentSessions/9e95207821f712bd9d131092`
+      - direct Firestore read of that UI-generated live enrollment record returned:
+        - `student_id = phase3_alpha_mp1mipfq3l9hlh`
+        - `source_policy_kind = published_weekly_plan_derived_policy_v1`
+        - `status = pending`
+      - Exact callable response fields were captured with a direct authenticated runtime call against the same live endpoint because the in-app browser harness does not expose callable response bodies:
+        - `HTTP 200`
+        - `student_id = phase3_alpha_mp1mipfq3l9hlh`
+        - `source_policy_kind = published_weekly_plan_derived_policy_v1`
+        - returned enrollment doc id: `lockdownEnrollmentSessions/17f13df94cb8a1e71a1b37a6`
+      - direct Firestore read of that callable-linked live enrollment record returned:
+        - `student_id = phase3_alpha_mp1mipfq3l9hlh`
+        - `source_policy_kind = published_weekly_plan_derived_policy_v1`
+        - `status = pending`
+    - Derived-policy visibility on the correct weekly-plan path:
+      - fixture parent week reset stayed authoritative at:
+        - `week_reset_day = 1`
+        - `week_reset_hour = 0`
+        - `week_reset_minute = 0`
+      - selected student copied reset fields were intentionally stale at:
+        - `week_reset_day = 2`
+        - `week_reset_hour = 0`
+        - `week_reset_minute = 0`
+      - seeded published weekly plan doc:
+        - `weeklyPlans/Ip2Bvv3NXpbsJO27789sYDJbtcv2_phase3_alpha_mp1mipfq3l9hlh_2026-05-11`
+      - live `/dashboard/lockdown` surface showed:
+        - `Published plan found`
+        - surfaced plan id: `Ip2Bvv3NXpbsJO27789sYDJbtcv2_phase3_alpha_mp1mipfq3l9hlh_2026-05-11`
+        - visible source marker: `published_weekly_plan_derived_policy_v1`
+      - This is runtime evidence that the route read the authoritative `weeklyPlans/{parentId}_{studentId}_{weekKey}` identity instead of the stale student-copied reset path.
+    - Quick regression checks on already-passing behavior:
+      - Entitled off-hours save still persisted to the selected student’s `lockdown_schedule`:
+        - changed the selected student’s approved resource URL from `https://www.youtube.com/@crashcoursekids` to `https://www.wikipedia.org/`
+        - Save button enabled after the edit on the live UI
+        - direct Firestore read confirmed:
+          - `students/phase3_alpha_mp1mipfq3l9hlh.lockdown_schedule.off_hours_resource_windows[0].resources[0].url = https://www.wikipedia.org/`
+          - `students/phase3_alpha_mp1mipfq3l9hlh.updated_at = 2026-05-11T20:05:05.828Z`
+      - Downgraded read-only behavior still held after changing the same fixture entitlement to `plan_id = core`:
+        - nav showed `Lockdown Locked`
+        - module showed `Lockdown Read Only`
+        - current plan showed `Core`
+        - `Generate Trusted Code` disabled: `true`
+        - `Save Off-Hours Setup` disabled: `true`
+        - saved URL still visible in the read-only student selection state: `https://www.wikipedia.org/`
+        - derived state remained visible with `Entitlement inactive`
+  - Manual-only gaps:
+    - None.
+  - Tooling note:
+    - The in-app browser session was sufficient for first-render, selection, surfaced-plan, and read-only UI evidence.
+    - The exact callable response body for `issueLockdownEnrollment` was captured with a sidecar authenticated runtime call because the browser harness does not expose callable response payloads directly.
+  - Fixture cleanup:
+    - Deleted the disposable live docs created or touched for this retest:
+      - `lockdownEnrollmentSessions/9e95207821f712bd9d131092`
+      - `lockdownEnrollmentSessions/17f13df94cb8a1e71a1b37a6`
+      - `weeklyReports/Ip2Bvv3NXpbsJO27789sYDJbtcv2_phase3_alpha_mp1mipfq3l9hlh_2026-05-11`
+      - `weeklyReports/Ip2Bvv3NXpbsJO27789sYDJbtcv2_phase3_beta_mp1mipfq3l9hlh_2026-05-11`
+      - `timerSessions/phase3_alpha_mp1mipfq3l9hlh_phase3_subject_mp1mipfq3l9hlh`
+      - `timerSessions/phase3_beta_mp1mipfq3l9hlh_phase3_subject_mp1mipfq3l9hlh`
+      - `lockdownPolicies/Ip2Bvv3NXpbsJO27789sYDJbtcv2`
+      - `weeklyPlans/Ip2Bvv3NXpbsJO27789sYDJbtcv2_phase3_alpha_mp1mipfq3l9hlh_2026-05-11`
+      - `subjects/phase3_subject_mp1mipfq3l9hlh`
+      - `students/phase3_alpha_mp1mipfq3l9hlh`
+      - `students/phase3_beta_mp1mipfq3l9hlh`
+      - `accountEntitlements/Ip2Bvv3NXpbsJO27789sYDJbtcv2`
+      - `parents/Ip2Bvv3NXpbsJO27789sYDJbtcv2`
+    - Deleted the disposable Firebase Auth user tied to `phase3.retest.mp1mipfq3l9hlh@example.com`
+    - No intentional temporary fixture data remains from this retest.
+  - Blockers:
+    - None found in this focused Phase 3 retest.
+    - Phase 4 MV3 runtime migration remains intentionally out of scope and was not used as a failure condition.
+  - Correct next role:
+    - `master-developer`
+
+## Next Handoff
+
+- Phase 3 is complete.
+- Return control to `master-developer` to activate Phase 4.
+
+## Open Questions Or Blockers
+
+- No active Phase 3 blocker remains after the focused tester retest.
+- Known scope boundary only:
+  - the MV3 runtime still uses the legacy PoC compatibility path until Phase 4, so the compatibility section remains intentionally visible but secondary.
+
+## Completion Summary
+
+- Phase 3 now passes at the tester layer:
+  - multi-student pairing requires an explicit parent choice before pairing becomes available
+  - live trusted enrollment records persist the selected `student_id` and `published_weekly_plan_derived_policy_v1`
+  - the derived-policy panel surfaces the selected student’s published weekly plan at the expected identity path
+  - the off-hours save path and downgraded read-only behavior both still hold
+- Phase 3 is complete. The correct next role is `master-developer`, then Phase 4 `developer`.
