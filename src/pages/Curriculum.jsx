@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { serverTimestamp } from 'firebase/firestore';
 import { BookOpen, Plus, Trash2, Archive, Edit, ExternalLink, X } from 'lucide-react';
+import WeeklyPlanReviewPanel from '../components/curriculum/WeeklyPlanReviewPanel';
 import useEntitlements from '../hooks/useEntitlements';
 import useStudents from '../hooks/useStudents';
 import useSubjects from '../hooks/useSubjects';
@@ -55,6 +57,8 @@ const Toggle = ({ value, onChange }) => (
 
 const Curriculum = () => {
   const { currentUser } = useAuth();
+  const outletContext = useOutletContext() || {};
+  const parentSettings = outletContext.parentSettings || {};
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingSubject, setEditingSubject] = useState(null);
 
@@ -330,6 +334,11 @@ const Curriculum = () => {
     }
   };
 
+  const activeSubjects = useMemo(
+    () => subjects.filter(isActiveCurriculumSubject),
+    [subjects]
+  );
+
   const handleEdit = (subject) => {
     const studentIds = subject.student_ids || [subject.student_id].filter(Boolean);
     setSelectedStudents(studentIds);
@@ -355,7 +364,6 @@ const Curriculum = () => {
     );
   }
 
-  const activeSubjects = subjects.filter(isActiveCurriculumSubject);
   const normalizedTotalBlocks = parsePositiveInt(totalBlocks, 10, { min: 1, max: 20 });
   const curriculumLimitReached = Boolean(curriculumLimitCheck?.hasReachedLimit);
   const curriculumLimitSummary = buildEntitlementUsageSummary({
@@ -371,10 +379,34 @@ const Curriculum = () => {
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="mb-8">
         <div>
           <h2 className="text-[26px] font-display text-charcoal-ink" style={{ lineHeight: 1.1, letterSpacing: '-0.5px' }}>Curriculum</h2>
-          <p className="text-[14px] text-charcoal-ink/50 font-body mt-1">Manage subjects and learning resources</p>
+          <p className="text-[14px] text-charcoal-ink/50 font-body mt-1">
+            Manage subjects, learning resources, and the first weekly-plan review surface.
+          </p>
+        </div>
+      </div>
+
+      <WeeklyPlanReviewPanel
+        activeSubjects={activeSubjects}
+        colors={C}
+        currentUser={currentUser}
+        parentSettings={parentSettings}
+        students={students}
+      />
+
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.16em] font-label text-charcoal-ink/40 mb-2">
+            Compatibility Input Path
+          </p>
+          <h3 className="text-[22px] font-display text-charcoal-ink" style={{ lineHeight: 1.08 }}>
+            Subject Editor
+          </h3>
+          <p className="text-[14px] text-charcoal-ink/50 font-body mt-1">
+            Subjects remain the source input for weekly-plan generation in this phase.
+          </p>
         </div>
         <button
           onClick={openCreateSubjectForm}
@@ -392,6 +424,7 @@ const Curriculum = () => {
           {curriculumLimitReached ? 'Subject Limit Reached' : 'Add Subject'}
         </button>
       </div>
+
       {curriculumLimitCheck && (
         <div
           className="mb-6 rounded-2xl px-4 py-3"

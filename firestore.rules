@@ -61,6 +61,41 @@ service cloud.firestore {
         data.is_running is bool &&
         data.saved_at is int;
     }
+    function studentOwnedByParent(studentId, parentId) {
+      return studentExists(studentId) &&
+        get(/databases/$(database)/documents/students/$(studentId)).data.parent_id == parentId;
+    }
+    function weeklyPlanDocId(parentId, studentId, weekKey) {
+      return parentId + "_" + studentId + "_" + weekKey;
+    }
+    function isOwnerWeeklyPlanLookup(weeklyPlanId) {
+      return isAuth() && weeklyPlanId.matches("^" + request.auth.uid + "_.+");
+    }
+    function validWeeklyPlanStatus(status) {
+      return status == "draft" ||
+        status == "published" ||
+        status == "archived";
+    }
+    function validWeeklyPlanData(data, weeklyPlanId, parentId) {
+      return data.parent_id is string &&
+        data.student_id is string &&
+        data.week_key is string &&
+        data.assignment_ids is list &&
+        data.weekly_exceptions is list &&
+        data.blocks is list &&
+        data.week_start != null &&
+        data.week_end != null &&
+        data.status is string &&
+        validWeeklyPlanStatus(data.status) &&
+        data.parent_id == parentId &&
+        weeklyPlanId == weeklyPlanDocId(data.parent_id, data.student_id, data.week_key) &&
+        studentOwnedByParent(data.student_id, data.parent_id);
+    }
+    function isPublishedPortalWeeklyPlan(data, weeklyPlanId) {
+      return data != null &&
+        data.status == "published" &&
+        validWeeklyPlanData(data, weeklyPlanId, data.parent_id);
+    }
 
     // Students: portal resolves student records by slug, which requires query/list access
     match /students/{studentId} {
@@ -95,6 +130,26 @@ service cloud.firestore {
         timerSubjectIsAssigned(resource.data.student_id, resource.data.subject_id);
     }
 
+    // Weekly plans: parent-owned and identity-stable for one student-week planning
+    match /weeklyPlans/{weeklyPlanId} {
+      allow get: if isOwnerWeeklyPlanLookup(weeklyPlanId) ||
+        (
+          resource != null &&
+          (
+            isOwner(resource.data.parent_id) ||
+            isPublishedPortalWeeklyPlan(resource.data, weeklyPlanId)
+          )
+        );
+      allow list, delete: if false;
+      allow create: if isAuth() &&
+        validWeeklyPlanData(request.resource.data, weeklyPlanId, request.auth.uid);
+      allow update: if isOwner(resource.data.parent_id) &&
+        validWeeklyPlanData(request.resource.data, weeklyPlanId, resource.data.parent_id) &&
+        request.resource.data.parent_id == resource.data.parent_id &&
+        request.resource.data.student_id == resource.data.student_id &&
+        request.resource.data.week_key == resource.data.week_key;
+    }
+
     // Weekly reports: parent-scoped only
     match /weeklyReports/{reportId} {
       allow read, write: if isAuth() && request.auth.uid == resource.data.parent_id;
@@ -112,7 +167,8 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Lockdown PoC policies: public read for Phase 4 extension polling, owner-only writes
+    // Lockdown PoC policies: legacy compatibility path only until Phase 4 migrates
+    // the extension runtime to the trusted device-policy contract.
     match /lockdownPolicies/{policyId} {
       allow get: if true;
       allow list, delete: if isAuth() && request.auth.uid == policyId;
@@ -125,6 +181,15 @@ service cloud.firestore {
         resource.data.parent_id == request.auth.uid &&
         request.resource.data.parent_id == request.auth.uid &&
         hasLockdownEntitlement(request.auth.uid);
+    }
+
+    // Trusted lockdown pairing tickets and device credentials are server-owned only.
+    match /lockdownEnrollmentSessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    match /lockdownDevices/{deviceId} {
+      allow read, write: if false;
     }
 
     // Daily logs remain parent-authenticated until a narrower trusted path exists.

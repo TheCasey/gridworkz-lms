@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { doc, getFirestore, serverTimestamp, setDoc } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
-import { formatWeekRange, getCurrentWeekRange } from '../utils/weekUtils';
-import { getWeekKey } from '../utils/reportUtils';
+import { formatWeekRange, getCurrentWeekRange, getWeekKey } from '../utils/weekUtils';
 
 export const useWeeklyRollover = ({
   createWeeklyRecordsForRange,

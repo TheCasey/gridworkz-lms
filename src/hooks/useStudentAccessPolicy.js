@@ -347,10 +347,31 @@ export const useStudentAccessPolicy = ({
     student?.id,
   ]);
 
+  const getWorkItemPolicy = useCallback((workItem, options = {}) => {
+    const compatibilitySubject = workItem?.compatibilitySubject || null;
+    const compatibilityBlockIndex = Number.isInteger(workItem?.compatibilityBlockIndex)
+      ? workItem.compatibilityBlockIndex
+      : options.blockIndex ?? null;
+    const subjectPolicy = getSubjectPolicy(compatibilitySubject, {
+      blockIndex: compatibilityBlockIndex,
+      ignoreSubmissionLock: options.ignoreSubmissionLock,
+    });
+
+    return {
+      ...subjectPolicy,
+      workItemMeta: {
+        workItemId: workItem?.id || null,
+        legacySubjectId: workItem?.legacySubjectId || compatibilitySubject?.id || null,
+        compatibilityBlockIndex,
+      },
+    };
+  }, [getSubjectPolicy]);
+
   return {
     portalAccess,
     getNextAvailableBlock,
     getSubjectPolicy,
+    getWorkItemPolicy,
   };
 };
 

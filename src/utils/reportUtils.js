@@ -1,49 +1,241 @@
 import { serverTimestamp } from 'firebase/firestore';
-import { isTimestampInWeek } from './weekUtils';
+import { WeeklyPlanStatuses } from '../constants/schema';
+import { getWeekKey, isTimestampInWeek } from './weekUtils';
 import { getSchoolYearMetadataForDate } from './schoolSettingsUtils';
+import { getStudentSubjectsFromLegacyRecords } from './planningCompatibilityUtils';
 
-export const getStudentSubjects = (subjects, studentId) => (
-  subjects.filter(subject => {
-    if (Array.isArray(subject.student_ids)) return subject.student_ids.includes(studentId);
-    return subject.student_id === studentId;
+const DEFAULT_SUBJECT_BLOCK_COUNT = 10;
+const REPORTABLE_WEEKLY_PLAN_STATUSES = new Set([
+  WeeklyPlanStatuses.PUBLISHED,
+  WeeklyPlanStatuses.ARCHIVED,
+]);
+
+const toComparableDate = (value) => {
+  if (value instanceof Date) {
+    return value;
+  }
+
+  if (typeof value?.toDate === 'function') {
+    return value.toDate();
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const toPositiveInt = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const toNonEmptyString = (value) => (
+  typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : ''
+);
+
+const sortSubmissionsByTimestamp = (submissions) => (
+  [...(Array.isArray(submissions) ? submissions : [])].sort((left, right) => {
+    const first = toComparableDate(left?.timestamp);
+    const second = toComparableDate(right?.timestamp);
+
+    if (!first && !second) return 0;
+    if (!first) return -1;
+    if (!second) return 1;
+    return first - second;
   })
 );
 
-export const buildStudentWeeklySnapshot = ({ student, subjects, submissions, weekStart, weekEnd }) => {
-  const studentSubjects = getStudentSubjects(subjects, student.id);
-  const weekSubs = submissions.filter(submission => (
-    submission.student_id === student.id &&
-    submission.timestamp &&
-    isTimestampInWeek(submission.timestamp, weekStart, weekEnd)
-  ));
+const buildWeekSubmissionsForStudent = ({ studentId, submissions, weekStart, weekEnd }) => (
+  (Array.isArray(submissions) ? submissions : []).filter((submission) => (
+    submission.student_id === studentId
+    && submission.timestamp
+    && isTimestampInWeek(submission.timestamp, weekStart, weekEnd)
+  ))
+);
 
-  const subjectData = studentSubjects.map(subject => {
-    const subjectSubs = weekSubs
-      .filter(submission => submission.subject_id === subject.id)
-      .sort((a, b) => {
-        const first = a.timestamp?.toDate?.() || new Date(a.timestamp);
-        const second = b.timestamp?.toDate?.() || new Date(b.timestamp);
-        return first - second;
-      });
-    const uniqueBlocks = [...new Set(subjectSubs.map(submission => submission.block_index).filter(index => index !== undefined))];
+const getSubmissionMinutesTotal = (submissions) => (
+  (Array.isArray(submissions) ? submissions : []).reduce(
+    (sum, submission) => sum + (submission.block_duration || 30),
+    0
+  )
+);
+
+const buildSubjectDerivedSubjectData = ({ subjects, weekSubmissions }) => (
+  (Array.isArray(subjects) ? subjects : []).map((subject) => {
+    const subjectSubmissions = sortSubmissionsByTimestamp(
+      weekSubmissions.filter((submission) => submission.subject_id === subject.id)
+    );
+    const completedBlockIndices = new Set(
+      subjectSubmissions
+        .map((submission) => submission.block_index)
+        .filter((blockIndex) => blockIndex !== undefined)
+    );
 
     return {
       subject,
-      blocks: subjectSubs,
-      completedCount: uniqueBlocks.length,
-      totalCount: subject.block_count || 10,
-      totalMinutes: subjectSubs.reduce((sum, submission) => sum + (submission.block_duration || 30), 0),
+      blocks: subjectSubmissions,
+      completedCount: completedBlockIndices.size,
+      totalCount: toPositiveInt(subject?.block_count, DEFAULT_SUBJECT_BLOCK_COUNT),
+      totalMinutes: getSubmissionMinutesTotal(subjectSubmissions),
+    };
+  })
+);
+
+export const isReportableWeeklyPlan = (weeklyPlan) => (
+  Boolean(weeklyPlan?.id) && REPORTABLE_WEEKLY_PLAN_STATUSES.has(weeklyPlan.status)
+);
+
+export const getStudentSubjects = (subjects, studentId) => (
+  getStudentSubjectsFromLegacyRecords(subjects, studentId)
+);
+
+export const buildSubjectWeeklySnapshot = ({ student, subjects, submissions, weekStart, weekEnd }) => {
+  const studentSubjects = getStudentSubjects(subjects, student.id);
+  const weekSubmissions = buildWeekSubmissionsForStudent({
+    studentId: student.id,
+    submissions,
+    weekStart,
+    weekEnd,
+  });
+  const subjectData = buildSubjectDerivedSubjectData({
+    subjects: studentSubjects,
+    weekSubmissions,
+  });
+
+  const totalBlocks = subjectData.reduce((sum, subjectDatum) => sum + subjectDatum.completedCount, 0);
+  const goalBlocks = subjectData.reduce((sum, subjectDatum) => sum + subjectDatum.totalCount, 0);
+  const totalMinutes = subjectData.reduce((sum, subjectDatum) => sum + subjectDatum.totalMinutes, 0);
+
+  return {
+    student,
+    subjectData,
+    totalBlocks,
+    goalBlocks,
+    totalMinutes,
+    snapshotModel: 'subjects',
+    weeklyPlanId: '',
+  };
+};
+
+export const buildWeeklyPlanWeeklySnapshot = ({
+  student,
+  subjects,
+  submissions,
+  weekStart,
+  weekEnd,
+  weeklyPlan,
+}) => {
+  const weekSubmissions = buildWeekSubmissionsForStudent({
+    studentId: student.id,
+    submissions,
+    weekStart,
+    weekEnd,
+  });
+  const subjectsById = Object.fromEntries(
+    (Array.isArray(subjects) ? subjects : []).map((subject) => [subject.id, subject])
+  );
+  const groupedPlanSubjects = [];
+  const groupsBySubjectId = new Map();
+
+  (Array.isArray(weeklyPlan?.blocks) ? weeklyPlan.blocks : []).forEach((block) => {
+    const legacySubjectId = toNonEmptyString(block?.legacy_subject_id);
+    const legacyBlockIndex = Number.isInteger(block?.legacy_block_index)
+      ? block.legacy_block_index
+      : null;
+
+    if (!legacySubjectId || legacyBlockIndex === null) {
+      return;
+    }
+
+    let subjectGroup = groupsBySubjectId.get(legacySubjectId);
+
+    if (!subjectGroup) {
+      const legacySubject = subjectsById[legacySubjectId] || null;
+      const subjectTitle = toNonEmptyString(block?.legacy_subject_title)
+        || toNonEmptyString(block?.title)
+        || toNonEmptyString(legacySubject?.title)
+        || `Subject ${groupedPlanSubjects.length + 1}`;
+
+      subjectGroup = {
+        subject: {
+          ...(legacySubject || {}),
+          id: legacySubjectId,
+          title: subjectTitle,
+          color: toNonEmptyString(block?.color) || legacySubject?.color || '',
+        },
+        plannedBlocks: [],
+      };
+
+      groupsBySubjectId.set(legacySubjectId, subjectGroup);
+      groupedPlanSubjects.push(subjectGroup);
+    }
+
+    subjectGroup.plannedBlocks.push({
+      key: `${legacySubjectId}:${legacyBlockIndex}`,
+    });
+  });
+
+  const subjectData = groupedPlanSubjects.map(({ subject, plannedBlocks }) => {
+    const plannedBlockKeys = new Set(plannedBlocks.map((plannedBlock) => plannedBlock.key));
+    const planMatchedSubmissions = sortSubmissionsByTimestamp(
+      weekSubmissions.filter((submission) => (
+        plannedBlockKeys.has(`${submission.subject_id}:${submission.block_index}`)
+      ))
+    );
+    const completedBlockKeys = new Set(
+      planMatchedSubmissions.map((submission) => `${submission.subject_id}:${submission.block_index}`)
+    );
+
+    return {
+      subject,
+      blocks: planMatchedSubmissions,
+      completedCount: completedBlockKeys.size,
+      totalCount: plannedBlocks.length,
+      totalMinutes: getSubmissionMinutesTotal(planMatchedSubmissions),
     };
   });
 
-  const totalBlocks = subjectData.reduce((sum, subject) => sum + subject.completedCount, 0);
-  const goalBlocks = subjectData.reduce((sum, subject) => sum + subject.totalCount, 0);
-  const totalMinutes = subjectData.reduce((sum, subject) => sum + subject.totalMinutes, 0);
+  const totalBlocks = subjectData.reduce((sum, subjectDatum) => sum + subjectDatum.completedCount, 0);
+  const goalBlocks = subjectData.reduce((sum, subjectDatum) => sum + subjectDatum.totalCount, 0);
+  const totalMinutes = subjectData.reduce((sum, subjectDatum) => sum + subjectDatum.totalMinutes, 0);
 
-  return { student, subjectData, totalBlocks, goalBlocks, totalMinutes };
+  return {
+    student,
+    subjectData,
+    totalBlocks,
+    goalBlocks,
+    totalMinutes,
+    snapshotModel: 'weekly_plan',
+    weeklyPlanId: weeklyPlan?.id || '',
+  };
 };
 
-export const getWeekKey = (weekStart) => weekStart.toISOString().slice(0, 10);
+export const buildStudentWeeklySnapshot = ({
+  student,
+  subjects,
+  submissions,
+  weekStart,
+  weekEnd,
+  weeklyPlan = null,
+}) => (
+  isReportableWeeklyPlan(weeklyPlan)
+    ? buildWeeklyPlanWeeklySnapshot({
+        student,
+        subjects,
+        submissions,
+        weekStart,
+        weekEnd,
+        weeklyPlan,
+      })
+    : buildSubjectWeeklySnapshot({
+        student,
+        subjects,
+        submissions,
+        weekStart,
+        weekEnd,
+      })
+);
 
 export const buildWeeklyReportPayload = ({
   student,
@@ -99,6 +291,8 @@ export const buildWeeklyReportPayload = ({
     subjects_data: subjectsData,
     summaries: snapshot.subjectData.flatMap(subjectDatum => subjectDatum.blocks.map(block => block.summary_text).filter(Boolean)),
     attachments: [],
+    snapshot_model: snapshot.snapshotModel || 'subjects',
+    weekly_plan_id: snapshot.weeklyPlanId || '',
     school_year_label: schoolYear?.schoolYearLabel || '',
     school_year_start: schoolYear?.schoolYearStart || null,
     school_year_end: schoolYear?.schoolYearEnd || null,

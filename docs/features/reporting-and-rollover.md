@@ -26,4 +26,11 @@ This area covers weekly reports, print/export behavior, school-year labels, quar
 - No evidence attachment workflow yet.
 - No Firebase Storage integration yet.
 - No backend-owned archival/reset workflow yet.
+- The richer reporting and compliance contract around weekly plans, project work, parent overrides, and evidence is still future work.
 - The compliance story is functional for summaries and print views, but incomplete for supporting documents.
+
+## Related Planning
+
+- [../upgrades/baseline-product-foundation.md](../upgrades/baseline-product-foundation.md)
+- [../specs/reporting-and-compliance-contract.md](../specs/reporting-and-compliance-contract.md)
+- [../specs/report-evidence-drawer.md](../specs/report-evidence-drawer.md)

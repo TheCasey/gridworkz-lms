@@ -714,6 +714,7 @@ const ParentDashboard = () => {
                 settingsSaving,
                 studentLimitReached,
                 students,
+                subjects,
               }}
             />
           </main>

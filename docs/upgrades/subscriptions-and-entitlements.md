@@ -1,6 +1,6 @@
 # Subscriptions And Entitlements
 
-Last updated: 2026-05-05
+Last updated: 2026-05-10
 
 Status: Implemented
 
@@ -21,7 +21,9 @@ Use stable internal plan ids even if marketing names change later.
 For this planning pass:
 
 - Treat the current `subjects` collection as the closest existing implementation of "curriculums."
-- Treat "projects" as a future paid feature that should be designed behind entitlements from day one.
+- Treat `projects` as a future paid feature that should be designed behind entitlements from day one.
+- Treat `projects` as first-class tracked work objects that sit beside curriculum assignments and consume weekly `project_work` blocks rather than masquerading as recurring curriculum.
+- Treat quizzes and assessments as weekly block categories, not as separate premium object types.
 - Treat the `lockdown` plan as including the current browser extension work, kiosk mode, and future lockdown-specific variants.
 
 ## Current-Code Reality
@@ -70,6 +72,7 @@ Operational note:
 - Allow up to 10 students.
 - Allow unlimited curriculum entries.
 - Expose projects once that feature exists.
+- Keep standard weekly lessons, reviews, practice blocks, and assessments inside the core planning surface rather than treating them as premium object types.
 - Keep lockdown features unavailable.
 
 ### Lockdown plan
@@ -217,7 +220,6 @@ Still open:
 ## Open Product Questions
 
 - Should the `lockdown` plan keep the same 10-student limit permanently, or should it grow later?
-- What exact object will "projects" map to in the data model?
 - Will there be trials, annual billing, or promo overrides that need to coexist with the three base plans?
 
 ## Related Docs

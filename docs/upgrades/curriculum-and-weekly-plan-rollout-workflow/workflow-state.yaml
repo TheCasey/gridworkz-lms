@@ -1,0 +1,39 @@
+workflow_name: curriculum-and-weekly-plan-rollout
+workflow_title: "Curriculum And Weekly Plan Rollout Workflow"
+workflow_summary: "Incrementally introduce the future curriculum, assignment, and weekly-plan model while preserving the current subject-driven app until weekly plans become the live student and reporting surface."
+workflow_status: complete
+source_plan_path: "docs/upgrades/curriculum-and-weekly-plan-rollout.md"
+master_developer_start_prompt_path: "docs/upgrades/curriculum-and-weekly-plan-rollout-workflow/start-master-developer-chat.md"
+current_phase_number: 5
+current_phase_slug: phase-05-reporting-and-rollover-integration
+current_role: none
+phase_status: done
+owner: none
+last_completed_phase_number: 5
+last_completed_phase_slug: phase-05-reporting-and-rollover-integration
+blocked_reason: none
+last_updated: 2026-05-10
+active_phase_path: "docs/upgrades/curriculum-and-weekly-plan-rollout-workflow/phases/phase-05-reporting-and-rollover-integration/phase.md"
+active_run_log_path: "docs/upgrades/curriculum-and-weekly-plan-rollout-workflow/phases/phase-05-reporting-and-rollover-integration/run-log.md"
+phase_sequence:
+  - phase-01-schema-and-compatibility-foundation
+  - phase-02-weekly-plan-generation-and-publish-foundation
+  - phase-03-parent-weekly-planning-surface
+  - phase-04-student-portal-weekly-workspace-foundation
+  - phase-05-reporting-and-rollover-integration
+phase_role_sequences:
+  phase-01-schema-and-compatibility-foundation:
+    - developer
+    - tester
+  phase-02-weekly-plan-generation-and-publish-foundation:
+    - developer
+    - tester
+  phase-03-parent-weekly-planning-surface:
+    - developer
+    - tester
+  phase-04-student-portal-weekly-workspace-foundation:
+    - developer
+    - tester
+  phase-05-reporting-and-rollover-integration:
+    - developer
+    - tester

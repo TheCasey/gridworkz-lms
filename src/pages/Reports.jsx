@@ -4,6 +4,7 @@ import { FileText, Calendar, Archive, Trash2, Printer, ChevronDown, ChevronRight
 import useStudents from '../hooks/useStudents';
 import useSubjects from '../hooks/useSubjects';
 import useWeeklyActivity from '../hooks/useWeeklyActivity';
+import useWeeklyPlansForWeek from '../hooks/useWeeklyPlansForWeek';
 import useWeeklyReportRecords from '../hooks/useWeeklyReportRecords';
 import {
   getWeekRangeByOffset,
@@ -279,16 +280,36 @@ const Reports = ({ parentSettings = {} }) => {
     subjects,
     enabled: Boolean(currentUser),
   });
-  const loading = studentsLoading || subjectsLoading || submissionsLoading || weeklyReportsLoading;
-
   // Derive selected week range
   const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset, weekConfig);
+  const {
+    weeklyPlansByStudentId,
+    loading: weeklyPlansLoading,
+  } = useWeeklyPlansForWeek({
+    currentUser,
+    students,
+    weekStart,
+    enabled: Boolean(currentUser),
+  });
+  const loading = studentsLoading || subjectsLoading || submissionsLoading || weeklyReportsLoading || weeklyPlansLoading;
 
-  const studentDataMap = Object.fromEntries(students.map(student => [
-    student.id,
-    buildStudentWeeklySnapshot({ student, subjects, submissions, weekStart, weekEnd }),
-  ]));
-  const weekHasData = Object.values(studentDataMap).some(d => d.totalBlocks > 0);
+  const studentDataMap = useMemo(() => (
+    Object.fromEntries(students.map((student) => [
+      student.id,
+      buildStudentWeeklySnapshot({
+        student,
+        subjects,
+        submissions,
+        weekStart,
+        weekEnd,
+        weeklyPlan: weeklyPlansByStudentId[student.id] || null,
+      }),
+    ]))
+  ), [students, subjects, submissions, weekStart, weekEnd, weeklyPlansByStudentId]);
+  const weekHasData = useMemo(
+    () => Object.values(studentDataMap).some((data) => data.totalBlocks > 0),
+    [studentDataMap]
+  );
 
   // Save a non-destructive official record snapshot
   const handleSaveRecord = async () => {

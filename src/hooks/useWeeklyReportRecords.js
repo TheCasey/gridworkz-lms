@@ -3,20 +3,24 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   getFirestore,
   onSnapshot,
   orderBy,
   query,
+  serverTimestamp,
   where,
   writeBatch,
 } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
+import { Collections, WeeklyPlanStatuses } from '../constants/schema';
 import {
   buildStudentWeeklySnapshot,
   buildWeeklyReportPayload,
-  getWeekKey,
 } from '../utils/reportUtils';
+import { buildWeeklyPlanDocumentId } from '../utils/weeklyPlanUtils';
+import { getWeekKey } from '../utils/weekUtils';
 
 export const useWeeklyReportRecords = ({
   currentUser = null,
@@ -43,7 +47,7 @@ export const useWeeklyReportRecords = ({
     setLoading(true);
 
     const reportsQuery = query(
-      collection(db, 'weeklyReports'),
+      collection(db, Collections.WEEKLY_REPORTS),
       where('parent_id', '==', currentUser.uid),
       orderBy('week_ending', 'desc')
     );
@@ -66,6 +70,38 @@ export const useWeeklyReportRecords = ({
     };
   }, [currentUser, db, enabled, listen]);
 
+  const loadWeeklyPlansByStudentId = useCallback(async ({
+    batchStudents,
+    weekStart,
+  }) => {
+    if (!currentUser?.uid || !Array.isArray(batchStudents) || batchStudents.length === 0) {
+      return {};
+    }
+
+    const weekKey = getWeekKey(weekStart);
+    const weeklyPlanEntries = await Promise.all(batchStudents.map(async (student) => {
+      if (!student?.id) {
+        return [student?.id || '', null];
+      }
+
+      const weeklyPlanId = buildWeeklyPlanDocumentId({
+        parentId: currentUser.uid,
+        studentId: student.id,
+        weekKey,
+      });
+      const weeklyPlanSnapshot = await getDoc(doc(db, Collections.WEEKLY_PLANS, weeklyPlanId));
+
+      return [
+        student.id,
+        weeklyPlanSnapshot.exists()
+          ? { id: weeklyPlanSnapshot.id, ...weeklyPlanSnapshot.data() }
+          : null,
+      ];
+    }));
+
+    return Object.fromEntries(weeklyPlanEntries.filter(([studentId]) => Boolean(studentId)));
+  }, [currentUser?.uid, db]);
+
   const buildRecordBatch = useCallback(({
     batchStudents,
     batchSubjects,
@@ -73,6 +109,8 @@ export const useWeeklyReportRecords = ({
     weekStart,
     weekEnd,
     source,
+    weeklyPlansByStudentId = {},
+    archivePublishedPlans = false,
   }) => {
     const batch = writeBatch(db);
     let createdCount = 0;
@@ -84,12 +122,13 @@ export const useWeeklyReportRecords = ({
         submissions: batchSubmissions,
         weekStart,
         weekEnd,
+        weeklyPlan: weeklyPlansByStudentId[student.id] || null,
       });
 
       if (!snapshot) return;
 
       const reportId = `${currentUser.uid}_${student.id}_${getWeekKey(weekStart)}`;
-      batch.set(doc(db, 'weeklyReports', reportId), buildWeeklyReportPayload({
+      batch.set(doc(db, Collections.WEEKLY_REPORTS, reportId), buildWeeklyReportPayload({
         student,
         snapshot,
         weekStart,
@@ -98,6 +137,22 @@ export const useWeeklyReportRecords = ({
         parentSettings,
         source,
       }), { merge: true });
+
+      const weeklyPlan = weeklyPlansByStudentId[student.id] || null;
+
+      if (
+        archivePublishedPlans
+        && snapshot.snapshotModel === 'weekly_plan'
+        && weeklyPlan?.id
+        && weeklyPlan.status === WeeklyPlanStatuses.PUBLISHED
+      ) {
+        batch.set(doc(db, Collections.WEEKLY_PLANS, weeklyPlan.id), {
+          status: WeeklyPlanStatuses.ARCHIVED,
+          archived_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
+        }, { merge: true });
+      }
+
       createdCount += 1;
     });
 
@@ -115,6 +170,10 @@ export const useWeeklyReportRecords = ({
     setSavingRecord(true);
 
     try {
+      const weeklyPlansByStudentId = await loadWeeklyPlansByStudentId({
+        batchStudents: students,
+        weekStart,
+      });
       const { batch, createdCount } = buildRecordBatch({
         batchStudents: students,
         batchSubjects: subjects,
@@ -122,6 +181,8 @@ export const useWeeklyReportRecords = ({
         weekStart,
         weekEnd,
         source,
+        weeklyPlansByStudentId,
+        archivePublishedPlans: false,
       });
 
       if (createdCount > 0) {
@@ -135,11 +196,11 @@ export const useWeeklyReportRecords = ({
     } finally {
       setSavingRecord(false);
     }
-  }, [buildRecordBatch, currentUser, students, subjects]);
+  }, [buildRecordBatch, currentUser, loadWeeklyPlansByStudentId, students, subjects]);
 
   const deleteWeeklyReportRecord = useCallback(async (reportId) => {
     try {
-      await deleteDoc(doc(db, 'weeklyReports', reportId));
+      await deleteDoc(doc(db, Collections.WEEKLY_REPORTS, reportId));
       return true;
     } catch (nextError) {
       console.error('Error deleting weekly record:', nextError);
@@ -157,7 +218,7 @@ export const useWeeklyReportRecords = ({
     const activeStudents = students.length > 0
       ? students
       : (await getDocs(query(
-        collection(db, 'students'),
+        collection(db, Collections.STUDENTS),
         where('parent_id', '==', currentUser.uid),
         orderBy('created_at', 'desc')
       ))).docs.map((studentDoc) => ({ id: studentDoc.id, ...studentDoc.data() }));
@@ -165,7 +226,7 @@ export const useWeeklyReportRecords = ({
     const activeSubjects = subjects.length > 0
       ? subjects
       : (await getDocs(query(
-        collection(db, 'subjects'),
+        collection(db, Collections.SUBJECTS),
         where('parent_id', '==', currentUser.uid),
         where('is_active', '==', true),
         orderBy('title')
@@ -176,7 +237,7 @@ export const useWeeklyReportRecords = ({
     }
 
     const submissionsSnapshot = await getDocs(query(
-      collection(db, 'submissions'),
+      collection(db, Collections.SUBMISSIONS),
       where('parent_id', '==', currentUser.uid),
       where('timestamp', '>=', weekStart),
       where('timestamp', '<=', weekEnd),
@@ -184,6 +245,10 @@ export const useWeeklyReportRecords = ({
     ));
 
     const rangeSubmissions = submissionsSnapshot.docs.map((submissionDoc) => ({ id: submissionDoc.id, ...submissionDoc.data() }));
+    const weeklyPlansByStudentId = await loadWeeklyPlansByStudentId({
+      batchStudents: activeStudents,
+      weekStart,
+    });
     const { batch, createdCount } = buildRecordBatch({
       batchStudents: activeStudents,
       batchSubjects: activeSubjects,
@@ -191,6 +256,8 @@ export const useWeeklyReportRecords = ({
       weekStart,
       weekEnd,
       source,
+      weeklyPlansByStudentId,
+      archivePublishedPlans: true,
     });
 
     if (createdCount > 0) {
@@ -198,7 +265,7 @@ export const useWeeklyReportRecords = ({
     }
 
     return createdCount;
-  }, [buildRecordBatch, currentUser, db, students, subjects]);
+  }, [buildRecordBatch, currentUser, db, loadWeeklyPlansByStudentId, students, subjects]);
 
   return {
     createWeeklyRecordsForRange,

@@ -5,8 +5,9 @@ This directory is organized so work can be delegated cleanly.
 Start with these files:
 
 1. [roadmap.md](roadmap.md) for the product-level priority map.
-2. [architecture.md](architecture.md) for the current technical shape of the app.
-3. A focused doc under `features/`, `specs/`, `upgrades/`, or `audits/` for the task at hand.
+2. [upgrades/baseline-product-foundation.md](upgrades/baseline-product-foundation.md) for the current product-direction baseline when the task is planning-heavy.
+3. [architecture.md](architecture.md) for the current technical shape of the app.
+4. A focused doc under `features/`, `specs/`, `upgrades/`, or `audits/` for the task at hand.
 
 Folder guide:
 

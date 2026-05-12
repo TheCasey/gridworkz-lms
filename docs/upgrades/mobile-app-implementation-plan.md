@@ -16,6 +16,14 @@ The current web app already separates those concerns at the route and data-acces
 
 Because the user types, navigation models, and security expectations differ, splitting into two apps is cleaner than forcing both into one shell.
 
+This plan should follow the future product model once it is locked in:
+
+- `CurriculumTemplate -> Assignment -> WeeklyPlan -> WeeklyBlock`
+
+Do not treat the current flat `subjects` model as the long-term mobile contract.
+
+The active baseline planning surface for that redesign is [baseline-product-foundation.md](baseline-product-foundation.md), with the detailed child specs under `docs/specs/`.
+
 ## Recommended Technical Direction
 
 Use `React Native + Expo` for both apps.
@@ -126,6 +134,7 @@ Additional extraction needed:
 - Student subject/progress derivation logic
 - Weekly rollover/report creation logic
 - Submission creation/update/reset helpers
+- Future template/assignment/weekly-plan services once that baseline model is settled
 
 Goal:
 
