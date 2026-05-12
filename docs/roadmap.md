@@ -25,7 +25,7 @@ Last updated: 2026-05-11
 | Weekly reports | Partial | Reports exist and can be browsed/printed, but evidence attachments and the richer reporting contract are not implemented |
 | Week rollover | Partial | Client-driven rollover exists; server automation does not |
 | Firestore security posture | Partial | Subscription enforcement paths are now trusted, but public student portal flows and timer/submission exposure still need broader hardening |
-| Subscription + entitlement model | Partial | Billing sandbox, trusted entitlement authority, live UI gating, and Stripe webhook sync are now live; projects UI and live-mode billing rollout are still open |
+| Subscription + entitlement model | Partial | Billing sandbox, trusted entitlement authority, live UI gating, and Stripe webhook sync are now live; operator support tooling, projects UI, and live-mode billing rollout are still open |
 | Lockdown browser controls | Partial | The browser-extension launch path is live: entitlement-gated parent management, trusted device pairing, secure policy reads, cached fallback, approved-origin and approved-creator enforcement, and downgrade-safe read-only behavior are current state. Kiosk mode and broader rollout hardening remain follow-on scope. |
 | AI assistance | Future | AI planning is now defined narrowly around curriculum chunking, worksheet drafting, and bounded student help |
 | Tooling baseline | Done | Build and lint both pass, and GitHub Actions runs them as a lightweight CI gate |
@@ -81,12 +81,14 @@ Related docs:
 
 - Keep future premium modules on the same shell-level entitlement rail instead of reintroducing one-off gates.
 - Treat Stripe sandbox mode as the current integration baseline and switch to live-mode products, prices, and webhook secrets only when real payments are ready.
+- Add an operator-only entitlement console so support can resolve missing or incorrect parent entitlement state and test plan levels without direct Firestore edits.
 - Keep Lockdown as a top-tier module on its dedicated route and reuse the same shell-level gating contract for future premium surfaces.
 - Treat projects as the next major premium object type behind the same entitlement layer.
 
 Related docs:
 
 - [upgrades/subscriptions-and-entitlements.md](upgrades/subscriptions-and-entitlements.md)
+- [specs/operator-entitlement-console.md](specs/operator-entitlement-console.md)
 - [specs/projects-and-assessment-model.md](specs/projects-and-assessment-model.md)
 - [specs/lockdown-browser-extension-plan.md](specs/lockdown-browser-extension-plan.md)
 
@@ -135,5 +137,6 @@ Related docs:
 - Master map: [roadmap.md](roadmap.md)
 - Product-baseline planning: [upgrades/baseline-product-foundation.md](upgrades/baseline-product-foundation.md)
 - System reference: [architecture.md](architecture.md)
+- Public site planning: [specs/public-marketing-site-and-landing-page.md](specs/public-marketing-site-and-landing-page.md)
 - Current audit: [audits/baseline-plan-audit-2026-05-04.md](audits/baseline-plan-audit-2026-05-04.md)
 - Legacy concept plan: [archive/initial-product-plan.md](archive/initial-product-plan.md)

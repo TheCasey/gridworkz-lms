@@ -16,5 +16,7 @@ Current specs:
 - [reporting-and-compliance-contract.md](reporting-and-compliance-contract.md)
 - [ai-assisted-planning-and-student-help.md](ai-assisted-planning-and-student-help.md)
 - [lockdown-browser-extension-plan.md](lockdown-browser-extension-plan.md)
+- [operator-entitlement-console.md](operator-entitlement-console.md)
 - [mobile-ui-requirements.md](mobile-ui-requirements.md)
 - [report-evidence-drawer.md](report-evidence-drawer.md)
+- [public-marketing-site-and-landing-page.md](public-marketing-site-and-landing-page.md)

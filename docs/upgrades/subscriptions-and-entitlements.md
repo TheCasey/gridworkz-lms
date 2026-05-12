@@ -1,6 +1,6 @@
 # Subscriptions And Entitlements
 
-Last updated: 2026-05-10
+Last updated: 2026-05-11
 
 Status: Implemented
 
@@ -201,6 +201,17 @@ After the UI scaffolding exists:
 
 This work depends on the broader security-hardening track already called out in the roadmap.
 
+### Workstream F. Operator support console
+
+Once the trusted entitlement path is stable:
+
+- add an operator-only console for searching parent accounts and inspecting entitlement state
+- support safe initialization of missing `accountEntitlements/{uid}` records
+- support temporary plan overrides and clear reversion back to billing-backed state
+- add a support audit trail so manual changes are attributable and reversible
+
+This should build on the existing trusted backend path, not bypass it with direct Firestore edits.
+
 ## Implementation Status
 
 Completed:
@@ -215,7 +226,8 @@ Completed:
 Still open:
 
 1. Land future project features behind the same entitlement layer.
-2. Move Stripe from sandbox mode to live-mode products, prices, webhook secret, and webhook smoke validation when real payments are ready.
+2. Add an operator-only entitlement console so support can repair missing or incorrect account state and test plan levels without raw document edits.
+3. Move Stripe from sandbox mode to live-mode products, prices, webhook secret, and webhook smoke validation when real payments are ready.
 
 ## Open Product Questions
 
@@ -228,3 +240,4 @@ Still open:
 - [architecture.md](../architecture.md)
 - [security-hardening.md](security-hardening.md)
 - [lockdown-browser-extension-plan.md](../specs/lockdown-browser-extension-plan.md)
+- [operator-entitlement-console.md](../specs/operator-entitlement-console.md)
