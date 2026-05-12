@@ -5,6 +5,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { DASHBOARD_DEFAULT_FEATURE_ID, dashboardFeaturesById } from './constants/dashboardFeatures';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const MarketingHome = lazy(() => import('./pages/MarketingHome'));
 const ParentDashboard = lazy(() => import('./pages/ParentDashboard'));
 const Curriculum = lazy(() => import('./pages/Curriculum'));
 const Lockdown = lazy(() => import('./pages/Lockdown'));
@@ -80,6 +81,10 @@ const PublicRoute = ({ children }) => {
 function AppRoutes() {
   return (
     <Routes>
+      <Route
+        path="/"
+        element={withFullScreenSuspense(<MarketingHome />)}
+      />
       <Route 
         path="/login" 
         element={
@@ -128,10 +133,6 @@ function AppRoutes() {
       <Route 
         path="/student/:slug" 
         element={withFullScreenSuspense(<StudentPortal />)} 
-      />
-      <Route 
-        path="/" 
-        element={<Navigate to="/dashboard" replace />} 
       />
     </Routes>
   );

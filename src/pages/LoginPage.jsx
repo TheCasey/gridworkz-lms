@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 const FONT = "'Super Sans VF', system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, sans-serif";
@@ -36,6 +37,14 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
 
   const { login, signup, resetPassword } = useAuth();
+  const { search } = useLocation();
+
+  useEffect(() => {
+    const mode = new URLSearchParams(search).get('mode');
+    setIsSignUp(mode === 'signup');
+    setError('');
+    setMessage('');
+  }, [search]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
