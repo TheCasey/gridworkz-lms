@@ -1,8 +1,12 @@
 # Lockdown PoC Plan
 
-Status: Ready
+Archived on: 2026-05-06
 
-Companion document: [lockdown-browser-extension-plan.md](lockdown-browser-extension-plan.md)
+Status: Archived after PoC validation
+
+Companion document: [lockdown-browser-extension-plan.md](../../specs/lockdown-browser-extension-plan.md)
+
+Historical note: This workflow is preserved for reference after the MV3 proof of concept validated. Internal examples below may still mention their original `docs/specs/` paths.
 
 ## Execution State
 

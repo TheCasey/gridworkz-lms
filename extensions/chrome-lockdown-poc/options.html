@@ -3,47 +3,33 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>GridWorkz Lockdown PoC Setup</title>
+    <title>GridWorkz Lockdown Setup</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body class="options-shell">
     <main class="page-shell">
       <section class="panel">
-        <p class="eyebrow">GridWorkz Lockdown PoC</p>
-        <h1>Extension pairing</h1>
+        <p class="eyebrow">GridWorkz Lockdown</p>
+        <h1>Trusted device pairing</h1>
         <p class="muted">
-          Pair this browser to one saved Firestore policy document. The pairing code is the recommended PoC path because it bundles the public Firebase settings the extension needs for polling.
+          Paste the trusted enrollment code from the parent Lockdown panel. The extension exchanges it once for a device credential, then reads policy through the secure device endpoint.
         </p>
 
         <div class="section">
-          <h2>Recommended setup</h2>
+          <h2>Pair this browser</h2>
           <div class="form-stack">
             <div class="field-group">
-              <label for="pairing-code">Pairing code</label>
-              <textarea id="pairing-code" placeholder="Paste the pairing code from the parent dashboard"></textarea>
+              <label for="pairing-code">Trusted enrollment code</label>
+              <textarea id="pairing-code" placeholder="Paste the trusted enrollment code from the parent dashboard"></textarea>
               <p class="field-help">
-                The pairing code carries the policy ID plus the public Firebase project settings required for remote polling in this PoC.
+                This code carries the one-time enrollment token plus the secure exchange and policy-read URLs the extension needs.
               </p>
             </div>
-          </div>
-        </div>
-
-        <div class="section">
-          <h2>Manual fallback</h2>
-          <div class="form-stack">
             <div class="field-group">
-              <label for="policy-id">Policy ID</label>
-              <input id="policy-id" type="text" placeholder="Parent policy document id" />
-            </div>
-            <div class="field-group">
-              <label for="project-id">Firebase project ID</label>
-              <input id="project-id" type="text" placeholder="gridworkz-example-project" />
-            </div>
-            <div class="field-group">
-              <label for="api-key">Firebase web API key</label>
-              <input id="api-key" type="text" placeholder="AIza..." />
+              <label for="device-name">Device name</label>
+              <input id="device-name" type="text" placeholder="Kitchen Chromebook" />
               <p class="field-help">
-                Manual entry is only here to satisfy raw policy-ID pairing in the PoC. These are public web config values, not secret admin credentials.
+                Optional. This label is stored with the device record created during enrollment exchange.
               </p>
             </div>
           </div>
@@ -58,7 +44,7 @@
         <p class="status-message" id="status-message"></p>
 
         <div class="note">
-          This Phase 4 pairing model is intentionally narrow. It does not implement device identity, hardened enrollment, or kiosk protections.
+          Legacy PoC Firestore pairing codes are no longer used for secure sync. If this browser still has one saved, clear it here and pair again with a trusted enrollment code.
         </div>
       </section>
     </main>

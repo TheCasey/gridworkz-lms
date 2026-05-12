@@ -1,6 +1,7 @@
+# Archived on 2026-05-06 after PoC validation.
 workflow_state: complete
 workflow_name: lockdown-browser-extension-poc
-plan_path: docs/specs/poc-lockdown-plan.md
+plan_path: docs/archive/lockdown-browser-extension-poc/poc-lockdown-plan.md
 current_phase: none
 current_phase_name: none
 current_role: none
@@ -8,5 +9,5 @@ phase_status: done
 owner: none
 blocked_reason: none
 last_completed_phase: 5
-handoff_path: docs/specs/poc-lockdown-runs/phase-05.md
+handoff_path: docs/archive/lockdown-browser-extension-poc/runs/phase-05.md
 last_updated: 2026-05-04T17:27:51-05:00

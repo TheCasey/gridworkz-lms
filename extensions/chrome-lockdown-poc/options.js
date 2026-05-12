@@ -1,17 +1,13 @@
 import {
-  buildPairingCode,
   getPairingSettings,
+  isLegacyPairing,
   isPairingConfigured,
   normalizePairingSettings,
   parsePairingCode,
-  setPairingSettings,
-  clearPairingSettings
 } from './policy.js';
 
 const pairingCodeField = document.getElementById('pairing-code');
-const policyIdField = document.getElementById('policy-id');
-const projectIdField = document.getElementById('project-id');
-const apiKeyField = document.getElementById('api-key');
+const deviceNameField = document.getElementById('device-name');
 const saveButton = document.getElementById('save-button');
 const clearButton = document.getElementById('clear-button');
 const popupButton = document.getElementById('popup-button');
@@ -22,12 +18,14 @@ function setStatus(message, tone = '') {
   statusMessage.className = `status-message${tone ? ` ${tone}` : ''}`;
 }
 
+function formatTimestamp(value) {
+  if (!value) return 'unknown time';
+  return new Date(value).toLocaleString();
+}
+
 function fillFields(pairing) {
   const normalized = normalizePairingSettings(pairing);
-  pairingCodeField.value = buildPairingCode(normalized);
-  policyIdField.value = normalized.policy_id;
-  projectIdField.value = normalized.project_id;
-  apiKeyField.value = normalized.api_key;
+  deviceNameField.value = normalized.device_name || deviceNameField.value;
 }
 
 async function loadPairing() {
@@ -35,11 +33,23 @@ async function loadPairing() {
   fillFields(pairing);
 
   if (isPairingConfigured(pairing)) {
-    setStatus(`Saved pairing for policy ${pairing.policy_id}.`, 'success');
+    const studentLabel = pairing.student_id ? ` for student ${pairing.student_id}` : '';
+    setStatus(
+      `Trusted pairing saved for ${pairing.device_name || pairing.device_id || 'this browser'}${studentLabel}.`,
+      'success'
+    );
     return;
   }
 
-  setStatus('No pairing is saved yet.');
+  if (isLegacyPairing(pairing)) {
+    setStatus(
+      'A legacy PoC Firestore pairing is still saved here. Remote sync is paused until you replace it with a trusted enrollment code.',
+      'error'
+    );
+    return;
+  }
+
+  setStatus('No trusted pairing is saved yet.');
 }
 
 pairingCodeField.addEventListener('input', () => {
@@ -48,9 +58,20 @@ pairingCodeField.addEventListener('input', () => {
     return;
   }
 
-  policyIdField.value = parsed.policy_id;
-  projectIdField.value = parsed.project_id;
-  apiKeyField.value = parsed.api_key;
+  if (parsed.pairing_kind === 'legacy_poc') {
+    setStatus(
+      'This is a legacy PoC pairing code. Generate a trusted enrollment code from the parent dashboard instead.',
+      'error'
+    );
+    return;
+  }
+
+  if (parsed.enrollment_expires_at) {
+    setStatus(
+      `Trusted enrollment code loaded. It expires ${formatTimestamp(parsed.enrollment_expires_at)}.`,
+      'success'
+    );
+  }
 });
 
 saveButton.addEventListener('click', async () => {
@@ -58,25 +79,39 @@ saveButton.addEventListener('click', async () => {
 
   try {
     const parsedPairing = parsePairingCode(pairingCodeField.value);
-    const manualPairing = normalizePairingSettings({
-      policy_id: policyIdField.value,
-      project_id: projectIdField.value,
-      api_key: apiKeyField.value
-    });
-    const pairingToSave = parsedPairing || manualPairing;
 
-    if (!isPairingConfigured(pairingToSave)) {
-      setStatus('Enter a valid pairing code or fill in the policy ID, project ID, and web API key.', 'error');
+    if (!parsedPairing) {
+      setStatus('Paste a valid trusted enrollment code from the parent dashboard.', 'error');
       return;
     }
 
-    const savedPairing = await setPairingSettings(pairingToSave);
-    fillFields(savedPairing);
-    await chrome.runtime.sendMessage({ type: 'lockdown:sync-now' });
-    setStatus(`Saved pairing for policy ${savedPairing.policy_id}.`, 'success');
+    if (parsedPairing.pairing_kind === 'legacy_poc') {
+      setStatus(
+        'Legacy PoC pairing codes cannot drive secure sync anymore. Generate a trusted enrollment code from the parent dashboard instead.',
+        'error'
+      );
+      return;
+    }
+
+    const result = await chrome.runtime.sendMessage({
+      type: 'lockdown:pair-device',
+      enrollmentMaterial: parsedPairing,
+      deviceName: deviceNameField.value,
+    });
+
+    if (result?.status !== 'synced') {
+      throw new Error(result?.error || 'Trusted pairing could not be completed.');
+    }
+
+    pairingCodeField.value = '';
+    await loadPairing();
+    setStatus(
+      `Trusted pairing completed for ${result.pairing?.device_name || result.device_id || 'this browser'}.`,
+      'success'
+    );
   } catch (error) {
     setStatus(
-      error instanceof Error ? error.message : 'The pairing settings could not be saved.',
+      error instanceof Error ? error.message : 'Trusted pairing could not be completed.',
       'error'
     );
   } finally {
@@ -88,12 +123,16 @@ clearButton.addEventListener('click', async () => {
   clearButton.disabled = true;
 
   try {
-    await clearPairingSettings();
+    const result = await chrome.runtime.sendMessage({ type: 'lockdown:clear-pairing' });
+    if (result?.status !== 'unpaired') {
+      throw new Error(result?.error || 'The pairing settings could not be cleared.');
+    }
+
     pairingCodeField.value = '';
-    policyIdField.value = '';
-    projectIdField.value = '';
-    apiKeyField.value = '';
-    setStatus('Pairing cleared. The extension is back on local cached policy only.', 'success');
+    setStatus(
+      'Trusted pairing cleared. The last cached policy stays stored locally until a new sync replaces it.',
+      'success'
+    );
   } catch (error) {
     setStatus(
       error instanceof Error ? error.message : 'The pairing settings could not be cleared.',

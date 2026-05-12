@@ -1,12 +1,12 @@
 # GridWorkz Architecture
 
-Last updated: 2026-05-06
+Last updated: 2026-05-11
 
 ## Stack
 
 - Frontend: React 18 + Vite
 - Styling: Tailwind CSS with custom visual styling inside components
-- Backend: Firebase Auth + Firestore + Firebase Cloud Functions for trusted entitlement and billing flows
+- Backend: Firebase Auth + Firestore + Firebase Cloud Functions for trusted entitlement, Lockdown device trust, and billing flows
 - Hosting target: Cloudflare Pages
 
 ## Application Shape
@@ -22,7 +22,10 @@ Key files:
 - `src/pages/ParentDashboard.jsx`: parent shell and dashboard route-container logic
 - `src/constants/dashboardFeatures.js`: registry-driven dashboard routes, shell metadata, and premium visibility state
 - `src/pages/Lockdown.jsx`: dedicated Lockdown module routed through the dashboard shell
-- `src/components/LockdownPolicyPanel.jsx`: saved lockdown prototype policy controls and pairing output
+- `src/components/LockdownPolicyPanel.jsx`: student-bound Lockdown management surface, trusted pairing issuance, derived-policy visibility, and compatibility notes
+- `src/firebase/trustedOperations.js`: parent-authenticated trusted enrollment issuance
+- `extensions/chrome-lockdown-poc/background.js`: active MV3 trusted-device sync and cached enforcement runtime
+- `extensions/chrome-lockdown-poc/policy.js`: pairing-state normalization, policy caching, and fallback helpers
 - `src/pages/Curriculum.jsx`: subject builder and editor
 - `src/pages/Reports.jsx`: weekly reports and print/export behavior
 - `src/pages/Settings.jsx`: school year and weekly reset settings
@@ -32,14 +35,18 @@ Key files:
 
 Primary collections:
 
+- `accountEntitlements`
 - `parents`
 - `students`
 - `subjects`
+- `weeklyPlans`
 - `submissions`
 - `weeklyReports`
 - `dailyLogs`
 - `timerSessions`
 - `lockdownPolicies`
+- `lockdownEnrollmentSessions`
+- `lockdownDevices`
 
 The schema source of truth is `src/constants/schema.js`.
 
@@ -57,7 +64,10 @@ Important modeling details:
 - Student access is keyed by a generated slug and can be guarded by an optional `access_pin`.
 - Weekly reports cache school-year and quarter labels for filtering and reporting.
 - Timer sessions are stored in Firestore and mirrored in local storage for resilience.
-- `lockdownPolicies` currently holds a parent-owned derived policy document for the extension PoC.
+- `accountEntitlements/{uid}` is the server-owned plan and feature source for premium surfaces such as Lockdown.
+- `lockdownPolicies/{parentId}` now survives only as a compatibility snapshot and migration boundary; it is not the active runtime trust boundary for paired browsers.
+- `lockdownEnrollmentSessions` stores short-lived server-owned trusted pairing tickets issued from `/dashboard/lockdown`.
+- `lockdownDevices` stores server-owned device bindings plus opaque credentials consumed by credential-authenticated policy reads.
 
 ## Core Behaviors
 
@@ -83,6 +93,14 @@ Important modeling details:
 - School settings helpers live in `src/utils/schoolSettingsUtils.js`.
 - Settings drive quarter generation, report labels, and rollover timing.
 
+### Lockdown browser extension
+
+- `/dashboard/lockdown` is the live parent-facing management surface for the Lockdown plan.
+- Multi-student households must select a student explicitly before generating a trusted enrollment code.
+- The browser extension exchanges a short-lived enrollment artifact through `lockdownExchangeEnrollment`, stores an opaque device credential, and reads policy through `readLockdownDevicePolicy`.
+- Device policy is derived from published weekly-plan state, timer context, school-time rules, and student-bound off-hours windows.
+- The extension keeps the last good policy cached locally so restart and temporary sync failure do not drop enforcement.
+
 ## Security Posture
 
 - Parent profile access is owner-scoped.
@@ -91,15 +109,17 @@ Important modeling details:
 - Timer session access is guarded by data-shape checks plus student/subject assignment checks, but remains unauthenticated.
 - `accountEntitlements/{uid}` is owner-readable but server-writable only, with writes now owned by the trusted billing webhook path.
 - New student creates and new active-subject creates now run through trusted callable functions instead of direct Firestore client creates.
-- `lockdownPolicies` still allows public unauthenticated `get` for the browser-extension PoC sync path, but create and update are now backstopped by the trusted entitlement record.
+- Active Lockdown pairing and sync no longer rely on public Firestore reads or raw Firebase web config. `lockdownEnrollmentSessions` and `lockdownDevices` are server-owned only, and paired browsers sync through trusted Cloud Function endpoints.
+- `lockdownPolicies/{parentId}` still allows a public compatibility snapshot read, but that path is now migration-boundary history rather than the active device-policy trust boundary.
 
-This is sufficient for the current public-portal model, but it is not a hardened long-term posture.
+This is sufficient for the current browser-extension launch path, but the broader student portal and public compatibility surfaces are not a hardened long-term posture.
 
 ## Platform Gaps
 
 - Stripe-backed billing sync and the trusted entitlement document now exist in sandbox mode, but live-mode payment rollout is still pending.
 - The route-backed dashboard shell and premium gating boundaries are now in place, but future premium modules such as projects, chores, or billing still need to be built onto that shared contract.
-- The lockdown extension still uses a PoC-grade public policy read path and does not yet have production-safe device trust or scoped policy access.
+- The browser-extension track is now live on the trusted device contract. Follow-on Lockdown scope is kiosk mode, broader rollout hardening, and eventual retirement of compatibility-only snapshot paths.
+- Broader student-flow hardening still remains outside the Lockdown launch scope, especially around public reads and unauthenticated timer or submission behavior.
 
 ## Tooling State
 
@@ -111,6 +131,7 @@ This is sufficient for the current public-portal model, but it is not a hardened
 ## Documentation Entry Points
 
 - Product priorities: [roadmap.md](roadmap.md)
+- Product baseline planning: [upgrades/baseline-product-foundation.md](upgrades/baseline-product-foundation.md)
 - Current status audit: [audits/baseline-plan-audit-2026-05-04.md](audits/baseline-plan-audit-2026-05-04.md)
 - Feature docs: [features/README.md](features/README.md)
 - Upgrade docs: [upgrades/README.md](upgrades/README.md)

@@ -9,8 +9,11 @@ const Lockdown = () => {
     currentUser,
     db,
     lockdownAccess,
+    parentSettings,
     planName,
     resolvedDashboardFeaturesById,
+    students,
+    subjects,
   } = useOutletContext();
 
   const lockdownFeature = resolvedDashboardFeaturesById?.lockdown || null;
@@ -39,11 +42,12 @@ const Lockdown = () => {
               className="mt-4 text-[24px] font-display"
               style={{ color: colors.charcoal, lineHeight: 1.05, letterSpacing: '-0.4px' }}
             >
-              Lockdown lives as its own route-backed module now.
+              Manage student-bound pairing, derived policy state, and off-hours access from one module.
             </h3>
             <p className="mt-3 text-[14px] font-body" style={{ color: 'rgba(41,40,39,0.65)' }}>
-              Extension pairing and prototype policy controls stay on the existing entitlement rail,
-              but they now mount from a dedicated dashboard route instead of the students overview.
+              The trusted Lockdown contract stays centered here: choose the student a device belongs to,
+              review the current published-plan-derived state, and manage approved off-hours resources
+              without falling back to raw prototype policy editing.
             </p>
             {isLockedModule ? (
               <div
@@ -54,7 +58,7 @@ const Lockdown = () => {
                   Locked State
                 </p>
                 <p className="mt-1.5 text-[13px] font-body" style={{ color: colors.charcoal }}>
-                  {lockdownAccess?.upgradeCopy || 'Upgrade to Lockdown to unlock extension pairing and policy editing.'}
+                  {lockdownAccess?.upgradeCopy || 'Upgrade to Lockdown to unlock student-bound pairing and Lockdown management.'}
                 </p>
               </div>
             ) : null}
@@ -68,7 +72,7 @@ const Lockdown = () => {
               Account Summary
             </p>
             <p className="mt-2 text-[14px] font-body" style={{ color: colors.charcoal }}>
-              Settings remains the primary surface for plan status, usage limits, and premium capability summaries.
+              Settings remains the account-level surface for plan status, usage limits, and premium capability summaries while Lockdown handles student-bound device access.
             </p>
             <Link
               to={settingsPath}
@@ -87,7 +91,10 @@ const Lockdown = () => {
         db={db}
         colors={colors}
         lockdownAccess={lockdownAccess}
+        parentSettings={parentSettings}
         planName={planName}
+        students={students}
+        subjects={subjects}
       />
     </div>
   );

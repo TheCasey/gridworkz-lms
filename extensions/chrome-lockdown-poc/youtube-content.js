@@ -175,7 +175,7 @@ function ensureOverlay() {
   overlay.hidden = true;
   overlay.innerHTML = `
     <section class="gridworkz-panel" role="dialog" aria-modal="true" aria-live="polite">
-      <p class="gridworkz-eyebrow">GridWorkz Lockdown PoC</p>
+      <p class="gridworkz-eyebrow">GridWorkz Lockdown</p>
       <h1 id="gridworkz-title"></h1>
       <p class="gridworkz-copy" id="gridworkz-copy"></p>
       <article class="gridworkz-card" id="gridworkz-creator-card" hidden>
@@ -253,7 +253,7 @@ function applyBlockedCreatorState(creator) {
   renderOverlay({
     title: 'This creator is blocked right now',
     copy:
-      'Local blocking is active and this video is not from an approved YouTube creator in the current mock policy.',
+      'Blocking is active and this video is not from an approved YouTube creator in the current cached policy.',
     creator
   });
 }
@@ -263,7 +263,7 @@ function applyUnsupportedPageState() {
   renderOverlay({
     title: 'Only direct YouTube videos are allowed right now',
     copy:
-      'Phase 2 keeps YouTube limited to direct watch and shorts pages so creator-level checks stay local and easy to test.',
+      'GridWorkz keeps YouTube limited to direct watch and shorts pages so creator approval can be checked locally.',
     creator: null
   });
 }
@@ -283,7 +283,7 @@ function applyUnresolvedState() {
   renderOverlay({
     title: 'We could not verify this creator',
     copy:
-      'This Phase 2 build stays fail-closed when the current YouTube page does not expose a stable creator channel yet.',
+      'This extension stays fail-closed when the current YouTube page does not expose stable creator channel data yet.',
     creator: null
   });
 }

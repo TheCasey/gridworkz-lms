@@ -5,8 +5,9 @@ import {
   getPairingSettings,
   getPolicy,
   getSyncState,
+  isLegacyPairing,
   isPairingConfigured,
-  setPolicy
+  setPolicy,
 } from './policy.js';
 
 const statusDot = document.getElementById('status-dot');
@@ -26,88 +27,119 @@ const syncTimestamp = document.getElementById('sync-timestamp');
 
 function formatDateTime(value) {
   if (!value) return 'Cached policy state has not been changed yet.';
-
   return `Cached policy updated ${new Date(value).toLocaleString()}`;
 }
 
-function describeSyncState(syncState, paired) {
-  if (!paired) {
+function describeSyncState(syncState, pairing) {
+  if (isLegacyPairing(pairing)) {
+    return {
+      label: 'Migration required',
+      copy: 'A legacy PoC pairing is still saved. Cached enforcement is still active, but secure sync is paused until you pair with a trusted enrollment code.',
+      summary: pairing.legacy_policy_id
+        ? `Legacy policy ID: ${pairing.legacy_policy_id}`
+        : 'Legacy pairing needs to be replaced with a trusted enrollment code.',
+      timestamp: pairing.paired_at
+        ? `Legacy pairing saved ${new Date(pairing.paired_at).toLocaleString()}`
+        : 'Legacy pairing replacement is required before the next secure sync.',
+    };
+  }
+
+  if (!isPairingConfigured(pairing)) {
     return {
       label: 'Not paired',
-      copy: 'This extension is still using its local PoC policy.',
-      summary: 'No pairing saved yet.',
-      timestamp: 'No remote sync has completed yet.'
+      copy: 'This browser is currently enforcing only its local cached policy.',
+      summary: 'No trusted pairing saved yet.',
+      timestamp: 'No secure policy sync has completed yet.',
     };
   }
 
   if (syncState.status === 'syncing') {
     return {
-      label: 'Syncing now',
-      copy: 'Polling Firestore for the latest parent policy.',
-      summary: 'Using the saved pairing to fetch the policy document.',
+      label: 'Syncing secure policy',
+      copy: 'Reading the latest derived device policy with the saved device credential.',
+      summary: pairing.device_name
+        ? `Paired device: ${pairing.device_name}`
+        : `Device ID: ${pairing.device_id}`,
       timestamp: syncState.last_attempt_at
         ? `Latest sync attempt ${new Date(syncState.last_attempt_at).toLocaleString()}`
-        : 'Sync has started.'
+        : 'Secure sync has started.',
     };
   }
 
   if (syncState.status === 'synced') {
+    const policyState = syncState.remote_policy_state
+      ? syncState.remote_policy_state.replace(/_/g, ' ')
+      : 'derived policy';
+
     return {
-      label: 'Remote policy synced',
-      copy: 'Popup counts and enforcement reflect the latest Firestore policy.',
-      summary: 'Paired to a saved remote policy document.',
+      label: 'Secure policy synced',
+      copy: `Enforcement reflects the latest credential-authenticated ${policyState}.`,
+      summary: pairing.student_id
+        ? `Student binding: ${pairing.student_id}`
+        : pairing.device_name
+          ? `Paired device: ${pairing.device_name}`
+          : `Device ID: ${pairing.device_id}`,
       timestamp: syncState.last_sync_at
-        ? `Last remote sync ${new Date(syncState.last_sync_at).toLocaleString()}`
-        : 'Remote sync completed.'
+        ? `Last secure sync ${new Date(syncState.last_sync_at).toLocaleString()}`
+        : 'Secure sync completed.',
     };
   }
 
   if (syncState.status === 'error') {
     return {
       label: 'Using cached fallback',
-      copy: syncState.last_error || 'Remote sync failed, so the cached policy is still active.',
-      summary: 'The extension will keep enforcing the last cached policy until sync recovers.',
+      copy: syncState.last_error || 'Secure sync failed, so the cached policy is still active.',
+      summary: 'The extension will keep enforcing the last good cached policy until sync recovers.',
       timestamp: syncState.last_attempt_at
         ? `Latest sync failure ${new Date(syncState.last_attempt_at).toLocaleString()}`
-        : 'Remote sync failed before a timestamp was captured.'
+        : 'Secure sync failed before a timestamp was captured.',
     };
   }
 
   return {
     label: 'Paired',
-    copy: 'The extension is paired and waiting for the first remote sync.',
-    summary: 'Paired to a saved remote policy document.',
-    timestamp: 'No remote sync has completed yet.'
+    copy: 'This browser is paired and ready for secure policy sync.',
+    summary: pairing.device_name
+      ? `Paired device: ${pairing.device_name}`
+      : `Device ID: ${pairing.device_id}`,
+    timestamp: pairing.paired_at
+      ? `Paired ${new Date(pairing.paired_at).toLocaleString()}`
+      : 'Pairing completed, waiting on the first secure sync.',
   };
 }
 
 function renderPolicy(policy, pairing, syncState) {
   const enabled = policy.is_enabled;
   const paired = isPairingConfigured(pairing);
-  const syncDescription = describeSyncState(syncState, paired);
+  const legacyPairing = isLegacyPairing(pairing);
+  const syncDescription = describeSyncState(syncState, pairing);
 
   statusDot.classList.toggle('off', !enabled);
   statusPillLabel.textContent = enabled ? 'Blocking on' : 'Blocking off';
   statusCopy.textContent = paired
     ? enabled
-      ? 'Blocking is managed by the paired parent policy and includes website and approved-creator checks.'
-      : 'The paired parent policy currently leaves blocking off.'
-    : enabled
-      ? 'Top-level browsing is limited to the website allowlist and approved YouTube creators.'
-      : 'Browsing is unrestricted until you turn local blocking back on.';
+      ? 'Blocking is managed by the paired device credential and includes website and approved-creator checks.'
+      : 'The paired device policy currently leaves blocking off.'
+    : legacyPairing
+      ? enabled
+        ? 'Cached blocking is still active, but this browser needs a new trusted pairing before it can receive policy changes.'
+        : 'This browser needs a new trusted pairing before it can receive policy changes.'
+      : enabled
+        ? 'Top-level browsing is limited to the website allowlist and approved YouTube creators.'
+        : 'Browsing is unrestricted until you turn local blocking back on.';
   originCount.textContent = String(policy.allowed_origins.length);
   creatorCount.textContent = String(policy.allowed_youtube_channels.length);
   toggleButton.textContent = paired
     ? 'Managed by parent portal'
-    : enabled
-      ? 'Turn blocking off'
-      : 'Turn blocking on';
-  toggleButton.disabled = paired;
+    : legacyPairing
+      ? 'Migration required'
+      : enabled
+        ? 'Turn blocking off'
+        : 'Turn blocking on';
+  toggleButton.disabled = paired || legacyPairing;
   syncStatusLabel.textContent = syncDescription.label;
   syncStatusCopy.textContent = syncDescription.copy;
-  pairingSummary.textContent = paired
-    ? `Paired policy ID: ${pairing.policy_id}`
-    : syncDescription.summary;
+  pairingSummary.textContent = syncDescription.summary;
   syncTimestamp.textContent = syncDescription.timestamp;
   syncButton.disabled = !paired || syncState.status === 'syncing';
   updatedAt.textContent = formatDateTime(policy.updated_at);
@@ -117,7 +149,7 @@ async function refresh() {
   const [policy, pairing, syncState] = await Promise.all([
     getPolicy(),
     getPairingSettings(),
-    getSyncState()
+    getSyncState(),
   ]);
 
   renderPolicy(policy, pairing, syncState);
@@ -130,7 +162,7 @@ toggleButton.addEventListener('click', async () => {
     const policy = await getPolicy();
     await setPolicy({
       ...policy,
-      is_enabled: !policy.is_enabled
+      is_enabled: !policy.is_enabled,
     });
   } finally {
     toggleButton.disabled = false;

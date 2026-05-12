@@ -31,9 +31,21 @@ The parent dashboard is the authenticated control surface for the app. It owns:
 - Shows live pulse activity and student progress.
 - Supports parent-led manual completion for a block.
 - Routes Lockdown into its own dedicated dashboard module instead of hosting the policy editor inside the students surface.
+- The `/dashboard/lockdown` route is entitlement-aware and uses the same shell rail for active, locked, and downgraded read-only states.
+- Multi-student households must choose a student explicitly before generating a trusted pairing code.
+- Lockdown-entitled parents can generate short-lived trusted enrollment material, review the current derived policy state, and manage approved off-hours resources per student from the dashboard.
+- Downgrades preserve saved Lockdown setup in read-only mode while disabling trusted pairing and edits until the Lockdown plan is restored.
 
 ## Open Gaps
 
 - This page still coordinates a meaningful amount of shell orchestration even after hook extraction.
 - Weekly rollover is run from the client.
+- The future weekly planning layer, project views, and direct weekly review surfaces are not implemented yet.
 - Projects, billing, chores, and other future modules still need to be added on top of the shared shell contract.
+- Kiosk mode and broader Lockdown hardening remain follow-on scope outside the current parent dashboard launch surface.
+
+## Related Planning
+
+- [../upgrades/baseline-product-foundation.md](../upgrades/baseline-product-foundation.md)
+- [../specs/weekly-planning-and-review-flow.md](../specs/weekly-planning-and-review-flow.md)
+- [../specs/projects-and-assessment-model.md](../specs/projects-and-assessment-model.md)

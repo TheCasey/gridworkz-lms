@@ -119,7 +119,7 @@ export const dashboardFeatures = [
     icon: Shield,
     header: {
       title: 'Lockdown',
-      description: 'Review prototype policy controls and extension pairing from a dedicated premium module',
+      description: 'Manage student-bound pairing, derived access state, and off-hours approved resources',
     },
     shell: buildDashboardShellConfig(),
     entitlementGate: buildDashboardEntitlementGate({

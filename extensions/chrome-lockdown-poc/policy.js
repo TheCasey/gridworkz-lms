@@ -5,33 +5,63 @@ export const SYNC_STATE_KEY = 'lockdownSyncState';
 export const SYNC_ALARM_NAME = 'lockdownRemotePolicySync';
 export const SYNC_INTERVAL_MINUTES = 1;
 
+export const LOCKDOWN_POC_PAIRING_CODE_VERSION = 1;
+export const LOCKDOWN_TRUSTED_ENROLLMENT_CODE_VERSION = 1;
+
+export const LOCKDOWN_POC_PAIRING_CONTRACT = 'lockdown_poc_firestore_pairing_v1';
+export const LOCKDOWN_TRUSTED_ENROLLMENT_CONTRACT = 'trusted_lockdown_enrollment_v1';
+export const LOCKDOWN_TRUSTED_POLICY_READ_CONTRACT = 'trusted_lockdown_device_policy_v1';
+
+export const PAIRING_KINDS = Object.freeze({
+  UNPAIRED: 'unpaired',
+  TRUSTED_DEVICE: 'trusted_device',
+  LEGACY_POC: 'legacy_poc',
+});
+
 export const DEFAULT_POLICY = {
   parent_id: '',
+  student_id: '',
   is_enabled: false,
   allowed_origins: [
     'https://www.khanacademy.org',
-    'https://www.desmos.com'
+    'https://www.desmos.com',
   ],
   allowed_youtube_channels: [
     {
       channel_id: 'UCONtPx56PSebXJOxbFv-2jQ',
       title: 'Crash Course Kids',
-      handle: '@crashcoursekids'
+      handle: '@crashcoursekids',
     },
     {
       channel_id: 'UC4a-Gbdw7vOaccHmFo40b9g',
       title: 'Khan Academy',
-      handle: '@khanacademy'
-    }
+      handle: '@khanacademy',
+    },
   ],
-  updated_at: null
+  updated_at: null,
 };
 
 export const DEFAULT_PAIRING = {
-  policy_id: '',
-  project_id: '',
-  api_key: '',
-  paired_at: null
+  pairing_kind: PAIRING_KINDS.UNPAIRED,
+  pairing_contract: '',
+  policy_read_contract: '',
+  exchange_url: '',
+  policy_url: '',
+  enrollment_expires_at: null,
+  source_policy_kind: '',
+  source_policy_parent_id: '',
+  student_id: '',
+  device_id: '',
+  device_name: '',
+  device_platform: '',
+  extension_version: '',
+  device_credential: '',
+  paired_at: null,
+  last_exchange_at: null,
+  legacy_policy_id: '',
+  legacy_project_id: '',
+  legacy_api_key: '',
+  migration_required: false,
 };
 
 export const DEFAULT_SYNC_STATE = {
@@ -40,8 +70,35 @@ export const DEFAULT_SYNC_STATE = {
   last_sync_at: null,
   last_error: '',
   using_cached_policy: false,
-  remote_policy_updated_at: null
+  remote_policy_updated_at: null,
+  remote_policy_state: '',
+  binding_status: '',
+  binding_error: '',
+  student_id: '',
+  source_policy_kind: '',
+  fetched_at: null,
+  device_id: '',
 };
+
+function trimString(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeRemoteUrl(value) {
+  const trimmed = trimString(value);
+  if (!trimmed) return '';
+
+  try {
+    const parsed = new URL(trimmed);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return '';
+    }
+
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
 
 export function normalizeOriginEntry(value) {
   if (typeof value !== 'string') return null;
@@ -61,14 +118,26 @@ export function normalizeOriginEntry(value) {
 function normalizeChannelEntry(channel) {
   if (!channel || typeof channel !== 'object') return null;
 
-  const channelId = typeof channel.channel_id === 'string' ? channel.channel_id.trim() : '';
+  const channelId = trimString(channel.channel_id);
   if (!channelId) return null;
 
   return {
     channel_id: channelId,
-    title: typeof channel.title === 'string' ? channel.title.trim() : '',
-    handle: typeof channel.handle === 'string' ? channel.handle.trim() : ''
+    title: trimString(channel.title),
+    handle: trimString(channel.handle),
   };
+}
+
+function normalizeBoolean(value) {
+  return Boolean(value);
+}
+
+function normalizeTimestampString(value) {
+  return typeof value === 'string' ? value : null;
+}
+
+function normalizeArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 export function normalizePolicy(input = {}) {
@@ -87,41 +156,181 @@ export function normalizePolicy(input = {}) {
     .filter(Boolean);
 
   return {
-    parent_id: typeof input.parent_id === 'string' ? input.parent_id.trim() : '',
+    parent_id: trimString(input.parent_id),
+    student_id: trimString(input.student_id),
     is_enabled: Boolean(input.is_enabled),
     allowed_origins: dedupedOrigins,
     allowed_youtube_channels: normalizedChannels,
-    updated_at: typeof input.updated_at === 'string' ? input.updated_at : null
+    updated_at: normalizeTimestampString(input.updated_at),
+  };
+}
+
+export function normalizeTrustedEnrollmentMaterial(input = {}) {
+  return {
+    pairing_kind: 'trusted_enrollment',
+    pairing_contract: trimString(input.contract) || LOCKDOWN_TRUSTED_ENROLLMENT_CONTRACT,
+    enrollment_token: trimString(input.enrollment_token),
+    enrollment_expires_at:
+      normalizeTimestampString(input.enrollment_expires_at)
+      || normalizeTimestampString(input.expires_at),
+    exchange_url: normalizeRemoteUrl(input.exchange_url),
+    policy_url: normalizeRemoteUrl(input.policy_url),
+    source_policy_kind: trimString(input.source_policy_kind),
+    source_policy_parent_id: trimString(input.source_policy_parent_id),
+    student_id: trimString(input.student_id),
+  };
+}
+
+function normalizeLegacyPairingSettings(input = {}) {
+  return {
+    ...DEFAULT_PAIRING,
+    pairing_kind: PAIRING_KINDS.LEGACY_POC,
+    pairing_contract: trimString(input.contract) || LOCKDOWN_POC_PAIRING_CONTRACT,
+    legacy_policy_id: trimString(input.legacy_policy_id) || trimString(input.policy_id),
+    legacy_project_id: trimString(input.legacy_project_id) || trimString(input.project_id),
+    legacy_api_key: trimString(input.legacy_api_key) || trimString(input.api_key),
+    paired_at: normalizeTimestampString(input.paired_at),
+    migration_required: true,
+  };
+}
+
+function normalizeTrustedDevicePairing(input = {}) {
+  return {
+    ...DEFAULT_PAIRING,
+    pairing_kind: PAIRING_KINDS.TRUSTED_DEVICE,
+    pairing_contract: trimString(input.pairing_contract) || LOCKDOWN_TRUSTED_ENROLLMENT_CONTRACT,
+    policy_read_contract:
+      trimString(input.policy_read_contract) || LOCKDOWN_TRUSTED_POLICY_READ_CONTRACT,
+    exchange_url: normalizeRemoteUrl(input.exchange_url),
+    policy_url: normalizeRemoteUrl(input.policy_url),
+    enrollment_expires_at: normalizeTimestampString(input.enrollment_expires_at),
+    source_policy_kind: trimString(input.source_policy_kind),
+    source_policy_parent_id: trimString(input.source_policy_parent_id),
+    student_id: trimString(input.student_id),
+    device_id: trimString(input.device_id),
+    device_name: trimString(input.device_name),
+    device_platform: trimString(input.device_platform),
+    extension_version: trimString(input.extension_version),
+    device_credential: trimString(input.device_credential),
+    paired_at: normalizeTimestampString(input.paired_at),
+    last_exchange_at: normalizeTimestampString(input.last_exchange_at),
+    migration_required: false,
   };
 }
 
 export function normalizePairingSettings(input = {}) {
-  return {
-    policy_id: typeof input.policy_id === 'string' ? input.policy_id.trim() : '',
-    project_id: typeof input.project_id === 'string' ? input.project_id.trim() : '',
-    api_key: typeof input.api_key === 'string' ? input.api_key.trim() : '',
-    paired_at: typeof input.paired_at === 'string' ? input.paired_at : null
-  };
+  if (!input || typeof input !== 'object') {
+    return { ...DEFAULT_PAIRING };
+  }
+
+  const pairingKind = trimString(input.pairing_kind);
+  const hasTrustedCredential = Boolean(
+    trimString(input.device_credential)
+      && normalizeRemoteUrl(input.policy_url)
+  );
+  const hasLegacyFields = Boolean(
+    trimString(input.policy_id)
+      || trimString(input.project_id)
+      || trimString(input.api_key)
+      || trimString(input.legacy_policy_id)
+      || trimString(input.legacy_project_id)
+      || trimString(input.legacy_api_key)
+  );
+
+  if (pairingKind === PAIRING_KINDS.TRUSTED_DEVICE || hasTrustedCredential) {
+    return normalizeTrustedDevicePairing(input);
+  }
+
+  if (pairingKind === PAIRING_KINDS.LEGACY_POC || hasLegacyFields) {
+    return normalizeLegacyPairingSettings(input);
+  }
+
+  return { ...DEFAULT_PAIRING };
 }
 
 export function isPairingConfigured(pairing = {}) {
   const normalized = normalizePairingSettings(pairing);
-  return Boolean(normalized.policy_id && normalized.project_id && normalized.api_key);
+  return Boolean(
+    normalized.pairing_kind === PAIRING_KINDS.TRUSTED_DEVICE
+      && normalized.device_credential
+      && normalized.policy_url
+  );
+}
+
+export function isLegacyPairing(pairing = {}) {
+  return normalizePairingSettings(pairing).pairing_kind === PAIRING_KINDS.LEGACY_POC;
+}
+
+function normalizePolicyContext(input = {}) {
+  return {
+    binding_status: trimString(input.binding_status),
+    binding_error: trimString(input.binding_error),
+    student_id: trimString(input.student_id),
+    in_school_time: normalizeBoolean(input.in_school_time),
+    active_block:
+      input.active_block && typeof input.active_block === 'object'
+        ? {
+            id: trimString(input.active_block.id),
+            title: trimString(input.active_block.title),
+            assignment_id: trimString(input.active_block.assignment_id),
+            category: trimString(input.active_block.category),
+          }
+        : null,
+    unsupported_resources: normalizeArray(input.unsupported_resources).map((resource) => ({
+      name: trimString(resource?.name),
+      url: trimString(resource?.url),
+      reason: trimString(resource?.reason),
+    })),
+  };
+}
+
+function normalizeSourcePolicy(input = {}) {
+  return {
+    kind: trimString(input.kind),
+    parent_id: trimString(input.parent_id),
+    student_id: trimString(input.student_id),
+    weekly_plan_id: trimString(input.weekly_plan_id),
+    derived_state: trimString(input.derived_state),
+    is_legacy_poc_boundary: Boolean(input.is_legacy_poc_boundary),
+    document_exists: Boolean(input.document_exists),
+  };
+}
+
+export function normalizeDevicePolicyEnvelope(input = {}) {
+  return {
+    contract: trimString(input.contract) || LOCKDOWN_TRUSTED_POLICY_READ_CONTRACT,
+    contract_version: Number.isFinite(Number(input.contract_version))
+      ? Number(input.contract_version)
+      : 1,
+    device_id: trimString(input.device_id),
+    policy_state: trimString(input.policy_state),
+    policy: normalizePolicy(input.policy || {}),
+    policy_context: normalizePolicyContext(input.policy_context || {}),
+    source_policy: normalizeSourcePolicy(input.source_policy || {}),
+    source_policy_updated_at: normalizeTimestampString(input.source_policy_updated_at),
+    fetched_at: normalizeTimestampString(input.fetched_at),
+  };
 }
 
 export function normalizeSyncState(input = {}) {
   return {
-    status: typeof input.status === 'string' ? input.status : DEFAULT_SYNC_STATE.status,
+    status: trimString(input.status) || DEFAULT_SYNC_STATE.status,
     last_attempt_at:
-      typeof input.last_attempt_at === 'string' ? input.last_attempt_at : DEFAULT_SYNC_STATE.last_attempt_at,
+      normalizeTimestampString(input.last_attempt_at) || DEFAULT_SYNC_STATE.last_attempt_at,
     last_sync_at:
-      typeof input.last_sync_at === 'string' ? input.last_sync_at : DEFAULT_SYNC_STATE.last_sync_at,
-    last_error: typeof input.last_error === 'string' ? input.last_error : DEFAULT_SYNC_STATE.last_error,
+      normalizeTimestampString(input.last_sync_at) || DEFAULT_SYNC_STATE.last_sync_at,
+    last_error: trimString(input.last_error),
     using_cached_policy: Boolean(input.using_cached_policy),
     remote_policy_updated_at:
-      typeof input.remote_policy_updated_at === 'string'
-        ? input.remote_policy_updated_at
-        : DEFAULT_SYNC_STATE.remote_policy_updated_at
+      normalizeTimestampString(input.remote_policy_updated_at)
+      || DEFAULT_SYNC_STATE.remote_policy_updated_at,
+    remote_policy_state: trimString(input.remote_policy_state),
+    binding_status: trimString(input.binding_status),
+    binding_error: trimString(input.binding_error),
+    student_id: trimString(input.student_id),
+    source_policy_kind: trimString(input.source_policy_kind),
+    fetched_at: normalizeTimestampString(input.fetched_at) || DEFAULT_SYNC_STATE.fetched_at,
+    device_id: trimString(input.device_id),
   };
 }
 
@@ -144,7 +353,10 @@ function encodeBase64Url(value) {
 }
 
 function decodeBase64Url(value) {
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+  const padded = value
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+    .padEnd(Math.ceil(value.length / 4) * 4, '=');
 
   if (typeof Buffer !== 'undefined') {
     return Buffer.from(padded, 'base64').toString('utf8');
@@ -155,33 +367,59 @@ function decodeBase64Url(value) {
   return new TextDecoder().decode(bytes);
 }
 
-export function buildPairingCode(input = {}) {
-  const pairing = normalizePairingSettings(input);
-  if (!isPairingConfigured(pairing)) {
+function parseDecodedPairingPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  if (
+    payload.version === LOCKDOWN_TRUSTED_ENROLLMENT_CODE_VERSION
+    && trimString(payload.contract) === LOCKDOWN_TRUSTED_ENROLLMENT_CONTRACT
+  ) {
+    const normalized = normalizeTrustedEnrollmentMaterial(payload);
+    return normalized.enrollment_token && normalized.exchange_url && normalized.policy_url
+      ? normalized
+      : null;
+  }
+
+  if (
+    payload.version === LOCKDOWN_POC_PAIRING_CODE_VERSION
+    && trimString(payload.contract) === LOCKDOWN_POC_PAIRING_CONTRACT
+  ) {
+    const normalized = normalizeLegacyPairingSettings(payload);
+    return normalized.legacy_policy_id && normalized.legacy_project_id && normalized.legacy_api_key
+      ? normalized
+      : null;
+  }
+
+  return null;
+}
+
+export function buildTrustedEnrollmentCode(input = {}) {
+  const material = normalizeTrustedEnrollmentMaterial(input);
+  if (!material.enrollment_token || !material.exchange_url || !material.policy_url) {
     return '';
   }
 
   return encodeBase64Url(JSON.stringify({
-    version: 1,
-    policy_id: pairing.policy_id,
-    project_id: pairing.project_id,
-    api_key: pairing.api_key
+    version: LOCKDOWN_TRUSTED_ENROLLMENT_CODE_VERSION,
+    contract: material.pairing_contract,
+    enrollment_token: material.enrollment_token,
+    enrollment_expires_at: material.enrollment_expires_at,
+    exchange_url: material.exchange_url,
+    policy_url: material.policy_url,
   }));
 }
 
 export function parsePairingCode(value) {
-  if (typeof value !== 'string' || !value.trim()) {
+  const trimmed = trimString(value);
+  if (!trimmed) {
     return null;
   }
 
   try {
-    const parsed = JSON.parse(decodeBase64Url(value.trim()));
-    if (parsed?.version !== 1) {
-      return null;
-    }
-
-    const normalized = normalizePairingSettings(parsed);
-    return isPairingConfigured(normalized) ? normalized : null;
+    const parsed = JSON.parse(decodeBase64Url(trimmed));
+    return parseDecodedPairingPayload(parsed);
   } catch {
     return null;
   }
@@ -225,7 +463,7 @@ export async function setPolicy(nextPolicy, options = {}) {
     ...normalized,
     updated_at: touchUpdatedAt
       ? new Date().toISOString()
-      : normalized.updated_at
+      : normalized.updated_at,
   };
 
   await chrome.storage.local.set({ [POLICY_KEY]: persisted });
@@ -239,13 +477,8 @@ export async function getPairingSettings() {
 
 export async function setPairingSettings(nextPairing) {
   const normalized = normalizePairingSettings(nextPairing);
-  const persisted = {
-    ...normalized,
-    paired_at: new Date().toISOString()
-  };
-
-  await chrome.storage.local.set({ [PAIRING_KEY]: persisted });
-  return persisted;
+  await chrome.storage.local.set({ [PAIRING_KEY]: normalized });
+  return normalized;
 }
 
 export async function clearPairingSettings() {
@@ -261,58 +494,11 @@ export async function setSyncState(nextSyncState) {
   const current = await getSyncState();
   const merged = normalizeSyncState({
     ...current,
-    ...nextSyncState
+    ...nextSyncState,
   });
 
   await chrome.storage.local.set({ [SYNC_STATE_KEY]: merged });
   return merged;
-}
-
-function readFirestoreField(fieldValue) {
-  if (!fieldValue || typeof fieldValue !== 'object') {
-    return null;
-  }
-
-  if ('stringValue' in fieldValue) return fieldValue.stringValue;
-  if ('booleanValue' in fieldValue) return Boolean(fieldValue.booleanValue);
-  if ('timestampValue' in fieldValue) return fieldValue.timestampValue;
-  if ('integerValue' in fieldValue) return Number(fieldValue.integerValue);
-  if ('doubleValue' in fieldValue) return Number(fieldValue.doubleValue);
-  if ('nullValue' in fieldValue) return null;
-
-  if ('arrayValue' in fieldValue) {
-    return Array.isArray(fieldValue.arrayValue?.values)
-      ? fieldValue.arrayValue.values.map((entry) => readFirestoreField(entry))
-      : [];
-  }
-
-  if ('mapValue' in fieldValue) {
-    return Object.fromEntries(
-      Object.entries(fieldValue.mapValue?.fields || {}).map(([key, value]) => [key, readFirestoreField(value)])
-    );
-  }
-
-  return null;
-}
-
-export function parseFirestorePolicyDocument(document, fallbackPolicyId = '') {
-  const fields = document?.fields || {};
-  return normalizePolicy({
-    parent_id: readFirestoreField(fields.parent_id) || fallbackPolicyId,
-    is_enabled: readFirestoreField(fields.is_enabled),
-    allowed_origins: readFirestoreField(fields.allowed_origins),
-    allowed_youtube_channels: readFirestoreField(fields.allowed_youtube_channels),
-    updated_at: readFirestoreField(fields.updated_at)
-  });
-}
-
-export function buildFirestorePolicyUrl(pairing) {
-  const normalized = normalizePairingSettings(pairing);
-  if (!isPairingConfigured(normalized)) {
-    return '';
-  }
-
-  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(normalized.project_id)}/databases/(default)/documents/lockdownPolicies/${encodeURIComponent(normalized.policy_id)}?key=${encodeURIComponent(normalized.api_key)}`;
 }
 
 export async function getLastBlockedRequest() {
