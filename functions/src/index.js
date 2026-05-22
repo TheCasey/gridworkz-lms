@@ -20,6 +20,7 @@ const COLLECTIONS = Object.freeze({
   ENTITLEMENT_AUDIT_LOGS: 'entitlementAuditLogs',
   LOCKDOWN_DEVICES: 'lockdownDevices',
   LOCKDOWN_ENROLLMENT_SESSIONS: 'lockdownEnrollmentSessions',
+  LOCKDOWN_POLICIES: 'lockdownPolicies',
   PARENTS: 'parents',
   STUDENTS: 'students',
   SUBJECTS: 'subjects',
@@ -113,6 +114,10 @@ const DEFAULT_USAGE_SNAPSHOT = Object.freeze({
   students: 0,
   curriculum_items: 0,
 });
+
+const OPERATOR_PARENT_SEARCH_LIMIT = 10;
+const OPERATOR_AUDIT_ENTRY_LIMIT = 10;
+const SCHOOL_NAME_PREFIX_SUFFIX = '\uf8ff';
 
 const LOCKDOWN_CONTRACTS = Object.freeze({
   TRUSTED_ENROLLMENT: 'trusted_lockdown_enrollment_v1',
@@ -271,6 +276,19 @@ const timestampToMillis = (value) => {
     return value;
   }
 
+  if (isPlainObject(value)) {
+    const seconds = Number.isFinite(value.seconds)
+      ? value.seconds
+      : value._seconds;
+    const nanoseconds = Number.isFinite(value.nanoseconds)
+      ? value.nanoseconds
+      : (value._nanoseconds || 0);
+
+    if (Number.isFinite(seconds)) {
+      return (seconds * 1000) + Math.floor(nanoseconds / 1_000_000);
+    }
+  }
+
   if (typeof value === 'string') {
     const millis = Date.parse(value);
     return Number.isFinite(millis) ? millis : null;
@@ -314,6 +332,16 @@ export const buildEntitlementBillingState = ({
   current_period_end: currentPeriodEnd || null,
   updated_at: updatedAt || null,
 });
+
+const hasProviderBackedBillingState = (billingState = {}) => Boolean(
+  normalizeBillingProvider(billingState?.billing_provider) ||
+  normalizeSubscriptionStatus(billingState?.subscription_status) ||
+  billingState?.trial_ends_at ||
+  billingState?.current_period_end ||
+  billingState?.updated_at ||
+  normalizePlanId(billingState?.plan_id) !== PLAN_IDS.FREE ||
+  Object.keys(normalizeEntitlementFeatureOverrides(billingState?.feature_overrides)).length
+);
 
 const buildBillingStateFromExistingEntitlement = (existingEntitlement = {}) => {
   const existingBillingState = isPlainObject(existingEntitlement?.billing_state)
@@ -428,12 +456,16 @@ export const resolveEntitlementRecord = ({
       billingState,
       usageSnapshot,
     });
+  const shouldPreserveFallbackSource = (
+    existingEntitlement.resolution_source === ENTITLEMENT_RESOLUTION_SOURCES.FALLBACK_INITIALIZED &&
+    !hasProviderBackedBillingState(billingState)
+  );
   const resolutionSource = hasActiveManualOverride
     ? ENTITLEMENT_RESOLUTION_SOURCES.MANUAL_OVERRIDE
     : (
-      hasBillingState
-        ? ENTITLEMENT_RESOLUTION_SOURCES.BILLING
-        : ENTITLEMENT_RESOLUTION_SOURCES.FALLBACK_INITIALIZED
+      shouldPreserveFallbackSource || !hasBillingState
+        ? ENTITLEMENT_RESOLUTION_SOURCES.FALLBACK_INITIALIZED
+        : ENTITLEMENT_RESOLUTION_SOURCES.BILLING
     );
 
   return {
@@ -453,6 +485,99 @@ export const resolveEntitlementRecord = ({
       existingEntitlement.manual_override,
       nowMillis
     ),
+  };
+};
+
+export const buildFallbackEntitlementInitializationWrite = ({
+  parentId,
+  usageSnapshot = DEFAULT_USAGE_SNAPSHOT,
+  nowTimestamp = null,
+} = {}) => {
+  const normalizedParentId = trimString(parentId);
+  const billingState = buildEntitlementBillingState();
+
+  return {
+    ...buildEffectiveEntitlementFieldsFromBilling({
+      parentId: normalizedParentId,
+      billingState,
+      usageSnapshot,
+    }),
+    billing_state: billingState,
+    manual_override: null,
+    resolution_source: ENTITLEMENT_RESOLUTION_SOURCES.FALLBACK_INITIALIZED,
+    updated_via: ENTITLEMENT_UPDATED_VIA.OPERATOR_CONSOLE,
+    updated_at: nowTimestamp || null,
+  };
+};
+
+export const buildEntitlementWriteForManualOverride = ({
+  parentId,
+  existingEntitlement = {},
+  overridePayload = {},
+  operatorSession = null,
+  usageSnapshot = DEFAULT_USAGE_SNAPSHOT,
+  nowTimestamp = null,
+} = {}) => {
+  const normalizedParentId = trimString(parentId);
+  const existing = isPlainObject(existingEntitlement) ? existingEntitlement : {};
+  const { billingState } = buildBillingStateFromExistingEntitlement(existing);
+  const manualOverride = {
+    is_active: true,
+    plan_id: normalizePlanId(overridePayload.plan_id),
+    subscription_status: normalizeSubscriptionStatus(overridePayload.subscription_status),
+    feature_overrides: normalizeEntitlementFeatureOverrides(overridePayload.feature_overrides),
+    reason: trimString(overridePayload.reason),
+    expires_at: overridePayload.expires_at || null,
+    applied_by_uid: trimString(operatorSession?.uid),
+    applied_by_email: trimString(operatorSession?.email),
+    applied_at: nowTimestamp || null,
+  };
+
+  return {
+    ...buildEffectiveEntitlementFieldsFromManualOverride({
+      parentId: normalizedParentId,
+      manualOverride,
+      billingState,
+      usageSnapshot,
+    }),
+    billing_state: billingState,
+    manual_override: manualOverride,
+    resolution_source: ENTITLEMENT_RESOLUTION_SOURCES.MANUAL_OVERRIDE,
+    updated_via: ENTITLEMENT_UPDATED_VIA.OPERATOR_CONSOLE,
+    updated_at: nowTimestamp || null,
+  };
+};
+
+export const buildEntitlementWriteForOverrideClear = ({
+  parentId,
+  existingEntitlement = {},
+  usageSnapshot = DEFAULT_USAGE_SNAPSHOT,
+  nowTimestamp = null,
+} = {}) => {
+  const normalizedParentId = trimString(parentId);
+  const existing = isPlainObject(existingEntitlement) ? existingEntitlement : {};
+  const { billingState } = buildBillingStateFromExistingEntitlement(existing);
+  const clearedManualOverride = isPlainObject(existing.manual_override)
+    ? {
+        ...existing.manual_override,
+        is_active: false,
+      }
+    : null;
+  const resolutionSource = hasProviderBackedBillingState(billingState)
+    ? ENTITLEMENT_RESOLUTION_SOURCES.BILLING
+    : ENTITLEMENT_RESOLUTION_SOURCES.FALLBACK_INITIALIZED;
+
+  return {
+    ...buildEffectiveEntitlementFieldsFromBilling({
+      parentId: normalizedParentId,
+      billingState,
+      usageSnapshot,
+    }),
+    billing_state: billingState,
+    manual_override: clearedManualOverride,
+    resolution_source: resolutionSource,
+    updated_via: ENTITLEMENT_UPDATED_VIA.OPERATOR_CLEAR_OVERRIDE,
+    updated_at: nowTimestamp || null,
   };
 };
 
@@ -620,6 +745,245 @@ export const normalizeOperatorSessionRecord = ({ uid, operatorRecord } = {}) => 
     role,
     is_active: true,
   };
+};
+
+export const ensureOperatorSessionRecord = ({ uid, operatorRecord } = {}) => {
+  const operatorSession = normalizeOperatorSessionRecord({ uid, operatorRecord });
+
+  if (!operatorSession) {
+    throw new HttpsError(
+      'permission-denied',
+      'This account is not authorized for operator access.'
+    );
+  }
+
+  return operatorSession;
+};
+
+const normalizeOperatorParentId = (value) => {
+  const parentId = trimString(value);
+
+  if (!parentId) {
+    throw new HttpsError('invalid-argument', 'A parent account id is required.');
+  }
+
+  return parentId;
+};
+
+const requireOperatorSupportReason = (value) => {
+  const reason = trimString(value);
+
+  if (!reason) {
+    throw new HttpsError('invalid-argument', 'A non-empty support reason is required.');
+  }
+
+  return reason;
+};
+
+const normalizeOperatorSubscriptionStatus = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const subscriptionStatus = trimString(value);
+  if (!Object.values(SUBSCRIPTION_STATUSES).includes(subscriptionStatus)) {
+    throw new HttpsError('invalid-argument', 'Manual override subscription status is invalid.');
+  }
+
+  return subscriptionStatus;
+};
+
+const normalizeOperatorPlanId = (value) => {
+  const planId = trimString(value);
+
+  if (!Object.values(PLAN_IDS).includes(planId)) {
+    throw new HttpsError('invalid-argument', 'Manual override plan id is invalid.');
+  }
+
+  return planId;
+};
+
+const normalizeOperatorFeatureOverrides = (featureOverrides = {}) => {
+  if (featureOverrides == null) {
+    return {};
+  }
+
+  if (!isPlainObject(featureOverrides)) {
+    throw new HttpsError('invalid-argument', 'Manual override feature overrides must be an object.');
+  }
+
+  const knownFeatureKeys = Object.keys(PLAN_LIMITS[PLAN_IDS.FREE].features);
+
+  Object.entries(featureOverrides).forEach(([featureKey, featureValue]) => {
+    if (!knownFeatureKeys.includes(featureKey)) {
+      throw new HttpsError('invalid-argument', `Unknown entitlement feature override: ${featureKey}.`);
+    }
+
+    if (typeof featureValue !== 'boolean') {
+      throw new HttpsError('invalid-argument', `Entitlement feature override ${featureKey} must be a boolean.`);
+    }
+  });
+
+  return normalizeEntitlementFeatureOverrides(featureOverrides);
+};
+
+const normalizeOperatorExpiration = (value, nowMillis = Date.now()) => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const expiresAtMillis = timestampToMillis(value);
+  if (!Number.isFinite(expiresAtMillis)) {
+    throw new HttpsError('invalid-argument', 'Manual override expiration must be a valid date.');
+  }
+
+  if (expiresAtMillis <= nowMillis) {
+    throw new HttpsError('invalid-argument', 'Manual override expiration must be in the future.');
+  }
+
+  return Timestamp.fromMillis(expiresAtMillis);
+};
+
+export const normalizeOperatorEntitlementOverridePayload = (
+  payload = {},
+  { nowMillis = Date.now() } = {}
+) => {
+  if (!isPlainObject(payload)) {
+    throw new HttpsError('invalid-argument', 'Manual override payload must be an object.');
+  }
+
+  return {
+    plan_id: normalizeOperatorPlanId(payload.plan_id ?? payload.planId),
+    subscription_status: normalizeOperatorSubscriptionStatus(
+      payload.subscription_status ?? payload.subscriptionStatus
+    ),
+    feature_overrides: normalizeOperatorFeatureOverrides(
+      payload.feature_overrides ?? payload.featureOverrides ?? {}
+    ),
+    reason: requireOperatorSupportReason(payload.reason),
+    expires_at: normalizeOperatorExpiration(
+      payload.expires_at ?? payload.expiresAt ?? null,
+      nowMillis
+    ),
+  };
+};
+
+const normalizeOperatorMutationPayload = (payload = {}) => {
+  if (!isPlainObject(payload)) {
+    throw new HttpsError('invalid-argument', 'Operator mutation payload must be an object.');
+  }
+
+  return {
+    parentId: normalizeOperatorParentId(payload.parent_id ?? payload.parentId),
+    reason: requireOperatorSupportReason(payload.reason),
+  };
+};
+
+const normalizeOperatorParentLookupPayload = (payload = {}) => {
+  if (!isPlainObject(payload)) {
+    throw new HttpsError('invalid-argument', 'Operator lookup payload must be an object.');
+  }
+
+  return normalizeOperatorParentId(payload.parent_id ?? payload.parentId);
+};
+
+const normalizeOperatorSearchPayload = (payload = {}) => {
+  if (!isPlainObject(payload)) {
+    throw new HttpsError('invalid-argument', 'Operator search payload must be an object.');
+  }
+
+  const query = trimString(payload.query);
+
+  if (query.length < 2) {
+    throw new HttpsError('invalid-argument', 'Enter at least 2 characters to search parent accounts.');
+  }
+
+  return query;
+};
+
+export const buildOperatorEntitlementUsageSummary = ({
+  planId = PLAN_IDS.FREE,
+  usageSnapshot = DEFAULT_USAGE_SNAPSHOT,
+} = {}) => {
+  const normalizedPlanId = normalizePlanId(planId);
+  const limits = PLAN_LIMITS[normalizedPlanId];
+  const usage = normalizeUsageSnapshot(usageSnapshot);
+
+  return {
+    students: usage.students,
+    curriculum_items: usage.curriculum_items,
+    plan_id: normalizedPlanId,
+    limits: {
+      students: limits.maxStudents,
+      curriculum_items: limits.maxActiveSubjects,
+    },
+    over_limits: {
+      students: limits.maxStudents != null && usage.students > limits.maxStudents,
+      curriculum_items: limits.maxActiveSubjects != null &&
+        usage.curriculum_items > limits.maxActiveSubjects,
+    },
+  };
+};
+
+export const buildOperatorDowngradeWarnings = ({
+  planId = PLAN_IDS.FREE,
+  featureOverrides = {},
+  usageSummary = {},
+  lockdownSummary = {},
+} = {}) => {
+  const targetPlanId = normalizePlanId(planId);
+  const targetFeatures = buildFeatureSet(targetPlanId, featureOverrides);
+  const usage = normalizeUsageSnapshot({
+    students: usageSummary.students,
+    curriculum_items: usageSummary.curriculum_items,
+  });
+  const warnings = [];
+
+  if (targetPlanId === PLAN_IDS.FREE) {
+    const freeLimits = PLAN_LIMITS[PLAN_IDS.FREE];
+
+    if (usage.students > freeLimits.maxStudents) {
+      warnings.push({
+        code: 'free_student_limit_exceeded',
+        severity: 'warning',
+        plan_id: targetPlanId,
+        usage_key: 'students',
+        usage: usage.students,
+        limit: freeLimits.maxStudents,
+        message: `This account has ${usage.students} students, above the Free plan limit of ${freeLimits.maxStudents}.`,
+      });
+    }
+
+    if (usage.curriculum_items > freeLimits.maxActiveSubjects) {
+      warnings.push({
+        code: 'free_curriculum_limit_exceeded',
+        severity: 'warning',
+        plan_id: targetPlanId,
+        usage_key: 'curriculum_items',
+        usage: usage.curriculum_items,
+        limit: freeLimits.maxActiveSubjects,
+        message: `This account has ${usage.curriculum_items} active curriculum items, above the Free plan limit of ${freeLimits.maxActiveSubjects}.`,
+      });
+    }
+  }
+
+  if (
+    lockdownSummary.has_saved_setup === true &&
+    !targetFeatures.can_use_lockdown_extension &&
+    !targetFeatures.can_use_lockdown_kiosk
+  ) {
+    warnings.push({
+      code: 'lockdown_setup_would_be_disabled',
+      severity: 'warning',
+      plan_id: targetPlanId,
+      usage_key: 'lockdown',
+      usage: lockdownSummary.configured_students || lockdownSummary.active_devices || 1,
+      limit: 0,
+      message: 'This change removes Lockdown access while saved Lockdown setup exists.',
+    });
+  }
+
+  return warnings;
 };
 
 const timeZoneFormatterCache = new Map();
@@ -805,6 +1169,16 @@ const ensureAuthenticated = (request) => {
   return request.auth.uid;
 };
 
+const ensureActiveOperator = async (request) => {
+  const operatorId = ensureAuthenticated(request);
+  const operatorSnapshot = await supportOperatorRef(operatorId).get();
+
+  return ensureOperatorSessionRecord({
+    uid: operatorId,
+    operatorRecord: operatorSnapshot.exists ? operatorSnapshot.data() : null,
+  });
+};
+
 const ensureLockdownExtensionEntitlement = (entitlementState) => {
   if (!entitlementState.features.can_use_lockdown_extension) {
     throw new HttpsError(
@@ -873,6 +1247,130 @@ const countActiveSubjectsForParent = async (parentId) => {
   return snapshot.size;
 };
 
+const isArchivedSubjectRecord = (subjectRecord = {}) => (
+  subjectRecord.is_archived === true ||
+  subjectRecord.archived === true ||
+  subjectRecord.status === 'archived' ||
+  subjectRecord.archived_at != null
+);
+
+const isActiveSubjectRecord = (subjectRecord = {}) => (
+  subjectRecord.is_active !== false && !isArchivedSubjectRecord(subjectRecord)
+);
+
+const listParentStudents = async (parentId) => {
+  const snapshot = await db.collection(COLLECTIONS.STUDENTS)
+    .where('parent_id', '==', parentId)
+    .get();
+
+  return snapshot.docs.map((studentSnapshot) => ({
+    id: studentSnapshot.id,
+    ...studentSnapshot.data(),
+  }));
+};
+
+const listParentSubjects = async (parentId) => {
+  const snapshot = await db.collection(COLLECTIONS.SUBJECTS)
+    .where('parent_id', '==', parentId)
+    .get();
+
+  return snapshot.docs.map((subjectSnapshot) => ({
+    id: subjectSnapshot.id,
+    ...subjectSnapshot.data(),
+  }));
+};
+
+const buildLiveUsageSnapshot = ({ students = [], subjects = [] } = {}) => ({
+  students: Array.isArray(students) ? students.length : 0,
+  curriculum_items: Array.isArray(subjects)
+    ? subjects.filter((subjectRecord) => isActiveSubjectRecord(subjectRecord)).length
+    : 0,
+});
+
+const loadParentUsageSnapshot = async (parentId) => {
+  const [students, subjects] = await Promise.all([
+    listParentStudents(parentId),
+    listParentSubjects(parentId),
+  ]);
+
+  return {
+    students,
+    subjects,
+    usageSnapshot: buildLiveUsageSnapshot({ students, subjects }),
+  };
+};
+
+const hasCustomizedLockdownSchedule = (studentRecord = {}) => {
+  const schedule = isPlainObject(studentRecord.lockdown_schedule)
+    ? studentRecord.lockdown_schedule
+    : null;
+
+  if (!schedule) {
+    return false;
+  }
+
+  const schoolDays = normalizeDayList(schedule.school_days, DEFAULT_LOCKDOWN_SCHOOL_DAYS);
+  const schoolDaysChanged = (
+    schoolDays.length !== DEFAULT_LOCKDOWN_SCHOOL_DAYS.length ||
+    schoolDays.some((day, index) => day !== DEFAULT_LOCKDOWN_SCHOOL_DAYS[index])
+  );
+  const startTime = parseDailyTimeValue(
+    schedule.school_day_start_time,
+    DEFAULT_LOCKDOWN_SCHOOL_DAY_START_TIME
+  ).value;
+  const endTime = parseDailyTimeValue(
+    schedule.school_day_end_time,
+    DEFAULT_LOCKDOWN_SCHOOL_DAY_END_TIME
+  ).value;
+  const hasOffHoursWindows = Array.isArray(schedule.off_hours_resource_windows) &&
+    schedule.off_hours_resource_windows.length > 0;
+
+  return (
+    schoolDaysChanged ||
+    startTime !== DEFAULT_LOCKDOWN_SCHOOL_DAY_START_TIME ||
+    endTime !== DEFAULT_LOCKDOWN_SCHOOL_DAY_END_TIME ||
+    hasOffHoursWindows
+  );
+};
+
+const loadLockdownSummary = async ({ parentId, students = [] } = {}) => {
+  const configuredStudents = (Array.isArray(students) ? students : [])
+    .filter((studentRecord) => hasCustomizedLockdownSchedule(studentRecord));
+  const [deviceSnapshot, legacyPolicySnapshot] = await Promise.all([
+    db.collection(COLLECTIONS.LOCKDOWN_DEVICES)
+      .where('parent_id', '==', parentId)
+      .get(),
+    db.collection(COLLECTIONS.LOCKDOWN_POLICIES).doc(parentId).get(),
+  ]);
+  const pairedDevices = deviceSnapshot.size;
+  const activeDevices = deviceSnapshot.docs.filter((deviceDoc) => (
+    deviceDoc.data()?.status === LOCKDOWN_DEVICE_STATUSES.ACTIVE
+  )).length;
+  const legacyPolicy = legacyPolicySnapshot.exists ? legacyPolicySnapshot.data() : null;
+  const legacyPolicyConfigured = Boolean(
+    legacyPolicy &&
+    (
+      legacyPolicy.is_enabled === true ||
+      (Array.isArray(legacyPolicy.allowed_origins) && legacyPolicy.allowed_origins.length > 0) ||
+      (
+        Array.isArray(legacyPolicy.allowed_youtube_channels) &&
+        legacyPolicy.allowed_youtube_channels.length > 0
+      )
+    )
+  );
+
+  return {
+    configured_students: configuredStudents.length,
+    paired_devices: pairedDevices,
+    active_devices: activeDevices,
+    legacy_policy_exists: legacyPolicySnapshot.exists,
+    legacy_policy_configured: legacyPolicyConfigured,
+    has_saved_setup: configuredStudents.length > 0 ||
+      pairedDevices > 0 ||
+      legacyPolicyConfigured,
+  };
+};
+
 const loadParentSettings = async (parentId) => {
   const snapshot = await db.collection(COLLECTIONS.PARENTS).doc(parentId).get();
   const data = snapshot.exists ? snapshot.data() : {};
@@ -882,6 +1380,154 @@ const loadParentSettings = async (parentId) => {
     week_reset_hour: Number.isInteger(data?.week_reset_hour) ? data.week_reset_hour : DEFAULT_PARENT_SETTINGS.week_reset_hour,
     week_reset_minute: Number.isInteger(data?.week_reset_minute) ? data.week_reset_minute : DEFAULT_PARENT_SETTINGS.week_reset_minute,
     timezone: trimString(data?.timezone) || DEFAULT_PARENT_SETTINGS.timezone,
+  };
+};
+
+const buildParentIdentity = (parentSnapshot) => {
+  const parentRecord = parentSnapshot.exists ? parentSnapshot.data() : {};
+
+  return {
+    uid: parentSnapshot.id,
+    email: trimString(parentRecord?.email),
+    school_name: trimString(parentRecord?.school_name),
+  };
+};
+
+const addParentSearchResult = (results, parentSnapshot) => {
+  if (!parentSnapshot.exists || results.has(parentSnapshot.id)) {
+    return;
+  }
+
+  results.set(parentSnapshot.id, buildParentIdentity(parentSnapshot));
+};
+
+const buildSearchVariants = (query) => {
+  const lower = query.toLowerCase();
+  const titleCase = query
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+  return Array.from(new Set([query, lower, titleCase].filter(Boolean)));
+};
+
+const queryParentsByField = async ({ field, value, limit = OPERATOR_PARENT_SEARCH_LIMIT }) => (
+  db.collection(COLLECTIONS.PARENTS)
+    .where(field, '==', value)
+    .limit(limit)
+    .get()
+);
+
+const queryParentsBySchoolNamePrefix = async ({
+  value,
+  limit = OPERATOR_PARENT_SEARCH_LIMIT,
+}) => (
+  db.collection(COLLECTIONS.PARENTS)
+    .orderBy('school_name')
+    .startAt(value)
+    .endAt(`${value}${SCHOOL_NAME_PREFIX_SUFFIX}`)
+    .limit(limit)
+    .get()
+);
+
+const loadParentSearchResults = async (query) => {
+  const results = new Map();
+  const parentCollection = db.collection(COLLECTIONS.PARENTS);
+  const directSnapshot = await parentCollection.doc(query).get();
+
+  addParentSearchResult(results, directSnapshot);
+
+  const variants = buildSearchVariants(query);
+  const searchSnapshots = await Promise.all([
+    ...variants.map((variant) => queryParentsByField({ field: 'email', value: variant })),
+    ...variants.map((variant) => queryParentsByField({ field: 'school_name', value: variant })),
+    ...variants.map((variant) => queryParentsBySchoolNamePrefix({ value: variant })),
+  ]);
+
+  searchSnapshots.forEach((snapshot) => {
+    snapshot.docs.forEach((parentSnapshot) => addParentSearchResult(results, parentSnapshot));
+  });
+
+  return Array.from(results.values()).slice(0, OPERATOR_PARENT_SEARCH_LIMIT);
+};
+
+const loadRecentEntitlementAuditEntries = async (parentId) => {
+  const snapshot = await db.collection(COLLECTIONS.ENTITLEMENT_AUDIT_LOGS)
+    .where('parent_id', '==', parentId)
+    .get();
+
+  return snapshot.docs
+    .map((auditSnapshot) => ({
+      id: auditSnapshot.id,
+      ...auditSnapshot.data(),
+    }))
+    .sort((left, right) => (
+      (toTimestampMillis(right.created_at) || 0) -
+      (toTimestampMillis(left.created_at) || 0)
+    ))
+    .slice(0, OPERATOR_AUDIT_ENTRY_LIMIT);
+};
+
+const buildEffectiveEntitlementResponse = ({ entitlementExists, resolvedEntitlement }) => ({
+  exists: entitlementExists,
+  parent_id: resolvedEntitlement.parent_id,
+  plan_id: resolvedEntitlement.plan_id,
+  subscription_status: resolvedEntitlement.subscription_status,
+  billing_provider: resolvedEntitlement.billing_provider,
+  feature_overrides: resolvedEntitlement.feature_overrides,
+  features: resolvedEntitlement.features,
+  usage_snapshot: resolvedEntitlement.usage_snapshot,
+  trial_ends_at: resolvedEntitlement.trial_ends_at,
+  current_period_end: resolvedEntitlement.current_period_end,
+  resolution_source: resolvedEntitlement.resolution_source,
+  updated_via: resolvedEntitlement.updated_via,
+  updated_at: resolvedEntitlement.updated_at,
+  has_active_manual_override: resolvedEntitlement.hasActiveManualOverride,
+  has_expired_manual_override: resolvedEntitlement.hasExpiredManualOverride,
+});
+
+const buildOperatorEntitlementDetail = async (parentId) => {
+  const parentSnapshot = await db.collection(COLLECTIONS.PARENTS).doc(parentId).get();
+
+  if (!parentSnapshot.exists) {
+    throw new HttpsError('not-found', 'Parent account was not found.');
+  }
+
+  const [entitlementSnapshot, usageData, recentAuditEntries] = await Promise.all([
+    entitlementRef(parentId).get(),
+    loadParentUsageSnapshot(parentId),
+    loadRecentEntitlementAuditEntries(parentId),
+  ]);
+  const entitlementDoc = entitlementSnapshot.exists ? entitlementSnapshot.data() : {};
+  const resolvedEntitlement = resolveEntitlementRecord({
+    parentId,
+    entitlementDoc,
+  });
+  const usageSummary = buildOperatorEntitlementUsageSummary({
+    planId: resolvedEntitlement.plan_id,
+    usageSnapshot: usageData.usageSnapshot,
+  });
+  const lockdownSummary = await loadLockdownSummary({
+    parentId,
+    students: usageData.students,
+  });
+
+  return {
+    parent: buildParentIdentity(parentSnapshot),
+    effective_entitlement: buildEffectiveEntitlementResponse({
+      entitlementExists: entitlementSnapshot.exists,
+      resolvedEntitlement,
+    }),
+    billing_state: resolvedEntitlement.billing_state,
+    manual_override: resolvedEntitlement.manual_override,
+    usage_summary: usageSummary,
+    lockdown_summary: lockdownSummary,
+    downgrade_warnings: buildOperatorDowngradeWarnings({
+      planId: resolvedEntitlement.plan_id,
+      featureOverrides: resolvedEntitlement.feature_overrides,
+      usageSummary,
+      lockdownSummary,
+    }),
+    recent_audit_entries: recentAuditEntries,
   };
 };
 
@@ -1904,21 +2550,188 @@ export const createSubject = onCall({ region: REGION }, async (request) => {
 });
 
 export const getOperatorSession = onCall({ region: REGION }, async (request) => {
-  const operatorId = ensureAuthenticated(request);
-  const operatorSnapshot = await supportOperatorRef(operatorId).get();
-  const operatorSession = normalizeOperatorSessionRecord({
-    uid: operatorId,
-    operatorRecord: operatorSnapshot.exists ? operatorSnapshot.data() : null,
+  return ensureActiveOperator(request);
+});
+
+export const searchParentAccounts = onCall({ region: REGION }, async (request) => {
+  await ensureActiveOperator(request);
+
+  const query = normalizeOperatorSearchPayload(request.data);
+  const results = await loadParentSearchResults(query);
+
+  return {
+    query,
+    results,
+  };
+});
+
+export const getOperatorEntitlementRecord = onCall({ region: REGION }, async (request) => {
+  await ensureActiveOperator(request);
+
+  const parentId = normalizeOperatorParentLookupPayload(request.data);
+  return buildOperatorEntitlementDetail(parentId);
+});
+
+export const initializeEntitlementRecord = onCall({ region: REGION }, async (request) => {
+  const operatorSession = await ensureActiveOperator(request);
+  const { parentId, reason } = normalizeOperatorMutationPayload(request.data);
+  const { usageSnapshot } = await loadParentUsageSnapshot(parentId);
+  const nowTimestamp = Timestamp.now();
+  let initialized = false;
+
+  await db.runTransaction(async (transaction) => {
+    const parentSnapshot = await transaction.get(db.collection(COLLECTIONS.PARENTS).doc(parentId));
+
+    if (!parentSnapshot.exists) {
+      throw new HttpsError('not-found', 'Parent account was not found.');
+    }
+
+    const existingEntitlementSnapshot = await transaction.get(entitlementRef(parentId));
+
+    if (existingEntitlementSnapshot.exists) {
+      return;
+    }
+
+    const entitlementDoc = buildFallbackEntitlementInitializationWrite({
+      parentId,
+      usageSnapshot,
+      nowTimestamp,
+    });
+
+    transaction.set(entitlementRef(parentId), entitlementDoc);
+    queueEntitlementAuditWrite(transaction, {
+      parentId,
+      operatorSession,
+      eventType: ENTITLEMENT_AUDIT_EVENT_TYPES.RECORD_INITIALIZED,
+      reason,
+      before: null,
+      after: entitlementDoc,
+      createdAt: nowTimestamp,
+    });
+    initialized = true;
   });
 
-  if (!operatorSession) {
-    throw new HttpsError(
-      'permission-denied',
-      'This account is not authorized for operator access.'
-    );
-  }
+  return {
+    initialized,
+    ...(await buildOperatorEntitlementDetail(parentId)),
+  };
+});
 
-  return operatorSession;
+export const applyEntitlementOverride = onCall({ region: REGION }, async (request) => {
+  const operatorSession = await ensureActiveOperator(request);
+  const nowTimestamp = Timestamp.now();
+  const parentId = normalizeOperatorParentId(request.data?.parent_id ?? request.data?.parentId);
+  const overridePayload = normalizeOperatorEntitlementOverridePayload(request.data, {
+    nowMillis: nowTimestamp.toMillis(),
+  });
+  const { usageSnapshot } = await loadParentUsageSnapshot(parentId);
+
+  await db.runTransaction(async (transaction) => {
+    const parentSnapshot = await transaction.get(db.collection(COLLECTIONS.PARENTS).doc(parentId));
+
+    if (!parentSnapshot.exists) {
+      throw new HttpsError('not-found', 'Parent account was not found.');
+    }
+
+    const existingEntitlementSnapshot = await transaction.get(entitlementRef(parentId));
+
+    if (!existingEntitlementSnapshot.exists) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Initialize this parent entitlement record before applying a manual override.'
+      );
+    }
+
+    const beforeEntitlement = existingEntitlementSnapshot.data();
+    const entitlementDoc = buildEntitlementWriteForManualOverride({
+      parentId,
+      existingEntitlement: beforeEntitlement,
+      overridePayload,
+      operatorSession,
+      usageSnapshot,
+      nowTimestamp,
+    });
+    const afterEntitlement = {
+      ...beforeEntitlement,
+      ...entitlementDoc,
+    };
+
+    transaction.set(entitlementRef(parentId), entitlementDoc, { merge: true });
+    queueEntitlementAuditWrite(transaction, {
+      parentId,
+      operatorSession,
+      eventType: ENTITLEMENT_AUDIT_EVENT_TYPES.OVERRIDE_APPLIED,
+      reason: overridePayload.reason,
+      before: beforeEntitlement,
+      after: afterEntitlement,
+      createdAt: nowTimestamp,
+    });
+  });
+
+  return {
+    applied: true,
+    ...(await buildOperatorEntitlementDetail(parentId)),
+  };
+});
+
+export const clearEntitlementOverride = onCall({ region: REGION }, async (request) => {
+  const operatorSession = await ensureActiveOperator(request);
+  const { parentId, reason } = normalizeOperatorMutationPayload(request.data);
+  const { usageSnapshot } = await loadParentUsageSnapshot(parentId);
+  const nowTimestamp = Timestamp.now();
+
+  await db.runTransaction(async (transaction) => {
+    const parentSnapshot = await transaction.get(db.collection(COLLECTIONS.PARENTS).doc(parentId));
+
+    if (!parentSnapshot.exists) {
+      throw new HttpsError('not-found', 'Parent account was not found.');
+    }
+
+    const existingEntitlementSnapshot = await transaction.get(entitlementRef(parentId));
+
+    if (!existingEntitlementSnapshot.exists) {
+      throw new HttpsError(
+        'failed-precondition',
+        'This parent account does not have an entitlement record to clear.'
+      );
+    }
+
+    const beforeEntitlement = existingEntitlementSnapshot.data();
+
+    if (!isPlainObject(beforeEntitlement.manual_override) || beforeEntitlement.manual_override.is_active !== true) {
+      throw new HttpsError(
+        'failed-precondition',
+        'This parent account does not have an active manual override to clear.'
+      );
+    }
+
+    const entitlementDoc = buildEntitlementWriteForOverrideClear({
+      parentId,
+      existingEntitlement: beforeEntitlement,
+      usageSnapshot,
+      nowTimestamp,
+    });
+    const afterEntitlement = {
+      ...beforeEntitlement,
+      ...entitlementDoc,
+    };
+
+    transaction.set(entitlementRef(parentId), entitlementDoc, { merge: true });
+    queueEntitlementAuditWrite(transaction, {
+      parentId,
+      operatorSession,
+      eventType: ENTITLEMENT_AUDIT_EVENT_TYPES.OVERRIDE_CLEARED,
+      reason,
+      before: beforeEntitlement,
+      after: afterEntitlement,
+      createdAt: nowTimestamp,
+    });
+  });
+
+  return {
+    cleared: true,
+    ...(await buildOperatorEntitlementDetail(parentId)),
+  };
 });
 
 export const issueLockdownEnrollment = onCall({ region: REGION }, async (request) => {
