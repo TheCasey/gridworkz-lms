@@ -1,6 +1,6 @@
 # Subscriptions And Entitlements
 
-Last updated: 2026-05-11
+Last updated: 2026-05-22
 
 Status: Implemented
 
@@ -42,12 +42,16 @@ Implemented surfaces now include:
   - trusted active-subject create path plus free-tier active-subject limit gating
 - `src/pages/Settings.jsx`
   - current plan, usage, and locked-state account summary surface
+- `src/pages/OpsEntitlements.jsx`
+  - operator-only entitlement inspection, missing-record initialization, temporary overrides, clear override, downgrade warnings, and audit timeline
+- `src/firebase/trustedOperations.js`
+  - callable wrappers for entitlement support operations and trusted create flows
 - `src/components/LockdownPolicyPanel.jsx`
   - entitlement-aware read-only downgrade behavior for non-Lockdown plans
 - `functions/src/index.js`
-  - trusted `billingWebhook`, `createStudent`, and `createSubject` endpoints
+  - trusted `billingWebhook`, `createStudent`, `createSubject`, operator entitlement, and audit endpoints
 - `firestore.rules`
-  - trusted backstops for `accountEntitlements`, direct student/subject creates, and `lockdownPolicies` writes
+  - trusted backstops for `accountEntitlements`, support operator allowlisting, entitlement audit logs, direct student/subject creates, and `lockdownPolicies` writes
 
 Important constraint:
 
@@ -203,14 +207,15 @@ This work depends on the broader security-hardening track already called out in 
 
 ### Workstream F. Operator support console
 
-Once the trusted entitlement path is stable:
+The MVP operator support console is now implemented:
 
-- add an operator-only console for searching parent accounts and inspecting entitlement state
-- support safe initialization of missing `accountEntitlements/{uid}` records
-- support temporary plan overrides and clear reversion back to billing-backed state
-- add a support audit trail so manual changes are attributable and reversible
+- operator-only search and entitlement inspection live at `/ops/entitlements`
+- missing `accountEntitlements/{uid}` records can be initialized to a safe Free fallback
+- temporary plan and feature overrides can be applied with required support reasons and optional expiration
+- clear override returns the effective state to billing-backed state
+- support audit history records billing syncs, initialization, override apply, and override clear
 
-This should build on the existing trusted backend path, not bypass it with direct Firestore edits.
+This builds on the existing trusted backend path and does not bypass it with direct Firestore edits. Operator usage guidance lives in [operator-entitlement-console-runbook.md](../support/operator-entitlement-console-runbook.md).
 
 ## Implementation Status
 
@@ -222,12 +227,12 @@ Completed:
 4. The account summary and upgrade messaging surface are live in `Settings`.
 5. Lockdown is entitlement-aware and downgrade-safe.
 6. Backend billing sync and trusted enforcement are live in sandbox mode.
+7. The operator entitlement console MVP is live with support allowlisting, missing-record initialization, temporary overrides, clear override, downgrade warnings, and audit history.
 
 Still open:
 
 1. Land future project features behind the same entitlement layer.
-2. Add an operator-only entitlement console so support can repair missing or incorrect account state and test plan levels without raw document edits.
-3. Move Stripe from sandbox mode to live-mode products, prices, webhook secret, and webhook smoke validation when real payments are ready.
+2. Move Stripe from sandbox mode to live-mode products, prices, webhook secret, and webhook smoke validation when real payments are ready.
 
 ## Open Product Questions
 

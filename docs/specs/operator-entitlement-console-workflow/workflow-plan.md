@@ -21,7 +21,7 @@ Implement the operator-only entitlement support console in bounded phases: trust
 | [Phase 2: Entitlement Resolution And Audit](phases/phase-02-entitlement-resolution-and-audit/phase.md) | `developer -> tester` | `build-health`, `code-review`, `api-smoke` | operator-trust-boundary | `accepted` |
 | [Phase 3: Operator Functions](phases/phase-03-operator-functions/phase.md) | `developer -> tester` | `build-health`, `api-smoke`, `code-review` | entitlement-resolution-and-audit | `accepted` |
 | [Phase 4: Ops Entitlements UI](phases/phase-04-ops-entitlements-ui/phase.md) | `developer -> tester` | `build-health`, `browser-smoke`, `interaction-smoke` | operator-functions | `accepted` |
-| [Phase 5: Support Validation And Runbook](phases/phase-05-support-validation-and-runbook/phase.md) | `developer -> tester` | `build-health`, `manual-qa` | ops-entitlements-ui | `ready_for_master_developer` |
+| [Phase 5: Support Validation And Runbook](phases/phase-05-support-validation-and-runbook/phase.md) | `developer -> tester` | `build-health`, `manual-qa` | ops-entitlements-ui | `accepted` |
 
 ## Prompt Budget
 

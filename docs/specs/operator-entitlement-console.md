@@ -1,8 +1,8 @@
 # Operator Entitlement Console
 
-Status: Draft
+Status: Implemented MVP
 
-Last updated: 2026-05-11
+Last updated: 2026-05-22
 
 ## Goal
 
@@ -13,19 +13,36 @@ This should solve two immediate operational needs:
 - resolve parent issues when billing sync, missing records, or downgrade state leaves the account in the wrong entitlement mode
 - let an operator test their own account against `free`, `core`, and `lockdown` behavior without editing raw documents by hand
 
-## Problem
+## Current MVP
 
-The current entitlement stack is live, but it only has two practical control paths:
+The MVP is implemented as an internal operator surface at `/ops/entitlements`.
+
+Implemented surfaces include:
+
+- `src/pages/OpsEntitlements.jsx`
+  - operator session check, search, account detail, state cards, usage and Lockdown summary, manual override form, clear override, and audit timeline
+- `src/firebase/trustedOperations.js`
+  - trusted callable wrappers for operator session, parent search, entitlement detail, missing-record initialization, override apply, and override clear
+- `functions/src/index.js`
+  - `supportOperators/{uid}` allowlist enforcement, operator callables, shared entitlement resolver, audit writes, and Stripe webhook behavior that preserves active manual overrides
+- `firestore.rules`
+  - server-owned `accountEntitlements`, `entitlementAuditLogs`, and `supportOperators` collections
+
+The support runbook is [operator-entitlement-console-runbook.md](../support/operator-entitlement-console-runbook.md).
+
+## Problem Solved By MVP
+
+Before this console, the live entitlement stack only had two practical control paths:
 
 - Stripe sandbox webhook writes
 - direct backend/admin intervention outside the product UI
 
-Current constraints:
+The MVP keeps the important security constraints:
 
 - `accountEntitlements/{uid}` is owner-readable but server-writable only
-- the parent-facing `Settings` surface shows plan state, but does not let anyone repair or override it
-- missing entitlement docs still fall back to `free`, which is safe but not support-friendly
-- there is no trusted support workflow for temporary testing, fixing a missing record, or undoing a bad plan state
+- the parent-facing `Settings` surface shows plan state, but does not let parents repair or override it
+- missing entitlement docs still fall back to `free`, and operators can now initialize a server-owned Free fallback record
+- temporary testing, missing-record repair, override clearing, and audit review now go through trusted support workflows
 
 ## Non-Goals
 
@@ -52,7 +69,7 @@ Current constraints:
 
 ## Product Requirements
 
-The operator console should support:
+The implemented MVP supports:
 
 1. Search parent accounts by email, uid, or school name.
 2. View the current effective entitlement state the app will honor.
@@ -68,11 +85,11 @@ The operator console should support:
 
 This should not live inside the normal parent dashboard shell.
 
-Recommended route:
+Implemented route:
 
 - `/ops/entitlements`
 
-Recommended first-pass layout:
+Implemented first-pass layout:
 
 ### 1. Operator search view
 
@@ -110,9 +127,9 @@ Show:
 - webhook writes
 - operator-applied changes
 - operator-cleared overrides
-- automatic reversion after expiration
+- expired override state when recorded by trusted entitlement resolution or later billing sync
 
-## Recommended Trust Model
+## Implemented Trust Model
 
 Use trusted Cloud Functions as the only mutation path.
 
@@ -120,11 +137,11 @@ Do not let the operator UI write `accountEntitlements` directly from the client,
 
 ### Operator authorization
 
-Use a server-owned operator allowlist collection, for example:
+Use a server-owned operator allowlist collection:
 
 - `supportOperators/{uid}`
 
-Suggested shape:
+Current shape:
 
 ```js
 {
@@ -137,18 +154,18 @@ Suggested shape:
 }
 ```
 
-Recommended rule:
+Implemented rule:
 
 - trusted backend checks this document on every operator action
 - optional custom claims can improve route gating later, but trusted backend checks should not rely on claims alone
 
 This is preferable to a claims-only design because support access can be revoked immediately without waiting for token refresh.
 
-## Data Model Recommendation
+## Implemented Data Model
 
 Keep `accountEntitlements/{uid}` as the effective entitlement record the app already reads, but extend it so billing truth and operator overrides can coexist safely.
 
-Suggested evolved shape:
+Implemented evolved shape:
 
 ```js
 {
@@ -207,13 +224,13 @@ Why this shape:
 - webhook sync can keep updating `billing_state` without stomping an active test override
 - operator UI can show both effective state and billing truth at the same time
 
-## Audit Log Recommendation
+## Implemented Audit Log
 
-Add a server-owned audit collection, for example:
+The MVP writes a server-owned audit collection:
 
 - `entitlementAuditLogs/{logId}`
 
-Suggested shape:
+Current shape:
 
 ```js
 {
@@ -228,11 +245,11 @@ Suggested shape:
 }
 ```
 
-The first pass can keep `before` and `after` shallow if full snapshots feel too heavy, but an operator-facing audit view is not optional.
+The first pass keeps `before` and `after` as shallow entitlement snapshots and renders them in the operator audit timeline.
 
-## Trusted Backend Surface
+## Implemented Trusted Backend Surface
 
-Recommended new functions:
+Implemented functions:
 
 - `getOperatorSession`
   - confirms whether the current authenticated user is an active operator
@@ -246,10 +263,10 @@ Recommended new functions:
   - applies or updates a manual override and recomputes effective fields
 - `clearEntitlementOverride`
   - removes the manual override and resolves effective fields back to `billing_state`
-- `recomputeEntitlementUsageSnapshot`
-  - optional first-pass helper to refresh usage counts from live `students` and `subjects`
 
-Recommended implementation note:
+There is no standalone usage-recompute callable in the MVP. Operator detail and mutation paths derive live student and active-subject usage while building the response.
+
+Implementation note:
 
 - keep the entitlement resolver shared between `billingWebhook`, `createStudent`, `createSubject`, Lockdown trusted functions, and the new operator functions so plan semantics do not drift
 
@@ -259,7 +276,7 @@ This is the most important design constraint.
 
 If operator overrides simply rewrite top-level fields, the next Stripe webhook can silently undo a support or testing action.
 
-Recommended behavior:
+Implemented behavior:
 
 1. Webhook always updates `billing_state`.
 2. If no manual override is active, webhook also updates the effective top-level fields.
@@ -268,7 +285,7 @@ Recommended behavior:
 
 This gives support a safe testing path without severing the billing trail.
 
-## Safety Rules
+## MVP Safety Rules
 
 - Require a reason for every manual operator mutation.
 - Show a diff preview before apply.
@@ -284,9 +301,9 @@ This gives support a safe testing path without severing the billing trail.
 - Keep explicit labels such as `Effective State`, `Billing State`, and `Manual Override`.
 - Make the revert path obvious: `Clear Override And Return To Billing State`.
 
-## First-Pass Scope Recommendation
+## MVP Scope
 
-Build the smallest useful support tool first:
+The implemented support tool includes:
 
 1. operator auth check
 2. account search
@@ -295,7 +312,7 @@ Build the smallest useful support tool first:
 5. clear override
 6. audit trail
 
-Defer these unless needed immediately:
+Still deferred:
 
 - Stripe customer editing
 - refunds or invoice actions
@@ -305,37 +322,36 @@ Defer these unless needed immediately:
 
 ## Rollout Plan
 
-### Phase 1. Operator trust boundary
+### Phase 1. Operator trust boundary - Done
 
 - add `supportOperators` collection
 - add operator auth helper in Functions
 - add operator route guard in the app
 
-### Phase 2. Data contract and audit trail
+### Phase 2. Data contract and audit trail - Done
 
 - extend `accountEntitlements` with `billing_state`, `manual_override`, and resolution metadata
 - add `entitlementAuditLogs`
 - update webhook logic to preserve billing truth under overrides
 
-### Phase 3. Operator functions
+### Phase 3. Operator functions - Done
 
 - add search, detail, initialize, apply override, and clear override functions
 - add shared entitlement recompute helper
 
-### Phase 4. Operator UI
+### Phase 4. Operator UI - Done
 
 - build `/ops/entitlements`
 - add search, detail, override form, and audit timeline
 - add quick presets for `free`, `core`, and `lockdown`
 
-### Phase 5. Verification and support playbooks
+### Phase 5. Verification and support playbooks - Runbook delivered
 
-- validate missing-doc repair
-- validate downgrade and re-upgrade behavior
-- validate self-testing on an internal account
-- document how to use temporary overrides versus permanent fixes
+- documented missing-doc repair, downgrade warnings, self-testing, override clearing, and webhook-under-override checks
+- documented how to use temporary overrides versus billing-backed repairs
+- live operator validation still requires seeded `supportOperators/{uid}` records and representative parent data
 
-## Likely Files
+## Implemented Files
 
 - `functions/src/index.js`
 - `firestore.rules`
@@ -343,16 +359,18 @@ Defer these unless needed immediately:
 - `src/constants/schema.js`
 - `src/constants/entitlements.js`
 - `src/firebase/trustedOperations.js`
-- `src/pages/Settings.jsx`
-- `src/pages/Lockdown.jsx`
-- new operator-facing files under `src/pages/` and `src/components/`
+- `src/pages/OpsEntitlements.jsx`
+- `src/components/ops/operatorEntitlementUi.js`
+- `docs/support/operator-entitlement-console-runbook.md`
 
-## Open Questions
+## Remaining Follow-Ups
 
-- Should operator access stay in the main app at `/ops/*`, or move to a separate internal deployment later?
-- Should manual overrides be able to change only top-level plan state, or also override individual feature flags in the first pass?
-- Should override expiration clear lazily on the next trusted read or write, or via scheduled backend cleanup?
-- Should usage snapshots be refreshed automatically on every operator read, or stay explicit as a repair action to control cost?
+- Move Stripe from sandbox mode to live-mode products, price ids, webhook secret, and webhook smoke validation when real payments are ready.
+- Decide later whether operator access should stay in the main app at `/ops/*` or move to a separate internal deployment.
+- Add provider/customer repair tooling only if support volume justifies it; the MVP intentionally does not edit Stripe customers, invoices, refunds, or subscriptions.
+- Complete live operator validation in staging or emulator data before release acceptance.
+- Decide whether expired overrides need scheduled cleanup. The MVP resolves expired overrides through trusted entitlement reads or later billing sync, and operators can clear completed overrides explicitly.
+- Keep future premium modules such as projects on this entitlement rail.
 
 ## Related Docs
 
