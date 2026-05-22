@@ -48,6 +48,7 @@ temp/
 # Local Codex / browser-use artifacts
 .codex/
 .codex-artifacts/
+.codex-screenshots/
 .playwright-cli/
 
 # Local workflow execution state

@@ -2,7 +2,7 @@
 
 Status: Draft
 
-Last updated: 2026-05-10
+Last updated: 2026-05-22
 
 ## Goal
 
@@ -127,6 +127,16 @@ Recommended states:
 - `draft`
 - `published`
 - `archived`
+
+## Current Implementation Note
+
+The first compatibility bridge is implemented:
+
+- parents can generate and publish deterministic student-week `weeklyPlans` from current active subjects
+- the student portal prefers a published plan for the current week and falls back to raw subjects when no published plan exists
+- reporting and client-side rollover can snapshot and archive weekly-plan-backed weeks
+
+This is not the full long-term guided weekly review system. The current bridge still depends on the subject editor as the compatibility input and does not yet include persisted assignment management, project allocation, worksheet runtime, or the richer direct-edit weekly planning surface described below.
 
 ## Weekly Blocks
 

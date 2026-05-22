@@ -18,6 +18,7 @@ import { Collections, WeeklyPlanStatuses } from '../constants/schema';
 import {
   buildStudentWeeklySnapshot,
   buildWeeklyReportPayload,
+  canSaveWeeklyReportSnapshot,
 } from '../utils/reportUtils';
 import { buildWeeklyPlanDocumentId } from '../utils/weeklyPlanUtils';
 import { getWeekKey } from '../utils/weekUtils';
@@ -125,7 +126,7 @@ export const useWeeklyReportRecords = ({
         weeklyPlan: weeklyPlansByStudentId[student.id] || null,
       });
 
-      if (!snapshot) return;
+      if (!snapshot || !canSaveWeeklyReportSnapshot(snapshot)) return;
 
       const reportId = `${currentUser.uid}_${student.id}_${getWeekKey(weekStart)}`;
       batch.set(doc(db, Collections.WEEKLY_REPORTS, reportId), buildWeeklyReportPayload({

@@ -18,7 +18,11 @@ import {
   getSchoolYearMetadataForDate,
   getSchoolYearOptionsFromReports,
 } from '../utils/schoolSettingsUtils';
-import { buildStudentWeeklySnapshot } from '../utils/reportUtils';
+import {
+  buildStudentWeeklySnapshot,
+  canSaveWeeklyReportSnapshot,
+  escapeReportHtml,
+} from '../utils/reportUtils';
 
 const C = {
   mysteria: '#1b1938',
@@ -36,12 +40,16 @@ const C = {
 const printWeekReport = (students, weekStart, weekEnd, studentDataMap) => {
   const weekRangeText = formatWeekRange(weekStart, weekEnd);
   const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const escapedWeekRangeText = escapeReportHtml(weekRangeText);
+  const escapedGeneratedDate = escapeReportHtml(generatedDate);
 
   const studentSections = students.map(student => {
     const data = studentDataMap[student.id];
     if (!data) return '';
     const pct = data.goalBlocks > 0 ? Math.round((data.totalBlocks / data.goalBlocks) * 100) : 0;
     const hours = Math.round(data.totalMinutes / 60 * 10) / 10;
+    const studentInitial = escapeReportHtml(student.name?.charAt(0).toUpperCase() || '?');
+    const studentName = escapeReportHtml(student.name);
 
     const subjectSections = data.subjectData.map(({ subject, blocks, completedCount, totalCount, totalMinutes: subMins }) => {
       const blockEntries = blocks.map(b => {
@@ -49,13 +57,17 @@ const printWeekReport = (students, weekStart, weekEnd, studentDataMap) => {
         const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
         const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
         const duration = b.block_duration || 30;
+        const blockNumber = escapeReportHtml((b.block_index ?? 0) + 1);
+        const escapedDateStr = escapeReportHtml(dateStr);
+        const escapedTimeStr = escapeReportHtml(timeStr);
+        const escapedDuration = escapeReportHtml(duration);
         return `
           <div class="block-entry">
             <div class="block-entry-header">
-              <span class="block-label">Block ${(b.block_index ?? 0) + 1}</span>
-              <span class="block-meta">${dateStr} at ${timeStr} &bull; ${duration} min</span>
+              <span class="block-label">Block ${blockNumber}</span>
+              <span class="block-meta">${escapedDateStr} at ${escapedTimeStr} &bull; ${escapedDuration} min</span>
             </div>
-            ${b.summary_text ? `<p class="block-summary">${b.summary_text}</p>` : ''}
+            ${b.summary_text ? `<p class="block-summary">${escapeReportHtml(b.summary_text)}</p>` : ''}
             ${b.manual_override ? `<p class="block-note">Parent-led session</p>` : ''}
           </div>`;
       }).join('');
@@ -63,8 +75,8 @@ const printWeekReport = (students, weekStart, weekEnd, studentDataMap) => {
       return `
         <div class="subject-section">
           <div class="subject-header">
-            <span class="subject-dot" style="background:${subject.color || '#cbb7fb'}"></span>
-            <span class="subject-title">${subject.title}</span>
+            <span class="subject-dot" style="background:${escapeReportHtml(subject.color || '#cbb7fb')}"></span>
+            <span class="subject-title">${escapeReportHtml(subject.title)}</span>
             <span class="subject-stats">${completedCount}/${totalCount} blocks &bull; ${Math.round(subMins / 60 * 10) / 10}h</span>
           </div>
           ${completedCount === 0
@@ -76,9 +88,9 @@ const printWeekReport = (students, weekStart, weekEnd, studentDataMap) => {
     return `
       <div class="student-section">
         <div class="student-header">
-          <div class="student-initial">${student.name.charAt(0).toUpperCase()}</div>
+          <div class="student-initial">${studentInitial}</div>
           <div>
-            <h2 class="student-name">${student.name}</h2>
+            <h2 class="student-name">${studentName}</h2>
             <p class="student-sub">${data.totalBlocks} of ${data.goalBlocks} blocks completed</p>
           </div>
           <div class="student-pct">${pct}%</div>
@@ -100,7 +112,7 @@ const printWeekReport = (students, weekStart, weekEnd, studentDataMap) => {
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Own Path — Weekly Report — ${weekRangeText}</title>
+  <title>Own Path — Weekly Report — ${escapedWeekRangeText}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Georgia, 'Times New Roman', serif; color: #292827; background: #fff; padding: 48px; font-size: 13px; line-height: 1.6; }
@@ -145,8 +157,8 @@ const printWeekReport = (students, weekStart, weekEnd, studentDataMap) => {
   <div class="report-header">
     <div class="report-logo">Own Path LMS</div>
     <div class="report-title">Weekly Progress Report</div>
-    <div class="report-week">${weekRangeText}</div>
-    <div class="report-generated">Generated ${generatedDate}</div>
+    <div class="report-week">${escapedWeekRangeText}</div>
+    <div class="report-generated">Generated ${escapedGeneratedDate}</div>
   </div>
   ${studentSections}
 </body>
@@ -306,8 +318,8 @@ const Reports = ({ parentSettings = {} }) => {
       }),
     ]))
   ), [students, subjects, submissions, weekStart, weekEnd, weeklyPlansByStudentId]);
-  const weekHasData = useMemo(
-    () => Object.values(studentDataMap).some((data) => data.totalBlocks > 0),
+  const weekHasReportableData = useMemo(
+    () => Object.values(studentDataMap).some(canSaveWeeklyReportSnapshot),
     [studentDataMap]
   );
 
@@ -350,11 +362,11 @@ const Reports = ({ parentSettings = {} }) => {
       ? Object.values(report.subjects_data).map(sd => `
           <div class="subject-section">
             <div class="subject-header">
-              <span class="subject-title">${sd.subjectTitle}</span>
-              <span class="subject-stats">${sd.totalBlocks} blocks</span>
+              <span class="subject-title">${escapeReportHtml(sd.subjectTitle)}</span>
+              <span class="subject-stats">${escapeReportHtml(sd.totalBlocks)} blocks</span>
             </div>
             ${sd.summaries?.length > 0
-              ? sd.summaries.map(s => `<div class="block-entry"><span class="block-label">Block ${s.blockNumber || '?'}</span><p class="block-summary">${s.text}</p></div>`).join('')
+              ? sd.summaries.map(s => `<div class="block-entry"><span class="block-label">Block ${escapeReportHtml(s.blockNumber || '?')}</span><p class="block-summary">${escapeReportHtml(s.text)}</p></div>`).join('')
               : '<p class="no-entries">No summaries recorded</p>'}
           </div>`).join('')
       : '';
@@ -446,11 +458,11 @@ const Reports = ({ parentSettings = {} }) => {
           .map(subjectDatum => `
             <div class="subject-section">
               <div class="subject-header">
-                <span class="subject-title">${subjectDatum.subjectTitle}</span>
-                <span class="subject-stats">${subjectDatum.totalBlocks} blocks</span>
+                <span class="subject-title">${escapeReportHtml(subjectDatum.subjectTitle)}</span>
+                <span class="subject-stats">${escapeReportHtml(subjectDatum.totalBlocks)} blocks</span>
               </div>
               ${subjectDatum.summaries?.length > 0
-                ? subjectDatum.summaries.map(summary => `<div class="block-entry"><span class="block-label">Block ${summary.blockNumber || '?'}</span><p class="block-summary">${summary.text}</p></div>`).join('')
+                ? subjectDatum.summaries.map(summary => `<div class="block-entry"><span class="block-label">Block ${escapeReportHtml(summary.blockNumber || '?')}</span><p class="block-summary">${escapeReportHtml(summary.text)}</p></div>`).join('')
                 : '<p class="no-entries">No summaries recorded</p>'}
             </div>`).join('')
         : '';
@@ -515,10 +527,10 @@ const Reports = ({ parentSettings = {} }) => {
           {/* Print live week */}
           <button
             onClick={() => printWeekReport(students, weekStart, weekEnd, studentDataMap)}
-            disabled={!weekHasData}
+            disabled={!weekHasReportableData}
             className="flex items-center gap-2 px-4 py-2 rounded-lg font-label text-[14px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             style={{ backgroundColor: C.cream, color: C.charcoal }}
-            onMouseEnter={e => { if (weekHasData) e.currentTarget.style.backgroundColor = C.parchment; }}
+            onMouseEnter={e => { if (weekHasReportableData) e.currentTarget.style.backgroundColor = C.parchment; }}
             onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}
           >
             <Printer className="w-4 h-4" />
@@ -528,10 +540,10 @@ const Reports = ({ parentSettings = {} }) => {
           {/* Save official record */}
           <button
             onClick={handleSaveRecord}
-            disabled={savingRecord || !weekHasData}
+            disabled={savingRecord || !weekHasReportableData}
             className="flex items-center gap-2 px-4 py-2 rounded-lg font-label text-[14px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             style={{ backgroundColor: C.charcoal, color: '#ffffff' }}
-            onMouseEnter={e => { if (!savingRecord && weekHasData) e.currentTarget.style.backgroundColor = '#3a3937'; }}
+            onMouseEnter={e => { if (!savingRecord && weekHasReportableData) e.currentTarget.style.backgroundColor = '#3a3937'; }}
             onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}
           >
             <Archive className="w-4 h-4" />
@@ -806,24 +818,36 @@ const Reports = ({ parentSettings = {} }) => {
 
 // Shared print HTML builder used by handlePrintRecord
 function buildPrintHtml(weekRangeText, generatedDate, studentRows, reportTitle = 'Weekly Progress Report') {
-  const sections = studentRows.map(r => `
+  const escapedWeekRangeText = escapeReportHtml(weekRangeText);
+  const escapedGeneratedDate = escapeReportHtml(generatedDate);
+  const escapedReportTitle = escapeReportHtml(reportTitle);
+  const sections = studentRows.map(r => {
+    const pct = Number(r.pct);
+    const displayPct = Number.isFinite(pct) ? Math.round(pct) : 0;
+    const progressPct = Math.min(Math.max(displayPct, 0), 100);
+    const totalBlocks = escapeReportHtml(r.totalBlocks ?? 0);
+    const goalBlocks = escapeReportHtml(r.goalBlocks ?? 0);
+    const hours = escapeReportHtml(r.hours ?? 0);
+
+    return `
     <div class="student-section">
       <div class="student-header">
-        <div class="student-initial">${r.initial}</div>
-        <div><h2 class="student-name">${r.name}</h2><p class="student-sub">${r.totalBlocks} of ${r.goalBlocks} blocks completed</p></div>
-        <div class="student-pct">${r.pct}%</div>
+        <div class="student-initial">${escapeReportHtml(r.initial || '?')}</div>
+        <div><h2 class="student-name">${escapeReportHtml(r.name)}</h2><p class="student-sub">${totalBlocks} of ${goalBlocks} blocks completed</p></div>
+        <div class="student-pct">${displayPct}%</div>
       </div>
-      <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${Math.min(r.pct, 100)}%"></div></div>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${progressPct}%"></div></div>
       <div class="metrics">
-        <div class="metric"><div class="metric-value">${r.totalBlocks}</div><div class="metric-label">Blocks Completed</div></div>
-        <div class="metric"><div class="metric-value">${r.goalBlocks}</div><div class="metric-label">Weekly Goal</div></div>
-        <div class="metric"><div class="metric-value">${r.hours}h</div><div class="metric-label">Time Spent</div></div>
-        <div class="metric"><div class="metric-value">${r.pct}%</div><div class="metric-label">Progress</div></div>
+        <div class="metric"><div class="metric-value">${totalBlocks}</div><div class="metric-label">Blocks Completed</div></div>
+        <div class="metric"><div class="metric-value">${goalBlocks}</div><div class="metric-label">Weekly Goal</div></div>
+        <div class="metric"><div class="metric-value">${hours}h</div><div class="metric-label">Time Spent</div></div>
+        <div class="metric"><div class="metric-value">${displayPct}%</div><div class="metric-label">Progress</div></div>
       </div>
-      <div class="subjects">${r.subjectsHtml}</div>
-    </div>`).join('');
+      <div class="subjects">${r.subjectsHtml || ''}</div>
+    </div>`;
+  }).join('');
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Own Path — ${weekRangeText}</title><style>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Own Path — ${escapedWeekRangeText}</title><style>
     *{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,'Times New Roman',serif;color:#292827;background:#fff;padding:48px;font-size:13px;line-height:1.6}
     .report-header{text-align:center;margin-bottom:48px;padding-bottom:24px;border-bottom:2px solid #292827}
     .report-logo{font-family:Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#714cb6;margin-bottom:8px}
@@ -855,9 +879,9 @@ function buildPrintHtml(weekRangeText, generatedDate, studentRows, reportTitle =
   </style></head><body>
   <div class="report-header">
     <div class="report-logo">Own Path LMS</div>
-    <div class="report-title">${reportTitle}</div>
-    <div class="report-week">${weekRangeText}</div>
-    <div class="report-generated">Generated ${generatedDate}</div>
+    <div class="report-title">${escapedReportTitle}</div>
+    <div class="report-week">${escapedWeekRangeText}</div>
+    <div class="report-generated">Generated ${escapedGeneratedDate}</div>
   </div>
   ${sections}
   </body></html>`;

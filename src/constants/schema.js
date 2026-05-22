@@ -264,7 +264,7 @@ export const WeeklyReportSchema = {
   subjects_data: "object", // Map of legacy subject id -> SubjectProgressSchema
   assigned_blocks_snapshot: "array", // Weekly-plan block snapshots, including incomplete assigned blocks when available
   summaries: "array", // Flat list of student summary text snippets for compatibility surfaces
-  attachments: "array", // Placeholder for future evidence attachments
+  attachments: "array", // Placeholder for future evidence attachment metadata
   snapshot_model: "string", // weekly_plan when built from a published/archived plan, otherwise subjects
   weekly_plan_id: "string", // Exact weekly plan backing the record; empty on subject fallback
   school_year_label: "string", // Cached school year label
@@ -311,6 +311,17 @@ export const AssignedBlockSnapshotSchema = {
   legacySubjectTitle: "string", // Compatibility subject title snapshot
   legacyBlockIndex: "number", // Compatibility block index used by existing submissions/timers
   matchedSubmissionSummary: "object" // Submission summary snapshot when a matching completion exists
+};
+
+// Attachment Metadata Schema (nested in WeeklyReport.attachments)
+export const AttachmentMetadataSchema = {
+  id: "string", // Stable metadata id for one attached evidence file
+  name: "string", // Parent-visible file name
+  storagePath: "string", // Firebase Storage object path
+  contentType: "string", // MIME type recorded at upload time
+  sizeBytes: "number", // File size in bytes
+  uploadedAt: "timestamp", // When the file metadata was attached to the report
+  uploadedBy: "string" // Parent uid that added the file
 };
 
 // Daily Log Schema (for real-time tracking)

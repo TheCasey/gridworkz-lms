@@ -1,8 +1,8 @@
 # Curriculum And Weekly Plan Rollout
 
-Last updated: 2026-05-10
+Last updated: 2026-05-22
 
-Status: Ready for execution
+Status: Compatibility rollout implemented; richer planning model still future work
 
 ## Goal
 
@@ -30,8 +30,9 @@ Today the app is built around these live collections and behaviors:
 - `weeklyReports` remains the archived weekly record
 - `timerSessions` remains the timer persistence layer
 - `Curriculum.jsx` creates and edits active subject records
-- `StudentPortal.jsx` reads assigned subjects directly and derives the live work queue from those records
-- `Reports.jsx` and `reportUtils.js` summarize weekly work from `subjects` and `submissions`
+- `WeeklyPlanReviewPanel` can generate, save, and publish a student-week plan from current active subjects
+- `StudentPortal.jsx` prefers a published `weeklyPlan` for the current student-week, then falls back to assigned subjects when no published plan exists
+- `Reports.jsx` and `reportUtils.js` prefer reportable weekly-plan snapshots and fall back to subject-derived snapshots for mixed-model weeks
 - `ParentDashboard.jsx` still owns client-side rollover behavior
 
 Important compatibility burden:
@@ -39,8 +40,22 @@ Important compatibility burden:
 - active subjects can already be assigned to multiple students through `student_ids`
 - some current logic still supports legacy single-student `student_id` records
 - timer and submission behavior is still keyed by `subject_id`
+- weekly-plan blocks preserve `legacy_subject_id`, `legacy_subject_title`, and `legacy_block_index` so timers, submissions, reports, and fallback views can keep working during the transition
 
 This rollout therefore cannot be a big-bang rewrite.
+
+## Implemented Bridge
+
+The 2026-05-10 workflow completed the first production compatibility bridge:
+
+- schema constants now include `curriculumTemplates`, `assignments`, `weeklyPlans`, weekly block categories, completion modes, and weekly-plan statuses
+- `src/utils/weeklyPlanUtils.js` derives deterministic student-week plans from active subject records
+- `src/hooks/useWeeklyPlanRecord.js` and `src/components/curriculum/WeeklyPlanReviewPanel.jsx` provide the parent review, draft, refresh, and publish path
+- `src/hooks/useStudentPortalWeeklyPlan.js` moves the student portal onto published weekly work when present
+- `src/hooks/useWeeklyReportRecords.js`, `src/hooks/useWeeklyPlansForWeek.js`, and `src/utils/reportUtils.js` connect saved reports and rollover to the weekly-plan bridge
+- published previous-week plans are archived in the same client-side batch that creates rollover report records
+
+The bridge deliberately does not finish persisted curriculum templates, persisted assignment management, projects, worksheets, AI help, or backend-owned rollover automation.
 
 ## Rollout Principles
 
@@ -183,13 +198,22 @@ If the workflow reaches that point cleanly, the remaining reporting and rollover
 
 ## Exit Condition For This Workflow
 
-This rollout is complete when:
+This workflow is complete for the compatibility bridge when:
 
 - the repo contains live planning contracts for `CurriculumTemplate`, `Assignment`, and `WeeklyPlan`
 - published weekly plans are the primary operational surface for at least one student-week path
 - the student portal can execute that weekly plan without falling back to raw subjects in the normal case
 - weekly reports archive a published-week snapshot instead of relying only on implicit subject state
 - the current subject model remains only as compatibility input or legacy support, not as the primary definition of live weekly work
+
+The remaining product gap is the full planning model:
+
+- persisted curriculum template CRUD
+- persisted assignment management independent of the subject editor
+- project work allocation
+- worksheet/runtime and bounded help flows
+- backend-owned archival/reset automation
+- broader compliance and evidence workflows
 
 ## Related Docs
 

@@ -1,16 +1,19 @@
 # GridWorkz Roadmap
 
-Last updated: 2026-05-11
+Last updated: 2026-05-22
 
 ## Current Snapshot
 
-- `npm run build` and `npm run lint` both pass as of 2026-05-11.
+- `npm run build` and `npm run lint` both pass as of 2026-05-22.
 - A lightweight GitHub Actions workflow now runs build and lint on push and pull request.
 - The core web app is real and usable: parent auth, student magic-link portal with optional PIN, curriculum builder, timers, reports, settings, and client-side weekly rollover are all present.
 - The parent experience now uses a route-backed `/dashboard/*` shell with a shared feature registry, shell slots, extracted domain hooks, structural premium gating, and a dedicated Lockdown module.
 - The student portal now evaluates subject visibility, timer start, and submission access through one reusable access-policy layer instead of scattered inline checks.
+- The first weekly-plan compatibility bridge is implemented: parents can generate and publish student-week plans from current subjects, the student portal can prefer published weekly work, and reports can snapshot weekly-plan-backed records.
+- The curriculum subject editor has a compact block-objective modal path with a sticky shell and focused block editor, but destructive persisted-flow QA still needs a seeded or disposable account.
+- Reporting safety fixes are implemented locally: print output escapes report strings, assigned-but-incomplete weekly plans can be saved, weekly-plan report payloads preserve assigned block snapshots, and a dry-run validation fixture exists.
 - The Lockdown browser extension is now live on the trusted device contract: `/dashboard/lockdown` issues student-bound trusted enrollment material, the MV3 runtime exchanges it for an opaque device credential, `readLockdownDevicePolicy` drives secure sync, and cached fallback keeps enforcement active across restart or temporary sync failure.
-- Subscription enforcement is now live end to end in sandbox mode: shared entitlements, plan-aware UI, trusted callable creates, Firestore-rule backstops, and Stripe webhook billing sync are all deployed.
+- Subscription enforcement is now live end to end in sandbox mode: shared entitlements, plan-aware UI, trusted callable creates, Firestore-rule backstops, Stripe webhook billing sync, and the operator entitlement console MVP are all deployed.
 - The baseline product redesign is now the top planning priority: weekly autonomy, layered planning, projects, student workspace, and narrow AI need to be locked in before wider rollout.
 
 ## Baseline Status
@@ -19,13 +22,13 @@ Last updated: 2026-05-11
 | --- | --- | --- |
 | Parent auth + dashboard shell | Done | Firebase Auth, protected route-backed dashboard shell, shared feature registry, dedicated Lockdown module |
 | Student access model | Done | Public `/student/:slug` access with optional PIN |
-| Curriculum and weekly planning model | Partial | Current recurring subject builder exists, but the future template/assignment/weekly-plan model is not yet designed or implemented |
-| Student portal workspace | Partial | Student portal exists, but the future weekly workspace, project view, worksheet runtime, and help flows are not yet in place |
+| Curriculum and weekly planning model | Partial | Current subject builder remains the compatibility input; weekly-plan contracts, generation, publish, portal bridge, and report bridge are implemented, but persisted template/assignment management and projects are still future work |
+| Student portal workspace | Partial | Student portal can prefer published weekly-plan work; project view, worksheet runtime, and bounded help flows are not yet in place |
 | Weekly progress + live activity | Done | Dashboard cards, pulse feed, manual parent completion |
-| Weekly reports | Partial | Reports exist and can be browsed/printed, but evidence attachments and the richer reporting contract are not implemented |
+| Weekly reports | Partial | Reports can browse, save, print, escape report HTML, and snapshot assigned weekly-plan blocks; Evidence Drawer, Storage-backed attachments, backend archival, and richer compliance reporting are still open |
 | Week rollover | Partial | Client-driven rollover exists; server automation does not |
 | Firestore security posture | Partial | Subscription enforcement paths are now trusted, but public student portal flows and timer/submission exposure still need broader hardening |
-| Subscription + entitlement model | Partial | Billing sandbox, trusted entitlement authority, live UI gating, and Stripe webhook sync are now live; operator support tooling, projects UI, and live-mode billing rollout are still open |
+| Subscription + entitlement model | Partial | Billing sandbox, trusted entitlement authority, live UI gating, Stripe webhook sync, and operator support tooling are now live; projects UI and live-mode billing rollout are still open |
 | Lockdown browser controls | Partial | The browser-extension launch path is live: entitlement-gated parent management, trusted device pairing, secure policy reads, cached fallback, approved-origin and approved-creator enforcement, and downgrade-safe read-only behavior are current state. Kiosk mode and broader rollout hardening remain follow-on scope. |
 | AI assistance | Future | AI planning is now defined narrowly around curriculum chunking, worksheet drafting, and bounded student help |
 | Tooling baseline | Done | Build and lint both pass, and GitHub Actions runs them as a lightweight CI gate |
@@ -37,7 +40,7 @@ Last updated: 2026-05-11
 ### 1. Re-baseline the product around weekly autonomy
 
 - Lock the product stance that parents define the week, students run the day, and order or time-of-day is not the core contract.
-- Replace the flat subject-first planning model with a clearer future hierarchy: curriculum templates, assignments, weekly plans, weekly blocks, and projects.
+- Keep migrating from the subject-first compatibility input toward the clearer future hierarchy: persisted curriculum templates, assignments, weekly plans, weekly blocks, and projects.
 - Treat the student portal as a first-class differentiator, not a sidecar to the parent dashboard.
 - Define how Lockdown should eventually depend on the stronger weekly-plan and project model instead of only the current flat curriculum shape.
 - Keep AI narrow: parent-provided material in, review-first drafts out, and one-shot hinting instead of broad conversational tutoring.
@@ -53,6 +56,7 @@ Related docs:
 
 ### 2. Finish reporting and compliance workflows
 
+- Run the reporting safety fixture against emulator or staging data before beta claims.
 - Build the richer reporting and compliance contract on top of the future weekly-plan model.
 - Build the Evidence Drawer flow described in the original plan.
 - Add Firebase Storage-backed evidence attachments.
@@ -61,6 +65,7 @@ Related docs:
 Related docs:
 
 - [features/reporting-and-rollover.md](features/reporting-and-rollover.md)
+- [upgrades/reporting-safety-fixes.md](upgrades/reporting-safety-fixes.md)
 - [specs/reporting-and-compliance-contract.md](specs/reporting-and-compliance-contract.md)
 - [specs/report-evidence-drawer.md](specs/report-evidence-drawer.md)
 
@@ -81,7 +86,7 @@ Related docs:
 
 - Keep future premium modules on the same shell-level entitlement rail instead of reintroducing one-off gates.
 - Treat Stripe sandbox mode as the current integration baseline and switch to live-mode products, prices, and webhook secrets only when real payments are ready.
-- Add an operator-only entitlement console so support can resolve missing or incorrect parent entitlement state and test plan levels without direct Firestore edits.
+- Use the operator-only entitlement console for support repair and plan-level testing instead of direct Firestore edits.
 - Keep Lockdown as a top-tier module on its dedicated route and reuse the same shell-level gating contract for future premium surfaces.
 - Treat projects as the next major premium object type behind the same entitlement layer.
 

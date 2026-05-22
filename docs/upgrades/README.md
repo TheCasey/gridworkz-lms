@@ -10,6 +10,8 @@ Current upgrade docs:
 
 - [baseline-product-foundation.md](baseline-product-foundation.md)
 - [curriculum-and-weekly-plan-rollout.md](curriculum-and-weekly-plan-rollout.md)
+- [curriculum-modal-cleanup.md](curriculum-modal-cleanup.md)
+- [reporting-safety-fixes.md](reporting-safety-fixes.md)
 - [tooling-and-linting.md](tooling-and-linting.md)
 - [security-hardening.md](security-hardening.md)
 - [performance-and-bundle-splitting.md](performance-and-bundle-splitting.md)

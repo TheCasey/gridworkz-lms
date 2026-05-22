@@ -30,6 +30,7 @@ The parent dashboard is the authenticated control surface for the app. It owns:
 - Syncs reset and timezone settings to student records.
 - Shows live pulse activity and student progress.
 - Supports parent-led manual completion for a block.
+- Routes curriculum editing to the current subject compatibility input and includes the first weekly-plan review/publish bridge from active subjects.
 - Routes Lockdown into its own dedicated dashboard module instead of hosting the policy editor inside the students surface.
 - The `/dashboard/lockdown` route is entitlement-aware and uses the same shell rail for active, locked, and downgraded read-only states.
 - Multi-student households must choose a student explicitly before generating a trusted pairing code.
@@ -40,7 +41,7 @@ The parent dashboard is the authenticated control surface for the app. It owns:
 
 - This page still coordinates a meaningful amount of shell orchestration even after hook extraction.
 - Weekly rollover is run from the client.
-- The future weekly planning layer, project views, and direct weekly review surfaces are not implemented yet.
+- The first weekly-plan review/publish bridge exists, but persisted curriculum templates, assignment management, project views, worksheet runtime, and direct-edit weekly planning surfaces are not implemented yet.
 - Projects, billing, chores, and other future modules still need to be added on top of the shared shell contract.
 - Kiosk mode and broader Lockdown hardening remain follow-on scope outside the current parent dashboard launch surface.
 

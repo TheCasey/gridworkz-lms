@@ -1,6 +1,6 @@
 # GridWorkz Architecture
 
-Last updated: 2026-05-11
+Last updated: 2026-05-22
 
 ## Stack
 
@@ -16,6 +16,7 @@ Last updated: 2026-05-11
 - Student access is unauthenticated and lands in `/student/:slug`, with magic links generated against the public Own Path domain.
 - The parent experience now uses a nested route-backed `/dashboard/*` shell with a shared feature registry and shell metadata contract.
 - Lockdown now lives as its own dedicated dashboard module at `/dashboard/lockdown` instead of staying embedded inside the students surface.
+- Internal operator support access is available at `/ops/entitlements` for allowlisted support users.
 
 Key files:
 
@@ -28,7 +29,10 @@ Key files:
 - `extensions/chrome-lockdown-poc/background.js`: active MV3 trusted-device sync and cached enforcement runtime
 - `extensions/chrome-lockdown-poc/policy.js`: pairing-state normalization, policy caching, and fallback helpers
 - `src/pages/Curriculum.jsx`: subject builder and editor
+- `src/components/curriculum/WeeklyPlanReviewPanel.jsx`: current parent weekly-plan generation, review, and publish surface
+- `src/components/curriculum/BlockObjectivesEditor.jsx`: compact subject modal block-objective editor
 - `src/pages/Reports.jsx`: weekly reports and print/export behavior
+- `src/pages/OpsEntitlements.jsx`: operator-only entitlement inspection and support override console
 - `src/pages/Settings.jsx`: school year and weekly reset settings
 - `src/pages/StudentPortal.jsx`: student experience, timer flow, and block completion
 
@@ -48,6 +52,8 @@ Primary collections:
 - `lockdownPolicies`
 - `lockdownEnrollmentSessions`
 - `lockdownDevices`
+- `supportOperators`
+- `entitlementAuditLogs`
 
 The schema source of truth is `src/constants/schema.js`.
 
@@ -55,7 +61,8 @@ Core hierarchy:
 
 - Parent
 - Student
-- Subject assignment
+- Subject compatibility input
+- Weekly plan
 - Submission stream
 - Weekly report snapshot
 
@@ -63,9 +70,12 @@ Important modeling details:
 
 - Subjects support multi-student assignment through `student_ids`.
 - Student access is keyed by a generated slug and can be guarded by an optional `access_pin`.
-- Weekly reports cache school-year and quarter labels for filtering and reporting.
+- `weeklyPlans` are the current student-week execution bridge; they are generated from active subject records, can be published by parents, and are preferred by the student portal and reporting surfaces when present.
+- Weekly reports cache school-year and quarter labels for filtering and reporting, and weekly-plan-backed records can preserve assigned block snapshots in `assigned_blocks_snapshot`.
 - Timer sessions are stored in Firestore and mirrored in local storage for resilience.
 - `accountEntitlements/{uid}` is the server-owned plan and feature source for premium surfaces such as Lockdown.
+- `supportOperators/{uid}` is the server-owned allowlist for operator callables.
+- `entitlementAuditLogs` stores billing and operator entitlement events.
 - `lockdownPolicies/{parentId}` now survives only as a compatibility snapshot and migration boundary; it is not the active runtime trust boundary for paired browsers.
 - `lockdownEnrollmentSessions` stores short-lived server-owned trusted pairing tickets issued from `/dashboard/lockdown`.
 - `lockdownDevices` stores server-owned device bindings plus opaque credentials consumed by credential-authenticated policy reads.
@@ -77,6 +87,16 @@ Important modeling details:
 - Week calculations live in `src/utils/weekUtils.js`.
 - Parent settings define reset day, hour, minute, and timezone.
 - Rollover currently runs from the parent dashboard client and updates report state from there.
+- Reports prefer published or archived student-week `weeklyPlans` when available, then fall back to subject-derived snapshots for legacy or mixed-model weeks.
+- Report print builders escape report strings before writing print HTML.
+- `scripts/seed-reporting-validation.mjs --dry-run` generates the current manual QA fixture for incomplete-week records, assigned block snapshots, student portal checks, and rollover archival expectations.
+
+### Weekly planning bridge
+
+- Weekly-plan contracts and helpers live in `src/constants/schema.js` and `src/utils/weeklyPlanUtils.js`.
+- `src/hooks/useWeeklyPlanRecord.js` owns the parent review/publish record path.
+- `src/hooks/useStudentPortalWeeklyPlan.js` lets the student portal prefer a published weekly plan before falling back to subjects.
+- The current subject editor remains the compatibility input; persisted first-class curriculum templates and assignment management are not built out yet.
 
 ### Timers
 
@@ -109,6 +129,7 @@ Important modeling details:
 - Submission creation is currently public.
 - Timer session access is guarded by data-shape checks plus student/subject assignment checks, but remains unauthenticated.
 - `accountEntitlements/{uid}` is owner-readable but server-writable only, with writes now owned by the trusted billing webhook path.
+- `supportOperators` and `entitlementAuditLogs` are server-owned; operator reads and writes go through trusted Cloud Functions, not direct client Firestore writes.
 - New student creates and new active-subject creates now run through trusted callable functions instead of direct Firestore client creates.
 - Active Lockdown pairing and sync no longer rely on public Firestore reads or raw Firebase web config. `lockdownEnrollmentSessions` and `lockdownDevices` are server-owned only, and paired browsers sync through trusted Cloud Function endpoints.
 - `lockdownPolicies/{parentId}` still allows a public compatibility snapshot read, but that path is now migration-boundary history rather than the active device-policy trust boundary.
@@ -117,8 +138,9 @@ This is sufficient for the current browser-extension launch path, but the broade
 
 ## Platform Gaps
 
-- Stripe-backed billing sync and the trusted entitlement document now exist in sandbox mode, but live-mode payment rollout is still pending.
+- Stripe-backed billing sync, the trusted entitlement document, and the operator entitlement console now exist in sandbox mode, but live-mode payment rollout and seeded operator validation are still pending.
 - The route-backed dashboard shell and premium gating boundaries are now in place, but future premium modules such as projects, chores, or billing still need to be built onto that shared contract.
+- The weekly-plan compatibility bridge is live, but persisted curriculum template management, assignment management, richer projects, worksheet runtime, and full compliance reporting are still future work.
 - The browser-extension track is now live on the trusted device contract. Follow-on Lockdown scope is kiosk mode, broader rollout hardening, and eventual retirement of compatibility-only snapshot paths.
 - Broader student-flow hardening still remains outside the Lockdown launch scope, especially around public reads and unauthenticated timer or submission behavior.
 
