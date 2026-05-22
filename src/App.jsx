@@ -13,6 +13,7 @@ import {
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const MarketingHome = lazy(() => import('./pages/MarketingHome'));
+const OpsEntitlements = lazy(() => import('./pages/OpsEntitlements'));
 const ParentDashboard = lazy(() => import('./pages/ParentDashboard'));
 const Curriculum = lazy(() => import('./pages/Curriculum'));
 const Lockdown = lazy(() => import('./pages/Lockdown'));
@@ -187,6 +188,16 @@ function AppRoutes() {
           element={<Navigate to={dashboardFeaturesById.students.path} replace />}
         />
       </Route>
+      <Route
+        path="/ops/entitlements"
+        element={
+          <DashboardHostRoute>
+            <ProtectedRoute>
+              {withFullScreenSuspense(<OpsEntitlements />)}
+            </ProtectedRoute>
+          </DashboardHostRoute>
+        }
+      />
       <Route 
         path="/student/:slug" 
         element={

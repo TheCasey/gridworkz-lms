@@ -167,6 +167,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Support operators: server-owned allowlist for trusted operator callables
+    match /supportOperators/{userId} {
+      allow read, write: if false;
+    }
+
     // Lockdown PoC policies: legacy compatibility path only until Phase 4 migrates
     // the extension runtime to the trusted device-policy contract.
     match /lockdownPolicies/{policyId} {

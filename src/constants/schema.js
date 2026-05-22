@@ -373,6 +373,16 @@ export const LockdownDeviceSchema = {
   updated_at: "timestamp"
 };
 
+// Support operator schema (server-owned operator allowlist)
+export const SupportOperatorSchema = {
+  uid: "string", // Firebase Auth UID; document id should match this uid
+  email: "string", // Operator email address for session display and audit attribution
+  role: "string", // support | admin
+  is_active: "boolean", // Whether this operator can access trusted operator callables
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
 // Account Entitlement nested schemas (server-owned billing and plan state)
 export const AccountEntitlementFeatureOverridesSchema = {
   can_use_projects: "boolean", // Optional override for the planned projects feature
@@ -410,6 +420,7 @@ export const Collections = {
   SUBMISSIONS: "submissions",
   TIMER_SESSIONS: "timerSessions",
   ACCOUNT_ENTITLEMENTS: "accountEntitlements",
+  SUPPORT_OPERATORS: "supportOperators",
   LOCKDOWN_POLICIES: "lockdownPolicies",
   LOCKDOWN_ENROLLMENT_SESSIONS: "lockdownEnrollmentSessions",
   LOCKDOWN_DEVICES: "lockdownDevices"
@@ -418,6 +429,7 @@ export const Collections = {
 export const TrustedFunctionNames = {
   CREATE_STUDENT: "createStudent",
   CREATE_SUBJECT: "createSubject",
+  GET_OPERATOR_SESSION: "getOperatorSession",
   BILLING_WEBHOOK: "billingWebhook",
   ISSUE_LOCKDOWN_ENROLLMENT: "issueLockdownEnrollment",
   EXCHANGE_LOCKDOWN_ENROLLMENT: "lockdownExchangeEnrollment",

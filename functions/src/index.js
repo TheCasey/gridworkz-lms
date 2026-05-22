@@ -22,6 +22,7 @@ const COLLECTIONS = Object.freeze({
   PARENTS: 'parents',
   STUDENTS: 'students',
   SUBJECTS: 'subjects',
+  SUPPORT_OPERATORS: 'supportOperators',
   TIMER_SESSIONS: 'timerSessions',
   WEEKLY_PLANS: 'weeklyPlans',
 });
@@ -38,6 +39,13 @@ const SUBSCRIPTION_STATUSES = Object.freeze({
   PAST_DUE: 'past_due',
   CANCELED: 'canceled',
 });
+
+const OPERATOR_ROLES = Object.freeze({
+  SUPPORT: 'support',
+  ADMIN: 'admin',
+});
+
+const SUPPORTED_OPERATOR_ROLES = new Set(Object.values(OPERATOR_ROLES));
 
 const PLAN_LIMITS = Object.freeze({
   [PLAN_IDS.FREE]: Object.freeze({
@@ -149,6 +157,10 @@ const entitlementRef = (parentId) => (
   db.collection(COLLECTIONS.ACCOUNT_ENTITLEMENTS).doc(parentId)
 );
 
+const supportOperatorRef = (operatorId) => (
+  db.collection(COLLECTIONS.SUPPORT_OPERATORS).doc(operatorId)
+);
+
 const lockdownEnrollmentRef = (enrollmentId) => (
   db.collection(COLLECTIONS.LOCKDOWN_ENROLLMENT_SESSIONS).doc(enrollmentId)
 );
@@ -160,6 +172,39 @@ const lockdownDeviceRef = (deviceId) => (
 const trimString = (value) => (
   typeof value === 'string' ? value.trim() : ''
 );
+
+export const normalizeOperatorSessionRecord = ({ uid, operatorRecord } = {}) => {
+  const normalizedUid = trimString(uid);
+
+  if (
+    !normalizedUid ||
+    !operatorRecord ||
+    typeof operatorRecord !== 'object' ||
+    Array.isArray(operatorRecord)
+  ) {
+    return null;
+  }
+
+  const recordUid = trimString(operatorRecord.uid);
+  const email = trimString(operatorRecord.email);
+  const role = trimString(operatorRecord.role);
+
+  if (
+    recordUid !== normalizedUid ||
+    !email ||
+    operatorRecord.is_active !== true ||
+    !SUPPORTED_OPERATOR_ROLES.has(role)
+  ) {
+    return null;
+  }
+
+  return {
+    uid: normalizedUid,
+    email,
+    role,
+    is_active: true,
+  };
+};
 
 const timeZoneFormatterCache = new Map();
 
@@ -1418,6 +1463,24 @@ export const createSubject = onCall({ region: REGION }, async (request) => {
   return {
     id: createdRef.id,
   };
+});
+
+export const getOperatorSession = onCall({ region: REGION }, async (request) => {
+  const operatorId = ensureAuthenticated(request);
+  const operatorSnapshot = await supportOperatorRef(operatorId).get();
+  const operatorSession = normalizeOperatorSessionRecord({
+    uid: operatorId,
+    operatorRecord: operatorSnapshot.exists ? operatorSnapshot.data() : null,
+  });
+
+  if (!operatorSession) {
+    throw new HttpsError(
+      'permission-denied',
+      'This account is not authorized for operator access.'
+    );
+  }
+
+  return operatorSession;
 });
 
 export const issueLockdownEnrollment = onCall({ region: REGION }, async (request) => {

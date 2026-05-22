@@ -7,6 +7,10 @@ const functions = getFunctions(app, region);
 
 const createStudentCallable = httpsCallable(functions, TrustedFunctionNames.CREATE_STUDENT);
 const createSubjectCallable = httpsCallable(functions, TrustedFunctionNames.CREATE_SUBJECT);
+const getOperatorSessionCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.GET_OPERATOR_SESSION
+);
 const issueLockdownEnrollmentCallable = httpsCallable(
   functions,
   TrustedFunctionNames.ISSUE_LOCKDOWN_ENROLLMENT
@@ -19,6 +23,11 @@ export const createTrustedStudent = async (payload) => {
 
 export const createTrustedSubject = async (payload) => {
   const result = await createSubjectCallable(payload);
+  return result.data;
+};
+
+export const getTrustedOperatorSession = async () => {
+  const result = await getOperatorSessionCallable();
   return result.data;
 };
 
