@@ -17,6 +17,7 @@ const STRIPE_LOCKDOWN_PRICE_ID = defineSecret('STRIPE_LOCKDOWN_PRICE_ID');
 
 const COLLECTIONS = Object.freeze({
   ACCOUNT_ENTITLEMENTS: 'accountEntitlements',
+  ENTITLEMENT_AUDIT_LOGS: 'entitlementAuditLogs',
   LOCKDOWN_DEVICES: 'lockdownDevices',
   LOCKDOWN_ENROLLMENT_SESSIONS: 'lockdownEnrollmentSessions',
   PARENTS: 'parents',
@@ -38,6 +39,30 @@ const SUBSCRIPTION_STATUSES = Object.freeze({
   ACTIVE: 'active',
   PAST_DUE: 'past_due',
   CANCELED: 'canceled',
+});
+
+const BILLING_PROVIDERS = Object.freeze({
+  STRIPE: 'stripe',
+});
+
+const ENTITLEMENT_RESOLUTION_SOURCES = Object.freeze({
+  BILLING: 'billing',
+  MANUAL_OVERRIDE: 'manual_override',
+  FALLBACK_INITIALIZED: 'fallback_initialized',
+});
+
+const ENTITLEMENT_UPDATED_VIA = Object.freeze({
+  BILLING_WEBHOOK: 'billing_webhook',
+  OPERATOR_CONSOLE: 'operator_console',
+  OPERATOR_CLEAR_OVERRIDE: 'operator_clear_override',
+});
+
+const ENTITLEMENT_AUDIT_EVENT_TYPES = Object.freeze({
+  BILLING_WEBHOOK_SYNC: 'billing_webhook_sync',
+  OVERRIDE_APPLIED: 'override_applied',
+  OVERRIDE_CLEARED: 'override_cleared',
+  RECORD_INITIALIZED: 'record_initialized',
+  OVERRIDE_EXPIRED: 'override_expired',
 });
 
 const OPERATOR_ROLES = Object.freeze({
@@ -82,6 +107,11 @@ const DEFAULT_PARENT_SETTINGS = Object.freeze({
   week_reset_hour: 0,
   week_reset_minute: 0,
   timezone: 'America/Chicago',
+});
+
+const DEFAULT_USAGE_SNAPSHOT = Object.freeze({
+  students: 0,
+  curriculum_items: 0,
 });
 
 const LOCKDOWN_CONTRACTS = Object.freeze({
@@ -142,7 +172,7 @@ const normalizePlanId = (planId) => (
   Object.values(PLAN_IDS).includes(planId) ? planId : PLAN_IDS.FREE
 );
 
-const buildFeatureSet = (planId, featureOverrides = {}) => {
+export const buildFeatureSet = (planId, featureOverrides = {}) => {
   const planFeatures = PLAN_LIMITS[normalizePlanId(planId)].features;
 
   return Object.keys(planFeatures).reduce((resolved, featureKey) => {
@@ -155,6 +185,10 @@ const buildFeatureSet = (planId, featureOverrides = {}) => {
 
 const entitlementRef = (parentId) => (
   db.collection(COLLECTIONS.ACCOUNT_ENTITLEMENTS).doc(parentId)
+);
+
+const entitlementAuditLogRef = () => (
+  db.collection(COLLECTIONS.ENTITLEMENT_AUDIT_LOGS).doc()
 );
 
 const supportOperatorRef = (operatorId) => (
@@ -172,6 +206,388 @@ const lockdownDeviceRef = (deviceId) => (
 const trimString = (value) => (
   typeof value === 'string' ? value.trim() : ''
 );
+
+const isPlainObject = (value) => (
+  value !== null &&
+  typeof value === 'object' &&
+  !Array.isArray(value)
+);
+
+const hasOwn = (value, key) => (
+  isPlainObject(value) && Object.prototype.hasOwnProperty.call(value, key)
+);
+
+const normalizeSubscriptionStatus = (subscriptionStatus) => (
+  Object.values(SUBSCRIPTION_STATUSES).includes(subscriptionStatus)
+    ? subscriptionStatus
+    : null
+);
+
+const normalizeBillingProvider = (billingProvider) => {
+  const normalizedProvider = trimString(billingProvider);
+  return normalizedProvider === BILLING_PROVIDERS.STRIPE ? BILLING_PROVIDERS.STRIPE : null;
+};
+
+export const normalizeEntitlementFeatureOverrides = (featureOverrides = {}) => {
+  const source = isPlainObject(featureOverrides) ? featureOverrides : {};
+  const knownFeatureKeys = Object.keys(PLAN_LIMITS[PLAN_IDS.FREE].features);
+
+  return knownFeatureKeys.reduce((normalized, featureKey) => {
+    if (typeof source[featureKey] === 'boolean') {
+      normalized[featureKey] = source[featureKey];
+    }
+
+    return normalized;
+  }, {});
+};
+
+const normalizeUsageSnapshot = (usageSnapshot = {}) => {
+  const source = isPlainObject(usageSnapshot) ? usageSnapshot : {};
+  const students = Number.isFinite(source.students) ? source.students : DEFAULT_USAGE_SNAPSHOT.students;
+  const curriculumItems = Number.isFinite(source.curriculum_items)
+    ? source.curriculum_items
+    : DEFAULT_USAGE_SNAPSHOT.curriculum_items;
+
+  return {
+    students,
+    curriculum_items: curriculumItems,
+  };
+};
+
+const timestampToMillis = (value) => {
+  if (!value) return null;
+
+  if (typeof value.toMillis === 'function') {
+    const millis = value.toMillis();
+    return Number.isFinite(millis) ? millis : null;
+  }
+
+  if (value instanceof Date) {
+    const millis = value.getTime();
+    return Number.isFinite(millis) ? millis : null;
+  }
+
+  if (Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const millis = Date.parse(value);
+    return Number.isFinite(millis) ? millis : null;
+  }
+
+  return null;
+};
+
+export const isEntitlementManualOverrideActive = (manualOverride, nowMillis = Date.now()) => {
+  if (!isPlainObject(manualOverride) || manualOverride.is_active !== true) {
+    return false;
+  }
+
+  const expiresAtMillis = timestampToMillis(manualOverride.expires_at);
+  return expiresAtMillis === null || expiresAtMillis > nowMillis;
+};
+
+export const isEntitlementManualOverrideExpired = (manualOverride, nowMillis = Date.now()) => {
+  if (!isPlainObject(manualOverride) || manualOverride.is_active !== true) {
+    return false;
+  }
+
+  const expiresAtMillis = timestampToMillis(manualOverride.expires_at);
+  return expiresAtMillis !== null && expiresAtMillis <= nowMillis;
+};
+
+export const buildEntitlementBillingState = ({
+  planId = PLAN_IDS.FREE,
+  subscriptionStatus = null,
+  billingProvider = null,
+  featureOverrides = {},
+  trialEndsAt = null,
+  currentPeriodEnd = null,
+  updatedAt = null,
+} = {}) => ({
+  plan_id: normalizePlanId(planId),
+  subscription_status: normalizeSubscriptionStatus(subscriptionStatus),
+  billing_provider: normalizeBillingProvider(billingProvider),
+  feature_overrides: normalizeEntitlementFeatureOverrides(featureOverrides),
+  trial_ends_at: trialEndsAt || null,
+  current_period_end: currentPeriodEnd || null,
+  updated_at: updatedAt || null,
+});
+
+const buildBillingStateFromExistingEntitlement = (existingEntitlement = {}) => {
+  const existingBillingState = isPlainObject(existingEntitlement?.billing_state)
+    ? existingEntitlement.billing_state
+    : null;
+  const hasLegacyBillingState = Boolean(
+    hasOwn(existingEntitlement, 'plan_id') ||
+    hasOwn(existingEntitlement, 'subscription_status') ||
+    hasOwn(existingEntitlement, 'billing_provider') ||
+    hasOwn(existingEntitlement, 'feature_overrides') ||
+    hasOwn(existingEntitlement, 'trial_ends_at') ||
+    hasOwn(existingEntitlement, 'current_period_end')
+  );
+  const rawBillingState = existingBillingState || (hasLegacyBillingState ? existingEntitlement : {});
+
+  return {
+    billingState: buildEntitlementBillingState({
+      planId: rawBillingState.plan_id,
+      subscriptionStatus: rawBillingState.subscription_status,
+      billingProvider: rawBillingState.billing_provider,
+      featureOverrides: rawBillingState.feature_overrides,
+      trialEndsAt: rawBillingState.trial_ends_at,
+      currentPeriodEnd: rawBillingState.current_period_end,
+      updatedAt: rawBillingState.updated_at || null,
+    }),
+    hasBillingState: Boolean(existingBillingState || hasLegacyBillingState),
+  };
+};
+
+const buildEffectiveEntitlementFieldsFromBilling = ({
+  parentId,
+  billingState,
+  usageSnapshot,
+}) => ({
+  parent_id: parentId,
+  plan_id: billingState.plan_id,
+  subscription_status: billingState.subscription_status,
+  billing_provider: billingState.billing_provider,
+  feature_overrides: normalizeEntitlementFeatureOverrides(billingState.feature_overrides),
+  usage_snapshot: normalizeUsageSnapshot(usageSnapshot),
+  trial_ends_at: billingState.trial_ends_at || null,
+  current_period_end: billingState.current_period_end || null,
+});
+
+const buildEffectiveEntitlementFieldsFromManualOverride = ({
+  parentId,
+  manualOverride,
+  billingState,
+  usageSnapshot,
+}) => ({
+  parent_id: parentId,
+  plan_id: normalizePlanId(manualOverride?.plan_id),
+  subscription_status: normalizeSubscriptionStatus(manualOverride?.subscription_status),
+  billing_provider: billingState.billing_provider,
+  feature_overrides: normalizeEntitlementFeatureOverrides(manualOverride?.feature_overrides),
+  usage_snapshot: normalizeUsageSnapshot(usageSnapshot),
+  trial_ends_at: billingState.trial_ends_at || null,
+  current_period_end: billingState.current_period_end || null,
+});
+
+const buildPreservedEffectiveEntitlementFields = ({
+  parentId,
+  existingEntitlement,
+  fallbackFields,
+}) => ({
+  parent_id: parentId,
+  plan_id: hasOwn(existingEntitlement, 'plan_id')
+    ? normalizePlanId(existingEntitlement.plan_id)
+    : fallbackFields.plan_id,
+  subscription_status: hasOwn(existingEntitlement, 'subscription_status')
+    ? normalizeSubscriptionStatus(existingEntitlement.subscription_status)
+    : fallbackFields.subscription_status,
+  billing_provider: hasOwn(existingEntitlement, 'billing_provider')
+    ? normalizeBillingProvider(existingEntitlement.billing_provider)
+    : fallbackFields.billing_provider,
+  feature_overrides: hasOwn(existingEntitlement, 'feature_overrides')
+    ? normalizeEntitlementFeatureOverrides(existingEntitlement.feature_overrides)
+    : fallbackFields.feature_overrides,
+  usage_snapshot: hasOwn(existingEntitlement, 'usage_snapshot')
+    ? normalizeUsageSnapshot(existingEntitlement.usage_snapshot)
+    : fallbackFields.usage_snapshot,
+  trial_ends_at: hasOwn(existingEntitlement, 'trial_ends_at')
+    ? existingEntitlement.trial_ends_at || null
+    : fallbackFields.trial_ends_at,
+  current_period_end: hasOwn(existingEntitlement, 'current_period_end')
+    ? existingEntitlement.current_period_end || null
+    : fallbackFields.current_period_end,
+});
+
+export const resolveEntitlementRecord = ({
+  parentId = '',
+  entitlementDoc = {},
+  nowMillis = Date.now(),
+} = {}) => {
+  const existingEntitlement = isPlainObject(entitlementDoc) ? entitlementDoc : {};
+  const normalizedParentId = trimString(parentId) || trimString(existingEntitlement.parent_id);
+  const { billingState, hasBillingState } = buildBillingStateFromExistingEntitlement(existingEntitlement);
+  const usageSnapshot = normalizeUsageSnapshot(existingEntitlement.usage_snapshot);
+  const hasActiveManualOverride = isEntitlementManualOverrideActive(
+    existingEntitlement.manual_override,
+    nowMillis
+  );
+  const effectiveFields = hasActiveManualOverride
+    ? buildEffectiveEntitlementFieldsFromManualOverride({
+      parentId: normalizedParentId,
+      manualOverride: existingEntitlement.manual_override,
+      billingState,
+      usageSnapshot,
+    })
+    : buildEffectiveEntitlementFieldsFromBilling({
+      parentId: normalizedParentId,
+      billingState,
+      usageSnapshot,
+    });
+  const resolutionSource = hasActiveManualOverride
+    ? ENTITLEMENT_RESOLUTION_SOURCES.MANUAL_OVERRIDE
+    : (
+      hasBillingState
+        ? ENTITLEMENT_RESOLUTION_SOURCES.BILLING
+        : ENTITLEMENT_RESOLUTION_SOURCES.FALLBACK_INITIALIZED
+    );
+
+  return {
+    ...effectiveFields,
+    billing_state: billingState,
+    manual_override: isPlainObject(existingEntitlement.manual_override)
+      ? existingEntitlement.manual_override
+      : null,
+    resolution_source: resolutionSource,
+    updated_via: existingEntitlement.updated_via || null,
+    updated_at: existingEntitlement.updated_at || null,
+    planId: effectiveFields.plan_id,
+    limits: PLAN_LIMITS[effectiveFields.plan_id],
+    features: buildFeatureSet(effectiveFields.plan_id, effectiveFields.feature_overrides),
+    hasActiveManualOverride,
+    hasExpiredManualOverride: isEntitlementManualOverrideExpired(
+      existingEntitlement.manual_override,
+      nowMillis
+    ),
+  };
+};
+
+export const buildEntitlementWriteForBillingSync = ({
+  parentId,
+  existingEntitlement = {},
+  billingState,
+  nowTimestamp = null,
+  nowMillis = null,
+} = {}) => {
+  const normalizedParentId = trimString(parentId);
+  const existing = isPlainObject(existingEntitlement) ? existingEntitlement : {};
+  const resolvedNowMillis = Number.isFinite(nowMillis)
+    ? nowMillis
+    : (timestampToMillis(nowTimestamp) || Date.now());
+  const normalizedBillingState = buildEntitlementBillingState({
+    planId: billingState?.plan_id,
+    subscriptionStatus: billingState?.subscription_status,
+    billingProvider: billingState?.billing_provider,
+    featureOverrides: billingState?.feature_overrides,
+    trialEndsAt: billingState?.trial_ends_at,
+    currentPeriodEnd: billingState?.current_period_end,
+    updatedAt: billingState?.updated_at || nowTimestamp || null,
+  });
+  const hasActiveManualOverride = isEntitlementManualOverrideActive(
+    existing.manual_override,
+    resolvedNowMillis
+  );
+  const hasExpiredManualOverride = isEntitlementManualOverrideExpired(
+    existing.manual_override,
+    resolvedNowMillis
+  );
+  const usageSnapshot = normalizeUsageSnapshot(existing.usage_snapshot);
+  const fallbackManualFields = buildEffectiveEntitlementFieldsFromManualOverride({
+    parentId: normalizedParentId,
+    manualOverride: existing.manual_override,
+    billingState: normalizedBillingState,
+    usageSnapshot,
+  });
+  const effectiveFields = hasActiveManualOverride
+    ? buildPreservedEffectiveEntitlementFields({
+      parentId: normalizedParentId,
+      existingEntitlement: existing,
+      fallbackFields: fallbackManualFields,
+    })
+    : buildEffectiveEntitlementFieldsFromBilling({
+      parentId: normalizedParentId,
+      billingState: normalizedBillingState,
+      usageSnapshot,
+    });
+  const entitlementDoc = {
+    ...effectiveFields,
+    billing_state: normalizedBillingState,
+    resolution_source: hasActiveManualOverride
+      ? ENTITLEMENT_RESOLUTION_SOURCES.MANUAL_OVERRIDE
+      : ENTITLEMENT_RESOLUTION_SOURCES.BILLING,
+    updated_via: ENTITLEMENT_UPDATED_VIA.BILLING_WEBHOOK,
+    updated_at: nowTimestamp || null,
+  };
+
+  if (hasExpiredManualOverride) {
+    entitlementDoc.manual_override = {
+      ...existing.manual_override,
+      is_active: false,
+    };
+  }
+
+  return {
+    entitlementDoc,
+    hasActiveManualOverride,
+    hasExpiredManualOverride,
+  };
+};
+
+const normalizeManualOverrideAuditSnapshot = (manualOverride) => {
+  if (!isPlainObject(manualOverride)) {
+    return null;
+  }
+
+  return {
+    is_active: manualOverride.is_active === true,
+    plan_id: normalizePlanId(manualOverride.plan_id),
+    subscription_status: normalizeSubscriptionStatus(manualOverride.subscription_status),
+    feature_overrides: normalizeEntitlementFeatureOverrides(manualOverride.feature_overrides),
+    reason: trimString(manualOverride.reason),
+    expires_at: manualOverride.expires_at || null,
+    applied_by_uid: trimString(manualOverride.applied_by_uid),
+    applied_by_email: trimString(manualOverride.applied_by_email),
+    applied_at: manualOverride.applied_at || null,
+  };
+};
+
+export const buildEntitlementAuditSnapshot = (entitlementDoc) => {
+  if (!isPlainObject(entitlementDoc)) {
+    return null;
+  }
+
+  return {
+    parent_id: trimString(entitlementDoc.parent_id),
+    plan_id: normalizePlanId(entitlementDoc.plan_id),
+    subscription_status: normalizeSubscriptionStatus(entitlementDoc.subscription_status),
+    billing_provider: normalizeBillingProvider(entitlementDoc.billing_provider),
+    feature_overrides: normalizeEntitlementFeatureOverrides(entitlementDoc.feature_overrides),
+    usage_snapshot: normalizeUsageSnapshot(entitlementDoc.usage_snapshot),
+    trial_ends_at: entitlementDoc.trial_ends_at || null,
+    current_period_end: entitlementDoc.current_period_end || null,
+    resolution_source: trimString(entitlementDoc.resolution_source),
+    updated_via: trimString(entitlementDoc.updated_via),
+    billing_state: buildBillingStateFromExistingEntitlement(entitlementDoc).billingState,
+    manual_override: normalizeManualOverrideAuditSnapshot(entitlementDoc.manual_override),
+  };
+};
+
+export const buildEntitlementAuditLog = ({
+  parentId,
+  operatorSession = null,
+  eventType,
+  reason = '',
+  before = null,
+  after = null,
+  createdAt = null,
+} = {}) => ({
+  parent_id: trimString(parentId),
+  operator_uid: trimString(operatorSession?.uid) || null,
+  operator_email: trimString(operatorSession?.email) || null,
+  event_type: trimString(eventType),
+  reason: trimString(reason),
+  before: buildEntitlementAuditSnapshot(before),
+  after: buildEntitlementAuditSnapshot(after),
+  created_at: createdAt || FieldValue.serverTimestamp(),
+});
+
+const queueEntitlementAuditWrite = (batch, auditLog) => {
+  batch.set(entitlementAuditLogRef(), buildEntitlementAuditLog(auditLog));
+};
 
 export const normalizeOperatorSessionRecord = ({ uid, operatorRecord } = {}) => {
   const normalizedUid = trimString(uid);
@@ -418,14 +834,17 @@ const toTimestampOrNull = (seconds) => (
 const getAccountEntitlementState = async (parentId) => {
   const snapshot = await entitlementRef(parentId).get();
   const data = snapshot.exists ? snapshot.data() : {};
-  const planId = normalizePlanId(data?.plan_id);
+  const resolvedEntitlement = resolveEntitlementRecord({
+    parentId,
+    entitlementDoc: data,
+  });
 
   return {
     exists: snapshot.exists,
     data,
-    planId,
-    limits: PLAN_LIMITS[planId],
-    features: buildFeatureSet(planId, data?.feature_overrides),
+    planId: resolvedEntitlement.planId,
+    limits: resolvedEntitlement.limits,
+    features: resolvedEntitlement.features,
   };
 };
 
@@ -1297,29 +1716,7 @@ const mapStripeSubscriptionStatus = (stripeStatus) => {
   }
 };
 
-const buildEntitlementDocument = ({
-  parentId,
-  existingEntitlement = {},
-  planId,
-  subscriptionStatus,
-  trialEndsAt,
-  currentPeriodEnd,
-}) => ({
-  parent_id: parentId,
-  plan_id: planId,
-  subscription_status: subscriptionStatus,
-  billing_provider: 'stripe',
-  feature_overrides: existingEntitlement?.feature_overrides || {},
-  usage_snapshot: existingEntitlement?.usage_snapshot || {
-    students: 0,
-    curriculum_items: 0,
-  },
-  trial_ends_at: trialEndsAt,
-  current_period_end: currentPeriodEnd,
-  updated_at: FieldValue.serverTimestamp(),
-});
-
-const syncEntitlementFromSubscription = async (stripe, subscription) => {
+const syncEntitlementFromSubscription = async (stripe, subscription, eventType = 'stripe_subscription_sync') => {
   const parentId = await resolveStripeParentIdFromSubscription(stripe, subscription);
   if (!parentId) {
     throw new Error('Stripe subscription is missing parent_id metadata or customer metadata.');
@@ -1336,16 +1733,57 @@ const syncEntitlementFromSubscription = async (stripe, subscription) => {
     : rawPlanId;
 
   const existingSnapshot = await entitlementRef(parentId).get();
-  const entitlementDoc = buildEntitlementDocument({
-    parentId,
-    existingEntitlement: existingSnapshot.exists ? existingSnapshot.data() : {},
+  const existingEntitlement = existingSnapshot.exists ? existingSnapshot.data() : {};
+  const nowTimestamp = Timestamp.now();
+  const billingState = buildEntitlementBillingState({
     planId,
     subscriptionStatus,
+    billingProvider: BILLING_PROVIDERS.STRIPE,
+    featureOverrides: existingEntitlement?.billing_state?.feature_overrides
+      || existingEntitlement?.feature_overrides
+      || {},
     trialEndsAt: toTimestampOrNull(subscription.trial_end),
     currentPeriodEnd: toTimestampOrNull(subscription.current_period_end),
+    updatedAt: nowTimestamp,
+  });
+  const {
+    entitlementDoc,
+    hasExpiredManualOverride,
+  } = buildEntitlementWriteForBillingSync({
+    parentId,
+    existingEntitlement,
+    billingState,
+    nowTimestamp,
+    nowMillis: nowTimestamp.toMillis(),
+  });
+  const afterEntitlement = {
+    ...existingEntitlement,
+    ...entitlementDoc,
+  };
+  const batch = db.batch();
+
+  batch.set(entitlementRef(parentId), entitlementDoc, { merge: true });
+  queueEntitlementAuditWrite(batch, {
+    parentId,
+    eventType: ENTITLEMENT_AUDIT_EVENT_TYPES.BILLING_WEBHOOK_SYNC,
+    reason: eventType,
+    before: existingSnapshot.exists ? existingEntitlement : null,
+    after: afterEntitlement,
+    createdAt: nowTimestamp,
   });
 
-  await entitlementRef(parentId).set(entitlementDoc, { merge: true });
+  if (hasExpiredManualOverride) {
+    queueEntitlementAuditWrite(batch, {
+      parentId,
+      eventType: ENTITLEMENT_AUDIT_EVENT_TYPES.OVERRIDE_EXPIRED,
+      reason: 'manual override expired during billing webhook sync',
+      before: existingSnapshot.exists ? existingEntitlement : null,
+      after: afterEntitlement,
+      createdAt: nowTimestamp,
+    });
+  }
+
+  await batch.commit();
 };
 
 export const createStudent = onCall({ region: REGION }, async (request) => {
@@ -1814,13 +2252,13 @@ export const billingWebhook = onRequest({
           },
           client_reference_id: session.client_reference_id || subscription.client_reference_id,
         };
-        await syncEntitlementFromSubscription(stripe, hydratedSubscription);
+        await syncEntitlementFromSubscription(stripe, hydratedSubscription, event.type);
         break;
       }
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted': {
-        await syncEntitlementFromSubscription(stripe, event.data.object);
+        await syncEntitlementFromSubscription(stripe, event.data.object, event.type);
         break;
       }
       default:

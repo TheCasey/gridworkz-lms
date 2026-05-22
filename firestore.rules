@@ -167,6 +167,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Entitlement audit logs: server-owned support and billing history
+    match /entitlementAuditLogs/{logId} {
+      allow read, write: if false;
+    }
+
     // Support operators: server-owned allowlist for trusted operator callables
     match /supportOperators/{userId} {
       allow read, write: if false;

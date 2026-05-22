@@ -1,17 +1,64 @@
 import {
+  BillingProviders,
   DEFAULT_PLAN_ID,
   EntitlementFeatureKeys,
   EntitlementLimitKeys,
+  EntitlementResolutionSources,
   getEntitlementPlan,
   getPlanLimit,
   getUpgradeCopy,
   isUnlimitedPlanLimit,
+  SubscriptionStatuses,
 } from '../constants/entitlements';
 
 const DEFAULT_USAGE = Object.freeze({
   [EntitlementLimitKeys.STUDENTS]: 0,
   [EntitlementLimitKeys.CURRICULUM_ITEMS]: 0,
 });
+
+const DEFAULT_BILLING_STATE = Object.freeze({
+  plan_id: DEFAULT_PLAN_ID,
+  subscription_status: null,
+  billing_provider: null,
+  feature_overrides: Object.freeze({}),
+  trial_ends_at: null,
+  current_period_end: null,
+  updated_at: null,
+});
+
+const isPlainObject = (value) => (
+  value !== null &&
+  typeof value === 'object' &&
+  !Array.isArray(value)
+);
+
+const normalizeSubscriptionStatus = (subscriptionStatus) => (
+  Object.values(SubscriptionStatuses).includes(subscriptionStatus)
+    ? subscriptionStatus
+    : null
+);
+
+const normalizeBillingProvider = (billingProvider) => (
+  billingProvider === BillingProviders.STRIPE ? BillingProviders.STRIPE : null
+);
+
+export const normalizeEntitlementBillingState = (billingState = null) => {
+  if (!isPlainObject(billingState)) {
+    return null;
+  }
+
+  return {
+    plan_id: normalizeEntitlementPlanId(billingState.plan_id),
+    subscription_status: normalizeSubscriptionStatus(billingState.subscription_status),
+    billing_provider: normalizeBillingProvider(billingState.billing_provider),
+    feature_overrides: isPlainObject(billingState.feature_overrides)
+      ? billingState.feature_overrides
+      : {},
+    trial_ends_at: billingState.trial_ends_at || null,
+    current_period_end: billingState.current_period_end || null,
+    updated_at: billingState.updated_at || null,
+  };
+};
 
 export const isArchivedSubject = (subject) => {
   if (!subject || typeof subject !== 'object') {
@@ -144,6 +191,7 @@ export const resolveEntitlementState = ({
   const plan = getEntitlementPlan(planId);
   const usage = deriveEntitlementUsage({ students, subjects });
   const limitChecks = buildEntitlementLimitChecks({ planId, usage });
+  const billingState = normalizeEntitlementBillingState(entitlementDoc?.billing_state);
 
   return {
     planId,
@@ -161,6 +209,16 @@ export const resolveEntitlementState = ({
     trialEndsAt: entitlementDoc?.trial_ends_at || null,
     currentPeriodEnd: entitlementDoc?.current_period_end || null,
     featureOverrides: entitlementDoc?.feature_overrides || {},
+    billingState: billingState || DEFAULT_BILLING_STATE,
+    manualOverride: isPlainObject(entitlementDoc?.manual_override)
+      ? entitlementDoc.manual_override
+      : null,
+    resolutionSource: entitlementDoc?.resolution_source || (
+      entitlementDoc
+        ? EntitlementResolutionSources.BILLING
+        : EntitlementResolutionSources.FALLBACK_INITIALIZED
+    ),
+    updatedVia: entitlementDoc?.updated_via || null,
     isFreePlanFallback: !entitlementDoc,
   };
 };

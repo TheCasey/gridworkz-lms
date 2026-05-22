@@ -262,6 +262,7 @@ export const WeeklyReportSchema = {
   subject_ids: "array", // Legacy subject ids represented in the snapshot
   subject_titles: "array", // Cached subject titles represented in the snapshot
   subjects_data: "object", // Map of legacy subject id -> SubjectProgressSchema
+  assigned_blocks_snapshot: "array", // Weekly-plan block snapshots, including incomplete assigned blocks when available
   summaries: "array", // Flat list of student summary text snippets for compatibility surfaces
   attachments: "array", // Placeholder for future evidence attachments
   snapshot_model: "string", // weekly_plan when built from a published/archived plan, otherwise subjects
@@ -292,6 +293,24 @@ export const BlockEntrySchema = {
   date: "timestamp", // When the submission was recorded
   duration: "number", // Minutes spent on this block
   manualOverride: "boolean" // Whether a parent marked the block complete
+};
+
+// Assigned Block Snapshot Schema (nested in WeeklyReport)
+export const AssignedBlockSnapshotSchema = {
+  blockId: "string", // WeeklyPlan block id when available
+  assignmentId: "string", // Source assignment id when available
+  title: "string", // Student-facing block title snapshot
+  instruction: "string", // Final instruction shown for the week
+  category: "string", // WeeklyBlock.category snapshot
+  completionMode: "string", // WeeklyBlock.completion_mode snapshot
+  plannedDurationMinutes: "number", // Planned effort target for the block
+  completed: "boolean", // Whether this assigned block had a matched submission
+  completionStatus: "string", // completed or incomplete
+  resources: "array", // ResourceSchema snapshots visible for the block
+  legacySubjectId: "string", // Compatibility subject reference used by existing submissions/timers
+  legacySubjectTitle: "string", // Compatibility subject title snapshot
+  legacyBlockIndex: "number", // Compatibility block index used by existing submissions/timers
+  matchedSubmissionSummary: "object" // Submission summary snapshot when a matching completion exists
 };
 
 // Daily Log Schema (for real-time tracking)
@@ -395,6 +414,28 @@ export const AccountEntitlementUsageSnapshotSchema = {
   curriculum_items: "number" // Cached active curriculum usage snapshot from trusted backend flows
 };
 
+export const AccountEntitlementBillingStateSchema = {
+  plan_id: "string", // Billing-backed plan id: free | core | lockdown
+  subscription_status: "string", // Billing-backed status: trialing | active | past_due | canceled | null
+  billing_provider: "string", // Billing authority identifier, e.g. stripe, or null
+  feature_overrides: "object", // Provider-backed feature overrides, normally empty
+  trial_ends_at: "timestamp", // Nullable timestamp when a trial is active
+  current_period_end: "timestamp", // Nullable timestamp for current billing period
+  updated_at: "timestamp" // Last billing-state update from trusted backend
+};
+
+export const AccountEntitlementManualOverrideSchema = {
+  is_active: "boolean", // Whether this override should currently drive effective state
+  plan_id: "string", // Override plan id: free | core | lockdown
+  subscription_status: "string", // Override status: trialing | active | past_due | canceled | null
+  feature_overrides: "object", // See AccountEntitlementFeatureOverridesSchema
+  reason: "string", // Required support/test reason for operator mutations
+  expires_at: "timestamp", // Nullable expiration timestamp for temporary overrides
+  applied_by_uid: "string", // Operator uid that applied the override
+  applied_by_email: "string", // Operator email snapshot for audit display
+  applied_at: "timestamp" // When the override was applied
+};
+
 export const AccountEntitlementSchema = {
   parent_id: "string", // Parent uid and document owner; document id should match this uid
   plan_id: "string", // Stable internal plan id: free | core | lockdown
@@ -404,7 +445,22 @@ export const AccountEntitlementSchema = {
   usage_snapshot: "object", // See AccountEntitlementUsageSnapshotSchema; preserved by trusted flows
   trial_ends_at: "timestamp", // Nullable timestamp when a trial is active
   current_period_end: "timestamp", // Nullable timestamp for current billing period
-  updated_at: "timestamp" // Last trusted backend update written by the billing webhook
+  resolution_source: "string", // billing | manual_override | fallback_initialized
+  updated_via: "string", // billing_webhook | operator_console | operator_clear_override
+  billing_state: "object", // See AccountEntitlementBillingStateSchema
+  manual_override: "object", // See AccountEntitlementManualOverrideSchema, nullable
+  updated_at: "timestamp" // Last trusted backend entitlement document update
+};
+
+export const EntitlementAuditLogSchema = {
+  parent_id: "string", // Parent account affected by the entitlement event
+  operator_uid: "string", // Operator uid for manual events; null for webhook/system events
+  operator_email: "string", // Operator email snapshot; null for webhook/system events
+  event_type: "string", // billing_webhook_sync | override_applied | override_cleared | record_initialized | override_expired
+  reason: "string", // Human-entered reason or trusted backend event source
+  before: "object", // Shallow entitlement snapshot before the event
+  after: "object", // Shallow entitlement snapshot after the event
+  created_at: "timestamp" // Server-owned audit event creation time
 };
 
 // Export collection names for Firestore
@@ -420,6 +476,7 @@ export const Collections = {
   SUBMISSIONS: "submissions",
   TIMER_SESSIONS: "timerSessions",
   ACCOUNT_ENTITLEMENTS: "accountEntitlements",
+  ENTITLEMENT_AUDIT_LOGS: "entitlementAuditLogs",
   SUPPORT_OPERATORS: "supportOperators",
   LOCKDOWN_POLICIES: "lockdownPolicies",
   LOCKDOWN_ENROLLMENT_SESSIONS: "lockdownEnrollmentSessions",

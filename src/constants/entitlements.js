@@ -45,6 +45,26 @@ export const BillingProviders = Object.freeze({
   STRIPE: 'stripe',
 });
 
+export const EntitlementResolutionSources = Object.freeze({
+  BILLING: 'billing',
+  MANUAL_OVERRIDE: 'manual_override',
+  FALLBACK_INITIALIZED: 'fallback_initialized',
+});
+
+export const EntitlementUpdatedVia = Object.freeze({
+  BILLING_WEBHOOK: 'billing_webhook',
+  OPERATOR_CONSOLE: 'operator_console',
+  OPERATOR_CLEAR_OVERRIDE: 'operator_clear_override',
+});
+
+export const EntitlementAuditEventTypes = Object.freeze({
+  BILLING_WEBHOOK_SYNC: 'billing_webhook_sync',
+  OVERRIDE_APPLIED: 'override_applied',
+  OVERRIDE_CLEARED: 'override_cleared',
+  RECORD_INITIALIZED: 'record_initialized',
+  OVERRIDE_EXPIRED: 'override_expired',
+});
+
 export const UNLIMITED_PLAN_LIMIT = null;
 
 const buildPlanDefinition = ({
