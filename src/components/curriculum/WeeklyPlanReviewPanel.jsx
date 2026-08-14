@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  doc,
+  getFirestore,
+  serverTimestamp,
+  updateDoc,
+} from 'firebase/firestore';
+import {
   AlertCircle,
   CalendarDays,
   CheckCircle2,
@@ -13,13 +19,27 @@ import {
   Send,
   Star,
 } from 'lucide-react';
+import { app } from '../../firebase/firebaseConfig';
 import useWeeklyPlanRecord from '../../hooks/useWeeklyPlanRecord';
-import { WeeklyPlanStatuses } from '../../constants/schema';
+import {
+  WeeklyBlockCategories,
+  WeeklyBlockCompletionModes,
+  WeeklyPlanStatuses,
+} from '../../constants/schema';
 import {
   formatWeekRange,
   getWeekPickerOptions,
   getWeekRangeByOffset,
 } from '../../utils/weekUtils';
+import {
+  getSubjectBlockLengthMinutes,
+  getSubjectCurriculumBlocks,
+  getSubjectDefaultBlockQuantities,
+} from '../../utils/planningCompatibilityUtils';
+import {
+  buildLegacyAssignmentId,
+  buildWeeklyPlanBlockId,
+} from '../../utils/weeklyPlanUtils';
 
 const STATUS_TONES = {
   preview: {
@@ -144,35 +164,6 @@ const getSubjectIdForBlock = (block) => (
     : 'unassigned'
 );
 
-const getSubjectTitleForBlock = (block) => (
-  typeof block?.legacy_subject_title === 'string' && block.legacy_subject_title.trim().length > 0
-    ? block.legacy_subject_title.trim()
-    : 'Unassigned'
-);
-
-const buildGroupedBlocks = (blocks) => {
-  const groups = new Map();
-
-  blocks.forEach((block, index) => {
-    const subjectId = getSubjectIdForBlock(block);
-
-    if (!groups.has(subjectId)) {
-      groups.set(subjectId, {
-        id: subjectId,
-        title: getSubjectTitleForBlock(block),
-        blocks: [],
-        minutes: 0,
-      });
-    }
-
-    const group = groups.get(subjectId);
-    group.blocks.push({ block, index });
-    group.minutes += Number(block?.planned_duration_minutes || 0);
-  });
-
-  return [...groups.values()];
-};
-
 const getBlockAccent = (index) => {
   const accents = ['#cbb7fb', '#34d399', '#60a5fa', '#f59e0b', '#f87171'];
   return accents[index % accents.length];
@@ -183,6 +174,26 @@ const getConfiguredFieldCount = (fields) => (
     ? fields.filter((field) => typeof field?.label === 'string' && field.label.trim().length > 0).length
     : 0
 );
+
+const toNonNegativeInt = (value, fallback = 0) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
+const getBlockCategory = (block) => {
+  if (block?.type === 'project') return WeeklyBlockCategories.PROJECT_WORK;
+  if (block?.type === 'test') return WeeklyBlockCategories.ASSESSMENT;
+  if (block?.type === 'parent_led') return WeeklyBlockCategories.LESSON;
+  return WeeklyBlockCategories.PRACTICE;
+};
+
+const getBlockTypeLabel = (block) => {
+  if (block?.type === 'project') return 'PROJ';
+  if (block?.type === 'test') return 'TEST';
+  if (block?.type === 'parent_led') return 'P.LED';
+  if (block?.type === 'custom') return 'CUSTOM';
+  return 'STD';
+};
 
 const getSubjectStudentIds = (subject) => (
   Array.isArray(subject?.student_ids) && subject.student_ids.length > 0
@@ -195,9 +206,100 @@ const getStudentSubjects = (subjects, studentId) => (
 );
 
 const getStudentDefaultHours = (subjects, studentId) => (
-  getStudentSubjects(subjects, studentId).reduce((minutes, subject) => (
-    minutes + Number(subject?.block_count || 10) * Number(subject?.block_length || 30)
-  ), 0) / 60
+  getStudentSubjects(subjects, studentId).reduce((minutes, subject) => {
+    const quantities = getSubjectDefaultBlockQuantities(subject);
+    const blockCount = Object.values(quantities).reduce((total, quantity) => total + toNonNegativeInt(quantity), 0);
+    return minutes + Math.max(blockCount, Number(subject?.block_count || 0)) * getSubjectBlockLengthMinutes(subject);
+  }, 0) / 60
+);
+
+const buildDefaultQuantitiesForSubjects = (subjects = []) => (
+  Object.fromEntries((Array.isArray(subjects) ? subjects : []).map((subject) => [
+    subject.id,
+    getSubjectDefaultBlockQuantities(subject),
+  ]))
+);
+
+const deriveQuantitiesFromBlocks = ({ blocks = [], subjects = [] } = {}) => {
+  const subjectBlocksById = Object.fromEntries(subjects.map((subject) => [
+    subject.id,
+    getSubjectCurriculumBlocks(subject),
+  ]));
+  const quantities = buildDefaultQuantitiesForSubjects(subjects);
+
+  subjects.forEach((subject) => {
+    quantities[subject.id] = Object.fromEntries(
+      getSubjectCurriculumBlocks(subject).map((block) => [block.id, 0])
+    );
+  });
+
+  (Array.isArray(blocks) ? blocks : []).forEach((block) => {
+    const subjectId = getSubjectIdForBlock(block);
+    const libraryBlocks = subjectBlocksById[subjectId] || [];
+    const curriculumBlockId = typeof block?.curriculum_block_id === 'string' && block.curriculum_block_id
+      ? block.curriculum_block_id
+      : libraryBlocks[Number.isInteger(block?.curriculum_block_source_index) ? block.curriculum_block_source_index : block?.legacy_block_index]?.id;
+
+    if (!subjectId || !curriculumBlockId) return;
+
+    quantities[subjectId] = {
+      ...(quantities[subjectId] || {}),
+      [curriculumBlockId]: toNonNegativeInt(quantities[subjectId]?.[curriculumBlockId]) + 1,
+    };
+  });
+
+  return quantities;
+};
+
+const buildPlanBlocksFromQuantities = ({ subjects = [], studentId = '', quantitiesBySubjectId = {} } = {}) => (
+  subjects.flatMap((subject) => {
+    const assignmentId = buildLegacyAssignmentId({
+      studentId,
+      legacySubjectId: subject.id,
+    });
+    let subjectBlockIndex = 0;
+
+    return getSubjectCurriculumBlocks(subject).flatMap((block, blockDefinitionIndex) => {
+      const quantity = toNonNegativeInt(quantitiesBySubjectId?.[subject.id]?.[block.id]);
+
+      return Array.from({ length: quantity }, (_, occurrenceIndex) => {
+        const legacyBlockIndex = subjectBlockIndex;
+        subjectBlockIndex += 1;
+        const customFields = Array.isArray(block.custom_fields) && block.custom_fields.length
+          ? block.custom_fields
+          : (Array.isArray(subject.custom_fields) ? subject.custom_fields : []);
+
+        return {
+          id: buildWeeklyPlanBlockId({
+            assignmentId,
+            legacyBlockIndex,
+          }),
+          assignment_id: assignmentId,
+          student_id: studentId,
+          title: block.title || subject.title || `Block ${legacyBlockIndex + 1}`,
+          color: subject.color || '#3B82F6',
+          planned_duration_minutes: getSubjectBlockLengthMinutes(subject),
+          category: getBlockCategory(block),
+          completion_mode: subject.require_input !== false || customFields.length > 0
+            ? WeeklyBlockCompletionModes.HYBRID
+            : WeeklyBlockCompletionModes.TIME_BOXED,
+          require_timer: Boolean(subject.require_timer),
+          require_input: subject.require_input !== false,
+          instruction: block.instruction || '',
+          resources: Array.isArray(subject.resources) ? subject.resources : [],
+          custom_fields: customFields,
+          legacy_subject_id: subject.id,
+          legacy_subject_title: subject.title || '',
+          legacy_block_index: legacyBlockIndex,
+          curriculum_block_id: block.id,
+          curriculum_block_title: block.title,
+          curriculum_block_type: block.type,
+          curriculum_block_source_index: blockDefinitionIndex,
+          curriculum_block_occurrence: occurrenceIndex,
+        };
+      });
+    });
+  })
 );
 
 const WeeklyPlanReviewPanel = ({
@@ -206,12 +308,15 @@ const WeeklyPlanReviewPanel = ({
   parentSettings = {},
   students = [],
 }) => {
+  const db = getFirestore(app);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
   const [editableBlocks, setEditableBlocks] = useState([]);
+  const [blockQuantities, setBlockQuantities] = useState({});
   const [expandedSubjectIds, setExpandedSubjectIds] = useState(() => new Set());
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [savingDefaultWeek, setSavingDefaultWeek] = useState(false);
 
   useEffect(() => {
     if (!students.length) {
@@ -269,15 +374,14 @@ const WeeklyPlanReviewPanel = ({
     () => students.find((student) => student.id === selectedStudentId) || null,
     [selectedStudentId, students]
   );
+  const selectedStudentSubjects = useMemo(
+    () => getStudentSubjects(activeSubjects, selectedStudentId),
+    [activeSubjects, selectedStudentId]
+  );
   const sourcePlan = weeklyPlan || generatedPlanPreview;
   const planStatusMeta = useMemo(
     () => buildStatusMeta({ weeklyPlan, hasUnsavedEdits }),
     [hasUnsavedEdits, weeklyPlan]
-  );
-  const groupedBlocks = useMemo(() => buildGroupedBlocks(editableBlocks), [editableBlocks]);
-  const subjectsById = useMemo(
-    () => Object.fromEntries((Array.isArray(activeSubjects) ? activeSubjects : []).map((subject) => [subject.id, subject])),
-    [activeSubjects]
   );
   const selectedWeekOption = useMemo(
     () => weekPickerOptions.find((option) => option.value === selectedWeekOffset) || null,
@@ -304,10 +408,13 @@ const WeeklyPlanReviewPanel = ({
   const saveButtonLabel = isPublished ? 'Save as Draft' : 'Save Draft';
   const publishButtonLabel = isPublished ? 'Publish Updates' : 'Publish Week';
   const blocksAreEditable = Boolean(sourcePlan) && !isArchived;
-  const hasSubjectCountVariance = groupedBlocks.some((group) => {
-    const subject = subjectsById[group.id];
-    const target = Number(subject?.block_count || group.blocks.length);
-    return group.blocks.length !== target;
+  const hasSubjectCountVariance = selectedStudentSubjects.some((subject) => {
+    const assignedCount = getSubjectCurriculumBlocks(subject).reduce((total, block) => (
+      total + toNonNegativeInt(blockQuantities[subject.id]?.[block.id])
+    ), 0);
+    const target = Object.values(getSubjectDefaultBlockQuantities(subject)).reduce((total, quantity) => total + toNonNegativeInt(quantity), 0)
+      || Number(subject?.block_count || assignedCount);
+    return assignedCount !== target;
   });
 
   useEffect(() => {
@@ -319,6 +426,7 @@ const WeeklyPlanReviewPanel = ({
     if (!sourcePlan) {
       if (!hasUnsavedEdits) {
         setEditableBlocks([]);
+        setBlockQuantities(buildDefaultQuantitiesForSubjects(selectedStudentSubjects));
       }
       return;
     }
@@ -328,19 +436,23 @@ const WeeklyPlanReviewPanel = ({
     }
 
     setEditableBlocks(clonePlanBlocks(sourcePlan.blocks));
-  }, [hasUnsavedEdits, sourcePlan]);
+    setBlockQuantities(deriveQuantitiesFromBlocks({
+      blocks: sourcePlan.blocks,
+      subjects: selectedStudentSubjects,
+    }));
+  }, [hasUnsavedEdits, selectedStudentSubjects, sourcePlan]);
 
   useEffect(() => {
     setExpandedSubjectIds((currentValue) => {
       const nextValue = new Set(currentValue);
 
-      groupedBlocks.slice(0, 2).forEach((group) => {
-        nextValue.add(group.id);
+      selectedStudentSubjects.slice(0, 2).forEach((subject) => {
+        nextValue.add(subject.id);
       });
 
       return nextValue;
     });
-  }, [groupedBlocks]);
+  }, [selectedStudentSubjects]);
 
   const handleBlockFieldChange = (blockId, field, value) => {
     setEditableBlocks((currentBlocks) => currentBlocks.map((block) => (
@@ -353,18 +465,98 @@ const WeeklyPlanReviewPanel = ({
   };
 
   const handleRefreshFromSubjects = () => {
-    const refreshedPlan = buildDraftPreview({ existingPlan: weeklyPlan });
+    const nextQuantities = buildDefaultQuantitiesForSubjects(selectedStudentSubjects);
+    const refreshedBlocks = buildPlanBlocksFromQuantities({
+      subjects: selectedStudentSubjects,
+      studentId: selectedStudentId,
+      quantitiesBySubjectId: nextQuantities,
+    });
 
-    if (!refreshedPlan) {
-      return;
-    }
-
-    setEditableBlocks(clonePlanBlocks(refreshedPlan.blocks));
+    setBlockQuantities(nextQuantities);
+    setEditableBlocks(refreshedBlocks);
     setHasUnsavedEdits(true);
     setFeedback({
       tone: 'info',
-      text: 'Preview refreshed from the current subject editor. Save draft or publish to keep the regenerated plan.',
+      text: 'Week reset to the current subject defaults. Save draft or publish to keep the regenerated plan.',
     });
+  };
+
+  const applyQuantities = (nextQuantities, { markUnsaved = true } = {}) => {
+    setBlockQuantities(nextQuantities);
+    setEditableBlocks(buildPlanBlocksFromQuantities({
+      subjects: selectedStudentSubjects,
+      studentId: selectedStudentId,
+      quantitiesBySubjectId: nextQuantities,
+    }));
+    setHasUnsavedEdits(markUnsaved);
+    setFeedback(null);
+  };
+
+  const handleBlockQuantityChange = ({ subjectId, blockId, delta }) => {
+    const nextQuantities = {
+      ...blockQuantities,
+      [subjectId]: {
+        ...(blockQuantities[subjectId] || {}),
+        [blockId]: Math.max(0, toNonNegativeInt(blockQuantities[subjectId]?.[blockId]) + delta),
+      },
+    };
+
+    applyQuantities(nextQuantities);
+  };
+
+  const handleToggleSubjectEnabled = (subject) => {
+    const currentSubjectQuantities = blockQuantities[subject.id] || {};
+    const hasAnyEnabled = Object.values(currentSubjectQuantities).some((quantity) => toNonNegativeInt(quantity) > 0);
+    const nextSubjectQuantities = hasAnyEnabled
+      ? Object.fromEntries(getSubjectCurriculumBlocks(subject).map((block) => [block.id, 0]))
+      : getSubjectDefaultBlockQuantities(subject);
+
+    applyQuantities({
+      ...blockQuantities,
+      [subject.id]: nextSubjectQuantities,
+    });
+  };
+
+  const handleSaveAsDefaultWeek = async () => {
+    if (!currentUser?.uid || !selectedStudentSubjects.length) return;
+
+    setSavingDefaultWeek(true);
+    try {
+      await Promise.all(selectedStudentSubjects.map((subject) => {
+        const nextSubjectQuantities = Object.fromEntries(
+          getSubjectCurriculumBlocks(subject).map((block) => [
+            block.id,
+            toNonNegativeInt(blockQuantities[subject.id]?.[block.id]),
+          ])
+        );
+        const nextCurriculumBlocks = getSubjectCurriculumBlocks(subject).map((block) => ({
+          ...block,
+          default_quantity: toNonNegativeInt(nextSubjectQuantities[block.id]),
+        }));
+        const nextBlockCount = Object.values(nextSubjectQuantities).reduce((total, quantity) => total + toNonNegativeInt(quantity), 0);
+
+        return updateDoc(doc(db, 'subjects', subject.id), {
+          curriculum_blocks: nextCurriculumBlocks,
+          default_block_quantities: nextSubjectQuantities,
+          block_count: Math.max(nextBlockCount, 1),
+          updated_at: serverTimestamp(),
+        });
+      }));
+
+      setHasUnsavedEdits(true);
+      setFeedback({
+        tone: 'success',
+        text: 'Default week saved from the current block selections. Save or publish this week separately if you want this specific week persisted too.',
+      });
+    } catch (nextError) {
+      console.error('Error saving default week:', nextError);
+      setFeedback({
+        tone: 'error',
+        text: 'Unable to save the default week block selections.',
+      });
+    } finally {
+      setSavingDefaultWeek(false);
+    }
   };
 
   const toggleSubjectGroup = (subjectId) => {
@@ -477,12 +669,12 @@ const WeeklyPlanReviewPanel = ({
             className="op-proto-btn"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Regenerate
+            Reset to default
           </button>
           <button
             type="button"
             onClick={handleSaveDraft}
-            disabled={!blocksAreEditable || !editableBlocks.length || loading || savingPlan || publishingPlan}
+            disabled={!blocksAreEditable || !selectedStudentSubjects.length || loading || savingPlan || publishingPlan}
             className="op-proto-btn"
           >
             <Save className="h-3.5 w-3.5" />
@@ -491,7 +683,7 @@ const WeeklyPlanReviewPanel = ({
           <button
             type="button"
             onClick={handlePublish}
-            disabled={!blocksAreEditable || !editableBlocks.length || loading || savingPlan || publishingPlan}
+            disabled={!blocksAreEditable || !selectedStudentSubjects.length || loading || savingPlan || publishingPlan}
             className="op-proto-btn op-proto-btn-primary"
           >
             <Send className="h-3.5 w-3.5" />
@@ -582,77 +774,110 @@ const WeeklyPlanReviewPanel = ({
 
               {renderMessage()}
 
-              {!editableBlocks.length ? (
+              {!selectedStudentSubjects.length ? (
                 <div className="op-proto-empty min-h-[280px]">
                   <p className="text-[14px] font-label text-white">No active subject blocks are available.</p>
-                  <p className="mt-2 text-[12px] text-[rgba(238,234,248,0.54)]">Assign at least one active subject, then regenerate the weekly preview.</p>
+                  <p className="mt-2 text-[12px] text-[rgba(238,234,248,0.54)]">Assign at least one active subject, then build reusable blocks in Curriculum.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {groupedBlocks.map((group, groupIndex) => {
-                    const isOpen = expandedSubjectIds.has(group.id);
-                    const accent = getBlockAccent(groupIndex);
-                    const subject = subjectsById[group.id];
-                    const target = Number(subject?.block_count || group.blocks.length);
-                    const diff = group.blocks.length - target;
+                  {selectedStudentSubjects.map((subject, groupIndex) => {
+                    const isOpen = expandedSubjectIds.has(subject.id);
+                    const accent = subject?.color || getBlockAccent(groupIndex);
+                    const subjectBlocks = getSubjectCurriculumBlocks(subject);
+                    const subjectQuantities = blockQuantities[subject.id] || {};
+                    const totalAssigned = subjectBlocks.reduce((total, block) => total + toNonNegativeInt(subjectQuantities[block.id]), 0);
+                    const target = Object.values(getSubjectDefaultBlockQuantities(subject)).reduce((total, quantity) => total + toNonNegativeInt(quantity), 0)
+                      || Number(subject?.block_count || 0)
+                      || totalAssigned;
+                    const diff = totalAssigned - target;
 
                     return (
                       <article
-                        key={group.id}
+                        key={subject.id}
                         className="op-weekly-subject-row"
-                        style={{ borderLeftColor: subject?.color || accent }}
+                        style={{ borderLeftColor: totalAssigned > 0 ? accent : 'rgba(255,255,255,0.08)' }}
                       >
-                        <button
-                          type="button"
-                          onClick={() => toggleSubjectGroup(group.id)}
-                          className="op-weekly-subject-header"
-                        >
-                          <span className="h-2 w-2 flex-shrink-0" style={{ backgroundColor: subject?.color || accent }} />
-                          <span className="min-w-0 flex-1 truncate text-[12px] font-label text-white">{group.title}</span>
-                          <span className="text-[10px] text-[rgba(238,234,248,0.46)]">{subject?.block_length || group.blocks[0]?.block?.planned_duration_minutes || 0}m/block</span>
+                        <div className="op-weekly-subject-header">
+                          <button
+                            type="button"
+                            onClick={() => toggleSubjectGroup(subject.id)}
+                            className="op-weekly-subject-expand"
+                          >
+                            <span className="h-2 w-2 flex-shrink-0" style={{ backgroundColor: accent }} />
+                            <span className="min-w-0 flex-1 truncate text-[12px] font-label text-white">{subject.title}</span>
+                            <ChevronDown className={`h-3.5 w-3.5 flex-shrink-0 text-[rgba(238,234,248,0.36)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSubjectEnabled(subject)}
+                            className={`op-weekly-enable-chip ${totalAssigned > 0 ? 'is-on' : ''}`}
+                          >
+                            {totalAssigned > 0 ? 'Enabled' : 'Disabled'}
+                          </button>
+                          <span className="text-[10px] text-[rgba(238,234,248,0.46)]">{getSubjectBlockLengthMinutes(subject)}m/block</span>
                           <span
                             className="text-[11px] font-label"
                             style={{ color: diff === 0 ? '#34d399' : '#f59e0b' }}
                           >
-                            {group.blocks.length}/{target}
+                            {totalAssigned}/{target}
                           </span>
                           {diff !== 0 ? (
                             <span className={`op-weekly-diff ${diff > 0 ? 'is-plus' : 'is-minus'}`}>{diff > 0 ? '+' : ''}{diff}</span>
                           ) : null}
-                          <ChevronDown className={`h-3.5 w-3.5 text-[rgba(238,234,248,0.36)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                        </button>
+                        </div>
 
                         {isOpen ? (
                           <div className="op-weekly-subject-body">
                             <div className="op-weekly-pill-row">
-                              {group.blocks.map(({ block, index }) => {
+                              {subjectBlocks.map((block) => {
                                 const fieldCount = getConfiguredFieldCount(block.custom_fields);
+                                const quantity = toNonNegativeInt(subjectQuantities[block.id]);
 
                                 return (
                                   <div
                                     key={block.id}
-                                    className="op-weekly-block-pill"
-                                    style={{ borderColor: block.instruction ? `${accent}88` : 'rgba(255,255,255,0.14)' }}
+                                    className={`op-weekly-block-pill ${quantity === 0 ? 'is-muted' : ''}`}
+                                    style={{ borderColor: quantity > 0 ? `${accent}88` : 'rgba(255,255,255,0.14)' }}
                                   >
                                     <span className={`op-weekly-block-type ${block.instruction ? 'is-guided' : ''}`}>
-                                      {block.instruction ? 'OBJ' : 'STD'}
+                                      {getBlockTypeLabel(block)}
                                     </span>
                                     <span className="min-w-0 flex-1 truncate">
-                                      {block.title || block.legacy_subject_title || `Block ${index + 1}`}
+                                      {block.title || subject.title}
                                     </span>
                                     <span className="text-[9px] text-[rgba(238,234,248,0.38)]">
-                                      {block.planned_duration_minutes || 0}m
+                                      {getSubjectBlockLengthMinutes(subject)}m
                                     </span>
                                     {fieldCount > 0 ? (
                                       <span className="op-weekly-field-count">{fieldCount}</span>
                                     ) : null}
+                                    <span className="qty-inline">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleBlockQuantityChange({ subjectId: subject.id, blockId: block.id, delta: -1 })}
+                                        className="qi-btn"
+                                      >
+                                        -
+                                      </button>
+                                      <span className="qi-val">{quantity}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleBlockQuantityChange({ subjectId: subject.id, blockId: block.id, delta: 1 })}
+                                        className="qi-btn"
+                                      >
+                                        +
+                                      </button>
+                                    </span>
                                   </div>
                                 );
                               })}
                             </div>
 
                             <div className="grid gap-2 pt-2">
-                              {group.blocks.map(({ block, index }) => (
+                              {editableBlocks
+                                .filter((block) => getSubjectIdForBlock(block) === subject.id)
+                                .map((block, index) => (
                                 <div key={`${block.id}_edit`} className="op-weekly-edit-row">
                                   <span className="op-weekly-edit-index">
                                     {Number.isInteger(block.legacy_block_index) ? block.legacy_block_index + 1 : index + 1}
@@ -674,7 +899,7 @@ const WeeklyPlanReviewPanel = ({
                                     placeholder="Student-facing note"
                                   />
                                 </div>
-                              ))}
+                                ))}
                             </div>
                           </div>
                         ) : null}
@@ -698,16 +923,21 @@ const WeeklyPlanReviewPanel = ({
                 </div>
                 <div className="h-px bg-[rgba(255,255,255,0.08)]" />
                 <div className="space-y-1.5">
-                  {groupedBlocks.map((group, index) => {
-                    const subject = subjectsById[group.id];
-                    const target = Number(subject?.block_count || group.blocks.length);
-                    const diff = group.blocks.length - target;
+                  {selectedStudentSubjects.map((subject, index) => {
+                    const subjectBlocks = getSubjectCurriculumBlocks(subject);
+                    const assignedCount = subjectBlocks.reduce((total, block) => (
+                      total + toNonNegativeInt(blockQuantities[subject.id]?.[block.id])
+                    ), 0);
+                    const target = Object.values(getSubjectDefaultBlockQuantities(subject)).reduce((total, quantity) => total + toNonNegativeInt(quantity), 0)
+                      || Number(subject?.block_count || 0)
+                      || assignedCount;
+                    const diff = assignedCount - target;
 
                     return (
-                      <div key={group.id} className="op-weekly-summary-subject">
+                      <div key={subject.id} className="op-weekly-summary-subject">
                         <span className="h-1.5 w-1.5 flex-shrink-0" style={{ backgroundColor: subject?.color || getBlockAccent(index) }} />
-                        <span className="min-w-0 flex-1 truncate">{group.title}</span>
-                        <span className="font-label text-[rgba(238,234,248,0.8)]">{group.blocks.length}</span>
+                        <span className="min-w-0 flex-1 truncate">{subject.title}</span>
+                        <span className="font-label text-[rgba(238,234,248,0.8)]">{assignedCount}</span>
                         {diff !== 0 ? (
                           <span style={{ color: diff > 0 ? '#f87171' : '#f59e0b' }}>{diff > 0 ? '+' : ''}{diff}</span>
                         ) : null}
@@ -737,9 +967,14 @@ const WeeklyPlanReviewPanel = ({
                   <Copy className="h-3.5 w-3.5" />
                   Copy to another week
                 </button>
-                <button type="button" className="op-proto-btn w-full" disabled>
+                <button
+                  type="button"
+                  className="op-proto-btn w-full"
+                  onClick={handleSaveAsDefaultWeek}
+                  disabled={savingDefaultWeek || loading || savingPlan || publishingPlan}
+                >
                   <Star className="h-3.5 w-3.5" />
-                  Save as default week
+                  {savingDefaultWeek ? 'Saving default...' : 'Save as default week'}
                 </button>
               </div>
             </aside>

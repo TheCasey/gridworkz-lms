@@ -109,6 +109,18 @@ export const BlockObjectiveSchema = {
   student_overrides: "object", // Map of studentId -> BlockObjectiveStudentOverrideSchema
 };
 
+// Reusable curriculum block definition stored on Subject.
+// Weekly plans select quantities from this library and expand them into unique WeeklyBlock items.
+export const CurriculumBlockDefinitionSchema = {
+  id: "string", // Stable block-library id scoped to a subject
+  title: "string", // Parent/student-facing block name
+  type: "string", // standard, project, parent_led, test, or custom
+  instruction: "string", // Default instruction used when this block is assigned
+  custom_fields: "array", // Optional block-level prompts
+  default_quantity: "number", // Quantity used when building the default week
+  pinned: "boolean", // Whether this block is promoted in quick planning surfaces
+};
+
 // Subject module schema
 export const SubjectSchema = {
   id: "string", // Auto-generated document ID
@@ -123,6 +135,8 @@ export const SubjectSchema = {
   resources: "array", // Array of ResourceSchema items
   custom_fields: "array", // Array of CustomFieldSchema items
   block_objectives: "object", // Map of blockIndex (string) -> BlockObjectiveSchema
+  curriculum_blocks: "array", // Array of CurriculumBlockDefinitionSchema items; fallback is generated from block_count/block_objectives
+  default_block_quantities: "object", // Optional map of curriculumBlockId -> default weekly quantity
   is_active: "boolean", // Whether subject is currently active
   created_at: "timestamp",
   updated_at: "timestamp"
@@ -249,6 +263,11 @@ export const WeeklyBlockSchema = {
   legacy_subject_id: "string", // Compatibility reference for existing submissions/timers
   legacy_subject_title: "string", // Compatibility title snapshot
   legacy_block_index: "number", // Compatibility reference for existing block-index flows
+  curriculum_block_id: "string", // Reusable curriculum block definition id when planned from curriculum_blocks
+  curriculum_block_title: "string", // Snapshot of reusable block title
+  curriculum_block_type: "string", // Snapshot of reusable block type
+  curriculum_block_source_index: "number", // Original index in subject.curriculum_blocks
+  curriculum_block_occurrence: "number", // Occurrence number when the same reusable block is assigned more than once
 };
 
 // Weekly plan schema

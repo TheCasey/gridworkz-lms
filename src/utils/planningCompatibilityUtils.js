@@ -6,6 +6,7 @@ import {
 const DEFAULT_SUBJECT_BLOCK_COUNT = 10;
 const DEFAULT_SUBJECT_BLOCK_LENGTH = 30;
 const DEFAULT_SUBJECT_COLOR = '#3B82F6';
+const DEFAULT_CURRICULUM_BLOCK_TYPE = 'standard';
 
 const isNonEmptyString = (value) => typeof value === 'string' && value.trim().length > 0;
 
@@ -63,6 +64,68 @@ export const getSubjectBlockCount = (subject) => (
 export const getSubjectBlockLengthMinutes = (subject) => (
   toPositiveInt(subject?.block_length ?? subject?.block_duration, DEFAULT_SUBJECT_BLOCK_LENGTH)
 );
+
+export const normalizeSubjectCurriculumBlock = (block = {}, index = 0) => {
+  const title = isNonEmptyString(block?.title)
+    ? block.title.trim()
+    : `Block ${index + 1}`;
+  const defaultQuantity = Number.parseInt(block?.default_quantity, 10);
+
+  return {
+    id: isNonEmptyString(block?.id) ? block.id.trim() : `block_${index + 1}`,
+    title,
+    type: isNonEmptyString(block?.type) ? block.type.trim() : DEFAULT_CURRICULUM_BLOCK_TYPE,
+    instruction: isNonEmptyString(block?.instruction) ? block.instruction.trim() : '',
+    custom_fields: cloneArray(block?.custom_fields),
+    default_quantity: Number.isFinite(defaultQuantity) && defaultQuantity >= 0 ? defaultQuantity : 0,
+    pinned: block?.pinned !== false,
+  };
+};
+
+export const getSubjectCurriculumBlocks = (subject) => {
+  if (Array.isArray(subject?.curriculum_blocks) && subject.curriculum_blocks.length > 0) {
+    return subject.curriculum_blocks.map(normalizeSubjectCurriculumBlock);
+  }
+
+  const totalBlocks = getSubjectBlockCount(subject);
+
+  return Array.from({ length: totalBlocks }, (_, blockIndex) => {
+    const objective = getSubjectBlockObjective(subject, blockIndex) || {};
+    return normalizeSubjectCurriculumBlock({
+      id: `legacy_${blockIndex + 1}`,
+      title: isNonEmptyString(objective?.instruction)
+        ? `Block ${blockIndex + 1}`
+        : `${subject?.title || 'Subject'} block`,
+      type: DEFAULT_CURRICULUM_BLOCK_TYPE,
+      instruction: objective?.instruction || '',
+      custom_fields: objective?.custom_fields || [],
+      default_quantity: 1,
+      pinned: blockIndex < 2 || isNonEmptyString(objective?.instruction),
+    }, blockIndex);
+  });
+};
+
+export const getSubjectDefaultBlockQuantities = (subject) => {
+  if (
+    subject?.default_block_quantities
+    && typeof subject.default_block_quantities === 'object'
+    && !Array.isArray(subject.default_block_quantities)
+  ) {
+    return Object.fromEntries(
+      Object.entries(subject.default_block_quantities).map(([blockId, quantity]) => [
+        blockId,
+        Math.max(0, Number.parseInt(quantity, 10) || 0),
+      ])
+    );
+  }
+
+  return Object.fromEntries(
+    getSubjectCurriculumBlocks(subject).map((block) => [
+      block.id,
+      Math.max(0, Number.parseInt(block.default_quantity, 10) || 0),
+    ])
+  );
+};
 
 export const getSubjectBlockObjective = (subject, blockIndex) => {
   if (blockIndex === null || blockIndex === undefined) {
@@ -156,23 +219,53 @@ export const buildLegacySubjectAssignmentSeed = ({ subject, studentId }) => ({
 });
 
 export const buildLegacySubjectWeeklyBlockSeeds = ({ subject, studentId }) => {
-  const totalBlocks = getSubjectBlockCount(subject);
   const blockLength = getSubjectBlockLengthMinutes(subject);
+  const curriculumBlocks = getSubjectCurriculumBlocks(subject);
+  const defaultQuantities = getSubjectDefaultBlockQuantities(subject);
+  const blockDefinitions = curriculumBlocks.flatMap((block, blockDefinitionIndex) => (
+    Array.from({ length: Math.max(0, Number.parseInt(defaultQuantities[block.id], 10) || 0) }, (_, occurrenceIndex) => ({
+      block,
+      blockDefinitionIndex,
+      occurrenceIndex,
+    }))
+  ));
+  const fallbackDefinitions = blockDefinitions.length > 0
+    ? blockDefinitions
+    : Array.from({ length: getSubjectBlockCount(subject) }, (_, blockIndex) => ({
+      block: normalizeSubjectCurriculumBlock({
+        id: `legacy_${blockIndex + 1}`,
+        title: `${subject?.title || 'Subject'} block`,
+        default_quantity: 1,
+      }, blockIndex),
+      blockDefinitionIndex: blockIndex,
+      occurrenceIndex: 0,
+    }));
 
-  return Array.from({ length: totalBlocks }, (_, blockIndex) => ({
+  return fallbackDefinitions.map(({ block, blockDefinitionIndex, occurrenceIndex }, blockIndex) => ({
     ...buildLegacySubjectReferences(subject),
     student_id: studentId,
-    title: subject?.title || '',
+    title: block.title || subject?.title || '',
     color: subject?.color || DEFAULT_SUBJECT_COLOR,
     planned_duration_minutes: blockLength,
-    category: inferLegacySubjectWeeklyBlockCategory({ subject, blockIndex, studentId }),
-    completion_mode: inferLegacySubjectCompletionMode({ subject, blockIndex, studentId }),
+    category: block.type === 'project'
+      ? WeeklyBlockCategories.PROJECT_WORK
+      : block.type === 'test'
+        ? WeeklyBlockCategories.ASSESSMENT
+        : inferLegacySubjectWeeklyBlockCategory({ subject, blockIndex: blockDefinitionIndex, studentId }),
+    completion_mode: inferLegacySubjectCompletionMode({ subject, blockIndex: blockDefinitionIndex, studentId }),
     require_timer: Boolean(subject?.require_timer),
     require_input: subject?.require_input !== false,
-    instruction: getEffectiveSubjectInstruction({ subject, blockIndex, studentId }) || '',
+    instruction: block.instruction || getEffectiveSubjectInstruction({ subject, blockIndex: blockDefinitionIndex, studentId }) || '',
     resources: cloneArray(subject?.resources),
-    custom_fields: getEffectiveSubjectCustomFields({ subject, blockIndex, studentId }),
+    custom_fields: block.custom_fields?.length
+      ? cloneArray(block.custom_fields)
+      : getEffectiveSubjectCustomFields({ subject, blockIndex: blockDefinitionIndex, studentId }),
     legacy_block_index: blockIndex,
+    curriculum_block_id: block.id,
+    curriculum_block_title: block.title,
+    curriculum_block_type: block.type,
+    curriculum_block_source_index: blockDefinitionIndex,
+    curriculum_block_occurrence: occurrenceIndex,
   }));
 };
 

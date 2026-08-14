@@ -102,6 +102,112 @@ const countConfiguredBlockObjectives = (objectives = {}) => (
   Object.keys(normalizeBlockObjectivesForSave(objectives)).length
 );
 
+const CURRICULUM_BLOCK_TYPES = {
+  standard: {
+    label: 'STD',
+    name: 'Standard',
+  },
+  project: {
+    label: 'PROJ',
+    name: 'Project',
+  },
+  parent_led: {
+    label: 'P.LED',
+    name: 'Parent-led',
+  },
+  test: {
+    label: 'TEST',
+    name: 'Test',
+  },
+  custom: {
+    label: 'CUSTOM',
+    name: 'Custom',
+  },
+};
+
+const createCurriculumBlockId = () => `block_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+const createEmptyCurriculumBlock = ({ index = 0 } = {}) => ({
+  id: createCurriculumBlockId(),
+  title: `Block ${index + 1}`,
+  type: 'standard',
+  instruction: '',
+  custom_fields: [],
+  default_quantity: index === 0 ? 1 : 0,
+  pinned: index < 2,
+});
+
+const normalizeCurriculumBlock = (block = {}, index = 0) => {
+  const rawType = typeof block?.type === 'string' ? block.type : block?.category;
+  const type = Object.keys(CURRICULUM_BLOCK_TYPES).includes(rawType) ? rawType : 'standard';
+  const title = typeof block?.title === 'string' && block.title.trim().length > 0
+    ? block.title.trim()
+    : `Block ${index + 1}`;
+  const defaultQuantity = Number.parseInt(block?.default_quantity, 10);
+
+  return {
+    id: typeof block?.id === 'string' && block.id.trim().length > 0
+      ? block.id.trim()
+      : `block_${index + 1}`,
+    title,
+    type,
+    instruction: typeof block?.instruction === 'string' ? block.instruction.trim() : '',
+    custom_fields: getConfiguredFields(block?.custom_fields),
+    default_quantity: Number.isFinite(defaultQuantity) && defaultQuantity >= 0
+      ? Math.min(defaultQuantity, 20)
+      : 0,
+    pinned: block?.pinned !== false,
+  };
+};
+
+const normalizeCurriculumBlocksForSave = (blocks = []) => (
+  (Array.isArray(blocks) ? blocks : [])
+    .map(normalizeCurriculumBlock)
+    .filter((block) => block.title)
+);
+
+const buildCurriculumBlocksFromSubject = (subject = {}) => {
+  if (Array.isArray(subject?.curriculum_blocks) && subject.curriculum_blocks.length > 0) {
+    return normalizeCurriculumBlocksForSave(subject.curriculum_blocks);
+  }
+
+  const totalBlocks = subject?.block_count || 10;
+  return Array.from({ length: totalBlocks }, (_, index) => {
+    const objective = getNormalizedBlockObjectiveDraft(subject?.block_objectives?.[index]);
+    const hasObjective = hasText(objective.instruction) || getConfiguredFields(objective.custom_fields).length > 0;
+
+    return normalizeCurriculumBlock({
+      id: `legacy_${index + 1}`,
+      title: hasObjective ? `Block ${index + 1}` : `${subject?.title || 'Subject'} block`,
+      type: hasObjective ? 'standard' : 'standard',
+      instruction: objective.instruction,
+      custom_fields: objective.custom_fields,
+      default_quantity: index < (subject?.block_count || 10) ? 1 : 0,
+      pinned: index < 2 || hasObjective,
+    }, index);
+  });
+};
+
+const buildBlockObjectivesFromCurriculumBlocks = (blocks = []) => (
+  normalizeCurriculumBlocksForSave(blocks).reduce((objectives, block, index) => {
+    if (hasText(block.instruction) || getConfiguredFields(block.custom_fields).length > 0) {
+      objectives[index] = {
+        instruction: block.instruction,
+        custom_fields: getConfiguredFields(block.custom_fields),
+        student_overrides: {},
+      };
+    }
+
+    return objectives;
+  }, {})
+);
+
+const countDefaultBlockQuantity = (subject = {}) => (
+  buildCurriculumBlocksFromSubject(subject).reduce((total, block) => (
+    total + (Number.parseInt(block.default_quantity, 10) || 0)
+  ), 0)
+);
+
 const getFirstConfiguredBlockIndex = (objectives = {}) => {
   const configuredIndexes = Object.keys(normalizeBlockObjectivesForSave(objectives))
     .map((value) => Number.parseInt(value, 10))
@@ -126,17 +232,23 @@ const getSubjectWeeklyMinutes = (subject) => (
 );
 
 const buildSubjectBlockRows = (subject, studentId) => {
-  const totalBlocks = subject?.block_count || 10;
+  const curriculumBlocks = buildCurriculumBlocksFromSubject(subject);
 
-  return Array.from({ length: totalBlocks }, (_, index) => {
-    const objective = getNormalizedBlockObjectiveDraft(subject?.block_objectives?.[index]);
+  return curriculumBlocks.map((block, index) => {
+    const objective = getNormalizedBlockObjectiveDraft({
+      instruction: block.instruction,
+      custom_fields: block.custom_fields,
+      student_overrides: subject?.block_objectives?.[index]?.student_overrides || {},
+    });
     const override = objective.student_overrides?.[studentId] || null;
     const instruction = override?.instruction || objective.instruction;
     const customFields = getConfiguredFields(override?.custom_fields?.length ? override.custom_fields : objective.custom_fields);
     const hasObjective = hasText(instruction);
-    const rowType = hasObjective ? 'Guided' : customFields.length ? 'Custom' : 'Standard';
+    const blockType = CURRICULUM_BLOCK_TYPES[block.type] || CURRICULUM_BLOCK_TYPES.standard;
+    const rowType = blockType.name;
 
     return {
+      ...block,
       blockIndex: index,
       customFields,
       hasObjective,
@@ -187,6 +299,8 @@ const Curriculum = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedLibraryStudentId, setSelectedLibraryStudentId] = useState('');
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [detailBlockDraft, setDetailBlockDraft] = useState(null);
+  const [savingDetailBlock, setSavingDetailBlock] = useState(false);
 
   const { students } = useStudents({
     parentId: currentUser?.uid,
@@ -435,6 +549,30 @@ const Curriculum = () => {
         custom_fields: customFields.filter(f => f.label.trim()),
         require_timer: requireTimer,
         block_objectives: normalizeBlockObjectivesForSave(blockObjectives),
+        curriculum_blocks: normalizeCurriculumBlocksForSave(
+          Object.keys(blockObjectives || {}).length > 0
+            ? Array.from({ length: safeTotalBlocks }, (_, index) => {
+              const objective = getNormalizedBlockObjectiveDraft(blockObjectives[index]);
+              return {
+                id: `block_${index + 1}`,
+                title: hasText(objective.instruction) ? `Block ${index + 1}` : `${subjectName.trim()} block`,
+                type: 'standard',
+                instruction: objective.instruction,
+                custom_fields: objective.custom_fields,
+                default_quantity: 1,
+                pinned: index < 2 || hasText(objective.instruction),
+              };
+            })
+            : Array.from({ length: safeTotalBlocks }, (_, index) => ({
+              id: `block_${index + 1}`,
+              title: `${subjectName.trim()} block`,
+              type: 'standard',
+              instruction: '',
+              custom_fields: [],
+              default_quantity: 1,
+              pinned: index < 2,
+            }))
+        ),
         is_active: true,
         updated_at: serverTimestamp()
       };
@@ -498,6 +636,10 @@ const Curriculum = () => {
     ));
   }, [selectedStudentSubjects]);
 
+  useEffect(() => {
+    setDetailBlockDraft(null);
+  }, [selectedSubjectId]);
+
   const handleEdit = (subject, { startStep = 1 } = {}) => {
     const studentIds = subject.student_ids || [subject.student_id].filter(Boolean);
     const nextBlockObjectives = subject.block_objectives || {};
@@ -516,6 +658,106 @@ const Curriculum = () => {
     setCurrentStep(startStep);
     setEditingSubject(subject);
     setShowAddForm(true);
+  };
+
+  const openNewDetailBlockDraft = () => {
+    const nextIndex = selectedSubjectRows.length;
+    setDetailBlockDraft({
+      ...createEmptyCurriculumBlock({ index: nextIndex }),
+      title: '',
+      default_quantity: 1,
+    });
+  };
+
+  const openEditDetailBlockDraft = (block) => {
+    setDetailBlockDraft(normalizeCurriculumBlock(block));
+  };
+
+  const handleSaveDetailBlock = async () => {
+    if (!selectedSubject || !detailBlockDraft) return;
+
+    setSavingDetailBlock(true);
+    try {
+      const normalizedDraft = normalizeCurriculumBlock({
+        ...detailBlockDraft,
+        id: detailBlockDraft.id || createCurriculumBlockId(),
+        title: detailBlockDraft.title || 'Untitled block',
+      });
+      const currentBlocks = buildCurriculumBlocksFromSubject(selectedSubject);
+      const existingIndex = currentBlocks.findIndex((block) => block.id === normalizedDraft.id);
+      const nextBlocks = existingIndex >= 0
+        ? currentBlocks.map((block, index) => (index === existingIndex ? normalizedDraft : block))
+        : [...currentBlocks, normalizedDraft];
+      const normalizedBlocks = normalizeCurriculumBlocksForSave(nextBlocks);
+      const saved = await saveSubject({
+        editingSubject: selectedSubject,
+        subjectData: {
+          curriculum_blocks: normalizedBlocks,
+          block_objectives: buildBlockObjectivesFromCurriculumBlocks(normalizedBlocks),
+          block_count: Math.max(Number(selectedSubject.block_count || 0), normalizedBlocks.reduce((total, block) => total + (Number(block.default_quantity) || 0), 0), 1),
+          updated_at: serverTimestamp(),
+        },
+      });
+
+      if (saved) {
+        setDetailBlockDraft(null);
+      }
+    } finally {
+      setSavingDetailBlock(false);
+    }
+  };
+
+  const handleRemoveDetailBlock = async (blockId) => {
+    if (!selectedSubject || !blockId || !window.confirm('Remove this block from the subject library? Existing saved weekly plans will not be changed.')) {
+      return;
+    }
+
+    setSavingDetailBlock(true);
+    try {
+      const nextBlocks = buildCurriculumBlocksFromSubject(selectedSubject).filter((block) => block.id !== blockId);
+      const normalizedBlocks = normalizeCurriculumBlocksForSave(nextBlocks);
+      const saved = await saveSubject({
+        editingSubject: selectedSubject,
+        subjectData: {
+          curriculum_blocks: normalizedBlocks,
+          block_objectives: buildBlockObjectivesFromCurriculumBlocks(normalizedBlocks),
+          block_count: Math.max(normalizedBlocks.reduce((total, block) => total + (Number(block.default_quantity) || 0), 0), 1),
+          updated_at: serverTimestamp(),
+        },
+      });
+
+      if (saved) {
+        setDetailBlockDraft(null);
+      }
+    } finally {
+      setSavingDetailBlock(false);
+    }
+  };
+
+  const handleToggleDetailBlockPinned = async (block) => {
+    if (!selectedSubject || !block || savingDetailBlock) return;
+
+    setSavingDetailBlock(true);
+    try {
+      const normalizedBlocks = normalizeCurriculumBlocksForSave(
+        buildCurriculumBlocksFromSubject(selectedSubject).map((currentBlock) => (
+          currentBlock.id === block.id
+            ? { ...currentBlock, pinned: !currentBlock.pinned }
+            : currentBlock
+        ))
+      );
+      await saveSubject({
+        editingSubject: selectedSubject,
+        subjectData: {
+          curriculum_blocks: normalizedBlocks,
+          block_objectives: buildBlockObjectivesFromCurriculumBlocks(normalizedBlocks),
+          block_count: Math.max(Number(selectedSubject.block_count || 0), normalizedBlocks.reduce((total, currentBlock) => total + (Number(currentBlock.default_quantity) || 0), 0), 1),
+          updated_at: serverTimestamp(),
+        },
+      });
+    } finally {
+      setSavingDetailBlock(false);
+    }
   };
 
   if (loading) {
@@ -942,42 +1184,99 @@ const Curriculum = () => {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-label text-white">{selectedSubject.title}</p>
                   <p className="mt-0.5 text-[10px] text-[rgba(238,234,248,0.44)]">
-                    {selectedSubject.block_count || 10} blocks/wk · {selectedSubject.block_length || 30}m each
+                    {selectedSubjectRows.length} possible · {countDefaultBlockQuantity(selectedSubject)} default/wk · {selectedSubject.block_length || 30}m each
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleEdit(selectedSubject, { startStep: 4 })}
-                  className="op-proto-btn op-proto-btn-primary"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add objective
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={openNewDetailBlockDraft}
+                className="op-proto-btn op-proto-btn-primary"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add block
+              </button>
+            </div>
 
               <div className="op-proto-block-list">
+                {detailBlockDraft ? (
+                  <div className="op-curriculum-block-editor">
+                    <div className="grid gap-2 md:grid-cols-[minmax(0,1.2fr)_120px_90px]">
+                      <input
+                        type="text"
+                        value={detailBlockDraft.title}
+                        onChange={(event) => setDetailBlockDraft((draft) => ({ ...draft, title: event.target.value }))}
+                        className="op-weekly-inline-input"
+                        placeholder="Block name, e.g. Beast Academy practice"
+                      />
+                      <select
+                        value={detailBlockDraft.type}
+                        onChange={(event) => setDetailBlockDraft((draft) => ({ ...draft, type: event.target.value }))}
+                        className="op-weekly-inline-input"
+                      >
+                        {Object.entries(CURRICULUM_BLOCK_TYPES).map(([value, meta]) => (
+                          <option key={value} value={value}>{meta.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={detailBlockDraft.default_quantity}
+                        onChange={(event) => setDetailBlockDraft((draft) => ({ ...draft, default_quantity: event.target.value }))}
+                        className="op-weekly-inline-input"
+                        aria-label="Default weekly quantity"
+                      />
+                    </div>
+                    <textarea
+                      value={detailBlockDraft.instruction}
+                      onChange={(event) => setDetailBlockDraft((draft) => ({ ...draft, instruction: event.target.value }))}
+                      className="op-curriculum-block-textarea"
+                      placeholder="Student-facing instruction or objective for this reusable block"
+                    />
+                    <div className="flex flex-wrap justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setDetailBlockDraft(null)}
+                        className="op-proto-btn"
+                        disabled={savingDetailBlock}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveDetailBlock}
+                        className="op-proto-btn op-proto-btn-primary"
+                        disabled={savingDetailBlock}
+                      >
+                        {savingDetailBlock ? 'Saving...' : 'Save block'}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 {selectedSubjectRows.map((row) => (
                   <div
-                    key={row.blockIndex}
-                    className={`op-proto-block-row ${row.hasObjective ? 'is-guided' : row.customFields.length ? 'is-custom' : ''}`}
+                    key={row.id}
+                    className={`op-proto-block-row ${row.type === 'project' ? 'is-custom' : row.hasObjective ? 'is-guided' : row.customFields.length ? 'is-custom' : ''}`}
                   >
                     <button
                       type="button"
-                      onClick={() => handleEdit(selectedSubject, { startStep: 4 })}
-                      className="op-proto-pin"
-                      title="Edit block objective"
+                      onClick={() => handleToggleDetailBlockPinned(row)}
+                      className={`op-proto-pin ${row.pinned ? 'pinned' : ''}`}
+                      title={row.pinned ? 'Unpin from quick planning' : 'Pin to quick planning'}
+                      disabled={savingDetailBlock}
                     >
                       <ListChecks className="h-3.5 w-3.5" />
                     </button>
                     <span className={`op-proto-block-tag ${row.hasObjective ? 'is-guided' : row.customFields.length ? 'is-custom' : ''}`}>
-                      {row.rowType}
+                      {(CURRICULUM_BLOCK_TYPES[row.type] || CURRICULUM_BLOCK_TYPES.standard).label}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12px] font-label text-white">Block {row.blockIndex + 1}</p>
+                      <p className="truncate text-[12px] font-label text-white">{row.title}</p>
                       <p className="mt-1 truncate text-[10px] text-[rgba(238,234,248,0.5)]">
                         {row.instruction || 'Independent learning block'}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
+                        <span className="op-proto-req">{row.default_quantity || 0} default/wk</span>
                         {selectedSubject.require_timer ? (
                           <span className="op-proto-req"><Timer className="h-3 w-3" /> Timer</span>
                         ) : null}
@@ -992,11 +1291,19 @@ const Curriculum = () => {
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        onClick={() => handleEdit(selectedSubject, { startStep: 4 })}
+                        onClick={() => openEditDetailBlockDraft(row)}
                         className="op-proto-icon-btn"
-                        title="Edit objective"
+                        title="Edit block"
                       >
                         <Edit className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveDetailBlock(row.id)}
+                        className="op-proto-icon-btn"
+                        title="Remove block"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </div>
@@ -1011,15 +1318,19 @@ const Curriculum = () => {
               </div>
               <div className="space-y-3 p-3">
                 <div className="op-proto-tray-stat">
-                  <span>{selectedSubject.block_count || 10}</span>
-                  <p>blocks available</p>
+                  <span>{selectedSubjectRows.length}</span>
+                  <p>possible blocks</p>
+                </div>
+                <div className="op-proto-tray-stat">
+                  <span>{countDefaultBlockQuantity(selectedSubject)}</span>
+                  <p>default weekly blocks</p>
                 </div>
                 <div className="op-proto-tray-stat">
                   <span>~{(getSubjectWeeklyMinutes(selectedSubject) / 60).toFixed(1)}h</span>
                   <p>weekly target</p>
                 </div>
                 <div className="border-l-2 border-[#f59e0b] bg-[rgba(245,158,11,0.08)] px-3 py-2 text-[10px] leading-4 text-[#f59e0b]">
-                  Weekly assignment selection still lives in Weekly Blocking for this schema phase.
+                  Weekly Blocking controls which reusable blocks are enabled and how many of each are assigned for a default or specific week.
                 </div>
                 <Link
                   to={`/dashboard/${dashboardFeaturesById['weekly-blocking'].path}`}
@@ -1052,9 +1363,9 @@ const Curriculum = () => {
           </div>
           <div className="op-proto-subject-grid">
             {selectedStudentSubjects.map((subject) => {
+              const subjectBlocks = buildCurriculumBlocksFromSubject(subject);
               const configuredBlockCount = countConfiguredBlockObjectives(subject.block_objectives);
-              const totalBlocks = subject.block_count || 10;
-              const pips = Array.from({ length: totalBlocks }, (_, index) => Boolean(subject.block_objectives?.[index]));
+              const totalBlocks = subject.block_count || countDefaultBlockQuantity(subject) || subjectBlocks.length || 1;
 
               return (
                 <button
@@ -1068,7 +1379,8 @@ const Curriculum = () => {
                     <span className="min-w-0">
                       <span className="block truncate text-[12px] font-label text-white">{subject.title}</span>
                       <span className="mt-2 flex flex-wrap gap-3 text-[10px] text-[rgba(238,234,248,0.52)]">
-                        <span><b className="font-label text-[rgba(238,234,248,0.82)]">{totalBlocks}</b> blks/wk</span>
+                        <span><b className="font-label text-[rgba(238,234,248,0.82)]">{subjectBlocks.length}</b> possible</span>
+                        <span><b className="font-label text-[rgba(238,234,248,0.82)]">{totalBlocks}</b> default/wk</span>
                         <span><b className="font-label text-[rgba(238,234,248,0.82)]">{subject.block_length || 30}m</b></span>
                         <span><b className="font-label text-[rgba(238,234,248,0.82)]">{(getSubjectWeeklyMinutes(subject) / 60).toFixed(1)}h</b></span>
                       </span>
@@ -1076,11 +1388,11 @@ const Curriculum = () => {
                     <Settings className="h-3.5 w-3.5 flex-shrink-0 text-[rgba(238,234,248,0.24)]" />
                   </span>
                   <span className="mt-3 flex flex-wrap gap-[3px]">
-                    {pips.map((configured, index) => (
+                    {subjectBlocks.map((block, index) => (
                       <span
                         key={index}
-                        className={`op-proto-pip ${configured ? 'is-guided' : ''}`}
-                        title={`Block ${index + 1}${configured ? ' has an objective' : ''}`}
+                        className={`op-proto-pip ${block.instruction ? 'is-guided' : ''}`}
+                        title={block.title}
                       />
                     ))}
                   </span>

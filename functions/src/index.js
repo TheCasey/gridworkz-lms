@@ -3921,6 +3921,30 @@ const normalizeBlockObjectives = (blockObjectives = {}) => {
   );
 };
 
+const normalizeCurriculumBlocks = (curriculumBlocks = []) => {
+  if (!Array.isArray(curriculumBlocks)) {
+    throw new HttpsError('invalid-argument', 'Curriculum blocks must be an array.');
+  }
+
+  return curriculumBlocks
+    .map((block, index) => {
+      const defaultQuantity = Number.parseInt(block?.default_quantity, 10);
+
+      return {
+        id: trimString(block?.id) || `block_${index + 1}`,
+        title: trimString(block?.title) || `Block ${index + 1}`,
+        type: trimString(block?.type) || 'standard',
+        instruction: trimString(block?.instruction),
+        custom_fields: normalizeCustomFields(block?.custom_fields || []),
+        default_quantity: Number.isFinite(defaultQuantity) && defaultQuantity >= 0
+          ? Math.min(defaultQuantity, 20)
+          : 0,
+        pinned: block?.pinned !== false,
+      };
+    })
+    .filter((block) => block.title);
+};
+
 const assertParentOwnsStudents = async (parentId, studentIds, { requireActive = false } = {}) => {
   const uniqueStudentIds = Array.from(new Set(studentIds));
   const studentSnapshots = await Promise.all(
@@ -4973,6 +4997,7 @@ export const createSubject = onCall({ region: REGION }, async (request) => {
     custom_fields: normalizeCustomFields(request.data?.custom_fields || []),
     require_timer: Boolean(request.data?.require_timer),
     block_objectives: normalizeBlockObjectives(request.data?.block_objectives || {}),
+    curriculum_blocks: normalizeCurriculumBlocks(request.data?.curriculum_blocks || []),
     is_active: true,
     created_at: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp(),
