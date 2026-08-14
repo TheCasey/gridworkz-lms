@@ -463,16 +463,6 @@ const WeeklyPlanReviewPanel = ({
     });
   }, [selectedStudentSubjects]);
 
-  const handleBlockFieldChange = (blockId, field, value) => {
-    setEditableBlocks((currentBlocks) => currentBlocks.map((block) => (
-      block.id === blockId
-        ? { ...block, [field]: value }
-        : block
-    )));
-    setHasUnsavedEdits(true);
-    setFeedback(null);
-  };
-
   const handleRefreshFromSubjects = () => {
     const nextQuantities = buildDefaultQuantitiesForSubjects(selectedStudentSubjects);
     const refreshedBlocks = buildPlanBlocksFromQuantities({
@@ -774,11 +764,21 @@ const WeeklyPlanReviewPanel = ({
                 <CalendarDays className="h-3.5 w-3.5 flex-shrink-0" />
                 <span>
                   {isPersistedPlan
-                    ? 'This student-week is saved. Regenerate after Curriculum changes before saving or publishing updates.'
+                    ? 'This student-week is saved.'
                     : hasUnsavedEdits
-                      ? 'This week has local edits. Save or publish to persist them.'
+                      ? 'This week has been customized.'
                       : 'Using current subject blocks as the default schedule preview.'}
                 </span>
+                {(isPersistedPlan || hasUnsavedEdits) && blocksAreEditable ? (
+                  <button
+                    type="button"
+                    onClick={handleRefreshFromSubjects}
+                    className="op-weekly-banner-action"
+                    disabled={loading || savingPlan || publishingPlan}
+                  >
+                    Reset to default
+                  </button>
+                ) : null}
               </div>
 
               {renderMessage()}
@@ -883,33 +883,6 @@ const WeeklyPlanReviewPanel = ({
                               })}
                             </div>
 
-                            <div className="grid gap-2 pt-2">
-                              {editableBlocks
-                                .filter((block) => getSubjectIdForBlock(block) === subject.id)
-                                .map((block, index) => (
-                                <div key={`${block.id}_edit`} className="op-weekly-edit-row">
-                                  <span className="op-weekly-edit-index">
-                                    {Number.isInteger(block.legacy_block_index) ? block.legacy_block_index + 1 : index + 1}
-                                  </span>
-                                  <input
-                                    type="text"
-                                    value={block.title || ''}
-                                    onChange={(event) => handleBlockFieldChange(block.id, 'title', event.target.value)}
-                                    disabled={!blocksAreEditable}
-                                    className="op-weekly-inline-input"
-                                    placeholder={block.legacy_subject_title || `Block ${index + 1}`}
-                                  />
-                                  <input
-                                    type="text"
-                                    value={block.instruction || ''}
-                                    onChange={(event) => handleBlockFieldChange(block.id, 'instruction', event.target.value)}
-                                    disabled={!blocksAreEditable}
-                                    className="op-weekly-inline-input"
-                                    placeholder="Student-facing note"
-                                  />
-                                </div>
-                                ))}
-                            </div>
                           </div>
                         ) : null}
                       </article>

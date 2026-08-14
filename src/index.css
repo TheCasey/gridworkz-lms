@@ -640,6 +640,20 @@
     color: #f59e0b;
   }
 
+  .op-weekly-banner-action {
+    color: inherit;
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: 2px;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .op-weekly-banner-action:disabled {
+    opacity: 0.5;
+  }
+
   .op-weekly-subject-row {
     background: #26263c;
     border-left: 3px solid transparent;
@@ -783,19 +797,6 @@
     flex-shrink: 0;
     font-size: 8px;
     padding: 1px 5px;
-  }
-
-  .op-weekly-edit-row {
-    align-items: center;
-    display: grid;
-    gap: 6px;
-    grid-template-columns: 28px minmax(0, 0.8fr) minmax(0, 1.2fr);
-  }
-
-  .op-weekly-edit-index {
-    color: #585674;
-    font-size: 10px;
-    text-align: center;
   }
 
   .op-weekly-inline-input {
