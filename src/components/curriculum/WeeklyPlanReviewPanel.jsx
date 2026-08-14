@@ -4,16 +4,19 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
   FilePenLine,
   RefreshCw,
   Save,
   Send,
+  Star,
 } from 'lucide-react';
 import useWeeklyPlanRecord from '../../hooks/useWeeklyPlanRecord';
 import { WeeklyPlanStatuses } from '../../constants/schema';
 import {
   formatWeekRange,
-  getWeekLabel,
   getWeekPickerOptions,
   getWeekRangeByOffset,
 } from '../../utils/weekUtils';
@@ -181,6 +184,22 @@ const getConfiguredFieldCount = (fields) => (
     : 0
 );
 
+const getSubjectStudentIds = (subject) => (
+  Array.isArray(subject?.student_ids) && subject.student_ids.length > 0
+    ? subject.student_ids
+    : [subject?.student_id].filter(Boolean)
+);
+
+const getStudentSubjects = (subjects, studentId) => (
+  (Array.isArray(subjects) ? subjects : []).filter((subject) => getSubjectStudentIds(subject).includes(studentId))
+);
+
+const getStudentDefaultHours = (subjects, studentId) => (
+  getStudentSubjects(subjects, studentId).reduce((minutes, subject) => (
+    minutes + Number(subject?.block_count || 10) * Number(subject?.block_length || 30)
+  ), 0) / 60
+);
+
 const WeeklyPlanReviewPanel = ({
   activeSubjects = [],
   currentUser = null,
@@ -256,20 +275,40 @@ const WeeklyPlanReviewPanel = ({
     [hasUnsavedEdits, weeklyPlan]
   );
   const groupedBlocks = useMemo(() => buildGroupedBlocks(editableBlocks), [editableBlocks]);
-  const planSubjectCount = groupedBlocks.length;
+  const subjectsById = useMemo(
+    () => Object.fromEntries((Array.isArray(activeSubjects) ? activeSubjects : []).map((subject) => [subject.id, subject])),
+    [activeSubjects]
+  );
+  const selectedWeekOption = useMemo(
+    () => weekPickerOptions.find((option) => option.value === selectedWeekOffset) || null,
+    [selectedWeekOffset, weekPickerOptions]
+  );
+  const visibleWeekOptions = useMemo(() => {
+    if (weekPickerOptions.length <= 5) {
+      return weekPickerOptions;
+    }
+
+    const selectedIndex = Math.max(0, weekPickerOptions.findIndex((option) => option.value === selectedWeekOffset));
+    const startIndex = Math.max(0, Math.min(selectedIndex - 2, weekPickerOptions.length - 5));
+    return weekPickerOptions.slice(startIndex, startIndex + 5);
+  }, [selectedWeekOffset, weekPickerOptions]);
   const totalMinutes = editableBlocks.reduce(
     (total, block) => total + Number(block?.planned_duration_minutes || 0),
     0
   );
   const planUpdatedAt = formatPlanTimestamp(weeklyPlan?.updated_at);
   const planPublishedAt = formatPlanTimestamp(weeklyPlan?.published_at);
-  const planRequiresAttention = Boolean(hasUnsavedEdits || !weeklyPlan);
   const isArchived = weeklyPlan?.status === WeeklyPlanStatuses.ARCHIVED;
   const isPublished = weeklyPlan?.status === WeeklyPlanStatuses.PUBLISHED;
   const isPersistedPlan = Boolean(weeklyPlan);
   const saveButtonLabel = isPublished ? 'Save as Draft' : 'Save Draft';
   const publishButtonLabel = isPublished ? 'Publish Updates' : 'Publish Week';
   const blocksAreEditable = Boolean(sourcePlan) && !isArchived;
+  const hasSubjectCountVariance = groupedBlocks.some((group) => {
+    const subject = subjectsById[group.id];
+    const target = Number(subject?.block_count || group.blocks.length);
+    return group.blocks.length !== target;
+  });
 
   useEffect(() => {
     setHasUnsavedEdits(false);
@@ -422,300 +461,288 @@ const WeeklyPlanReviewPanel = ({
   };
 
   return (
-    <section className="op-panel p-5 md:p-6">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div className="max-w-3xl">
-          <p className="op-eyebrow">Weekly Blocking</p>
-          <h2 className="mt-3 text-[28px] font-display leading-none text-white">
-            Build the student-week before it goes live
-          </h2>
-          <p className="op-subtle mt-3 text-[13px] font-body leading-6">
-            This route uses current per-student subject assignments as the default block source, then saves or publishes the selected student-week.
+    <section className="op-weekly-proto">
+      <div className="op-proto-topbar">
+        <div className="min-w-0 flex-1">
+          <p className="text-[14px] font-label text-white">Weekly Blocking</p>
+          <p className="mt-1 truncate text-[10px] text-[rgba(238,234,248,0.42)]">
+            {selectedStudent?.name || 'Select a student'} · {selectedWeekOption?.displayText || formatWeekRange(selectedWeekRange.weekStart, selectedWeekRange.weekEnd)}
           </p>
         </div>
-
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
           <button
             type="button"
             onClick={handleRefreshFromSubjects}
             disabled={!blocksAreEditable || loading || savingPlan || publishingPlan}
-            className="op-button op-button-secondary"
+            className="op-proto-btn"
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Regenerate from Subjects
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Regenerate
           </button>
           <button
             type="button"
             onClick={handleSaveDraft}
             disabled={!blocksAreEditable || !editableBlocks.length || loading || savingPlan || publishingPlan}
-            className="op-button op-button-secondary"
+            className="op-proto-btn"
           >
-            <Save className="h-4 w-4" />
+            <Save className="h-3.5 w-3.5" />
             {savingPlan ? 'Saving...' : saveButtonLabel}
           </button>
           <button
             type="button"
             onClick={handlePublish}
             disabled={!blocksAreEditable || !editableBlocks.length || loading || savingPlan || publishingPlan}
-            className="op-button"
+            className="op-proto-btn op-proto-btn-primary"
           >
-            <Send className="h-4 w-4" />
+            <Send className="h-3.5 w-3.5" />
             {publishingPlan ? 'Publishing...' : publishButtonLabel}
           </button>
         </div>
       </div>
 
       {students.length === 0 ? (
-        <div className="op-surface mt-5 px-5 py-4">
-          <p className="op-subtle text-[14px] font-body">
-            Add a student before planning a weekly block schedule.
-          </p>
+        <div className="op-proto-empty">
+          <CalendarDays className="mx-auto h-9 w-9 text-[#b8adff]" />
+          <h3 className="mt-4 text-[18px] font-label text-white">No students available</h3>
+          <p className="mt-2 text-[12px] text-[rgba(238,234,248,0.54)]">Add a student before planning a weekly block schedule.</p>
         </div>
       ) : (
         <>
-          <div className="mt-5 grid gap-4 lg:grid-cols-[1.05fr_1.05fr_0.9fr]">
-            <div className="op-surface px-4 py-4">
-              <label className="op-eyebrow mb-2 block">Student</label>
-              <select
-                value={selectedStudentId}
-                onChange={(event) => setSelectedStudentId(event.target.value)}
-                className="op-input"
+          <div className="op-weekly-controls">
+            <div className="op-weekly-student-tabs">
+              {students.map((student) => {
+                const isActive = student.id === selectedStudentId;
+                const defaultHours = getStudentDefaultHours(activeSubjects, student.id);
+
+                return (
+                  <button
+                    type="button"
+                    key={student.id}
+                    onClick={() => setSelectedStudentId(student.id)}
+                    className={`op-proto-tab ${isActive ? 'is-active' : ''}`}
+                  >
+                    <span className="op-proto-tab-name">{student.name}</span>
+                    <span className="op-proto-tab-meta">~{defaultHours.toFixed(1)}h default</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="op-weekly-week-nav">
+              <button
+                type="button"
+                onClick={() => setSelectedWeekOffset((value) => Math.max(-12, value - 1))}
+                className="op-weekly-nav-btn"
+                title="Previous week"
               >
-                {students.map((student) => (
-                  <option key={student.id} value={student.id}>
-                    {student.name}
-                  </option>
-                ))}
-              </select>
-              <p className="op-subtle mt-2 text-[12px] font-body">
-                Planning stays scoped to one student-week.
-              </p>
-            </div>
-
-            <div className="op-surface px-4 py-4">
-              <label className="op-eyebrow mb-2 block">Week</label>
-              <select
-                value={selectedWeekOffset}
-                onChange={(event) => setSelectedWeekOffset(Number.parseInt(event.target.value, 10))}
-                className="op-input"
-              >
-                {weekPickerOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label} ({option.displayText})
-                  </option>
-                ))}
-              </select>
-              <p className="op-subtle mt-2 text-[12px] font-body">
-                {formatWeekRange(selectedWeekRange.weekStart, selectedWeekRange.weekEnd)}
-              </p>
-            </div>
-
-            <div
-              className="border border-l-[3px] px-4 py-4"
-              style={{
-                backgroundColor: planStatusMeta.surface,
-                borderColor: 'rgba(238, 234, 248, 0.14)',
-                borderLeftColor: planStatusMeta.accent,
-              }}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="op-eyebrow" style={{ color: planStatusMeta.accent }}>
-                  Status
-                </p>
-                {planRequiresAttention ? (
-                  <span className="op-pill">Needs Review</span>
-                ) : null}
-              </div>
-              <p className="mt-2 text-[18px] font-display text-white">
-                {planStatusMeta.label}
-              </p>
-              <p className="mt-1 text-[12px] font-body leading-5" style={{ color: planStatusMeta.text }}>
-                {planStatusMeta.detail}
-              </p>
-            </div>
-          </div>
-
-          {renderMessage()}
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="op-stat px-4 py-3">
-              <p className="op-eyebrow">Student-Week</p>
-              <p className="mt-2 truncate text-[16px] font-display text-white">
-                {selectedStudent?.name || 'Select a student'}
-              </p>
-              <p className="op-subtle mt-1 text-[12px] font-body">
-                {getWeekLabel(selectedWeekOffset)}
-              </p>
-            </div>
-
-            <div className="op-stat px-4 py-3">
-              <p className="op-eyebrow">Blocks</p>
-              <p className="mt-2 text-[16px] font-display text-white">
-                {editableBlocks.length}
-              </p>
-              <p className="op-subtle mt-1 text-[12px] font-body">
-                {planSubjectCount} active subject{planSubjectCount === 1 ? '' : 's'}
-              </p>
-            </div>
-
-            <div className="op-stat px-4 py-3">
-              <p className="op-eyebrow">Study Time</p>
-              <p className="mt-2 text-[16px] font-display text-white">
-                {totalMinutes ? `${(totalMinutes / 60).toFixed(1)}h` : '0h'}
-              </p>
-              <p className="op-subtle mt-1 text-[12px] font-body">
-                Estimated from block durations.
-              </p>
-            </div>
-
-            <div className="op-stat px-4 py-3">
-              <p className="op-eyebrow">Published</p>
-              <p className="mt-2 truncate text-[16px] font-display text-white">
-                {planPublishedAt || 'Not published'}
-              </p>
-              <p className="op-subtle mt-1 text-[12px] font-body">
-                Last save: {planUpdatedAt || 'none'}
-              </p>
-            </div>
-          </div>
-
-          <div
-            className="mt-5 flex items-start gap-3 border border-l-[3px] px-4 py-3"
-            style={{
-              backgroundColor: isPersistedPlan ? STATUS_TONES.warning.surface : STATUS_TONES.preview.surface,
-              borderColor: 'rgba(238, 234, 248, 0.14)',
-              borderLeftColor: isPersistedPlan ? STATUS_TONES.warning.accent : STATUS_TONES.preview.accent,
-            }}
-          >
-            <CalendarDays
-              className="mt-0.5 h-4 w-4 flex-shrink-0"
-              style={{ color: isPersistedPlan ? STATUS_TONES.warning.accent : STATUS_TONES.preview.accent }}
-            />
-            <p className="op-subtle text-[13px] font-body leading-5">
-              {isPersistedPlan
-                ? 'This view is using a saved weekly plan. After changing Curriculum block objectives, regenerate from subjects here before saving or publishing this student-week.'
-                : 'This preview is generated from current Curriculum subjects, including saved block objectives and per-student overrides.'}
-            </p>
-          </div>
-
-          <div className="mt-6">
-            <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-              <div>
-                <p className="op-eyebrow">Assignment Rows</p>
-                <h3 className="mt-2 text-[24px] font-display leading-none text-white">
-                  Weekly blocks
-                </h3>
-              </div>
-              {loading ? (
-                <div className="op-pill">Loading</div>
-              ) : null}
-            </div>
-
-            {!editableBlocks.length ? (
-              <div className="op-surface px-5 py-5">
-                <p className="text-[14px] font-body text-white">
-                  No active subject blocks are available for this student-week yet.
-                </p>
-                <p className="op-subtle mt-1 text-[13px] font-body">
-                  Assign at least one active subject, then reset the weekly preview.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {groupedBlocks.map((group, groupIndex) => {
-                  const isOpen = expandedSubjectIds.has(group.id);
-                  const accent = getBlockAccent(groupIndex);
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <div className="op-weekly-week-chips">
+                {visibleWeekOptions.map((option) => {
+                  const isActive = option.value === selectedWeekOffset;
+                  const isModified = Boolean(weeklyPlan && option.value === selectedWeekOffset);
 
                   return (
-                    <article
-                      key={group.id}
-                      className="border border-l-[3px]"
-                      style={{
-                        backgroundColor: '#202034',
-                        borderColor: 'rgba(238, 234, 248, 0.12)',
-                        borderLeftColor: accent,
-                      }}
+                    <button
+                      type="button"
+                      key={option.value}
+                      onClick={() => setSelectedWeekOffset(option.value)}
+                      className={`op-weekly-chip ${isActive ? 'is-active' : ''} ${option.value === 0 ? 'is-current' : ''} ${isModified ? 'is-modified' : ''}`}
                     >
-                      <button
-                        type="button"
-                        onClick={() => toggleSubjectGroup(group.id)}
-                        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[rgba(238,234,248,0.04)]"
-                      >
-                        <span className="h-2.5 w-2.5 flex-shrink-0" style={{ backgroundColor: accent }} />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[14px] font-label text-white">
-                            {group.title}
-                          </span>
-                          <span className="op-subtle mt-1 block text-[12px] font-body">
-                            {group.blocks.length} block{group.blocks.length === 1 ? '' : 's'} · {group.minutes} min
-                          </span>
-                        </span>
-                        <span className="op-pill">{group.blocks.length}</span>
-                        <ChevronDown className={`h-4 w-4 text-[rgba(238,234,248,0.5)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                      </button>
-
-                      {isOpen ? (
-                        <div className="space-y-3 border-t border-[rgba(238,234,248,0.1)] px-4 py-4">
-                          {group.blocks.map(({ block, index }) => {
-                            const fieldCount = getConfiguredFieldCount(block.custom_fields);
-
-                            return (
-                              <div
-                                key={block.id}
-                                className="op-surface p-4"
-                                style={{ borderLeft: `3px solid ${block.instruction ? accent : 'rgba(238,234,248,0.14)'}` }}
-                              >
-                                <div className="mb-3 flex flex-wrap items-center gap-2">
-                                  <span className="op-pill">
-                                    Block {Number.isInteger(block.legacy_block_index) ? block.legacy_block_index + 1 : index + 1}
-                                  </span>
-                                  <span className="op-pill">{block.planned_duration_minutes || 0} min</span>
-                                  <span className="op-pill">{block.completion_mode || 'time_boxed'}</span>
-                                  {block.instruction ? (
-                                    <span className="op-pill">Objective</span>
-                                  ) : null}
-                                  {fieldCount > 0 ? (
-                                    <span className="op-pill">
-                                      {fieldCount} field{fieldCount === 1 ? '' : 's'}
-                                    </span>
-                                  ) : null}
-                                </div>
-
-                                <div className="grid gap-3 lg:grid-cols-[1fr_1.35fr]">
-                                  <div>
-                                    <label className="op-eyebrow mb-2 block">Block Title</label>
-                                    <input
-                                      type="text"
-                                      value={block.title || ''}
-                                      onChange={(event) => handleBlockFieldChange(block.id, 'title', event.target.value)}
-                                      disabled={!blocksAreEditable}
-                                      className="op-input disabled:cursor-not-allowed disabled:opacity-60"
-                                      placeholder={block.legacy_subject_title || `Block ${index + 1}`}
-                                    />
-                                  </div>
-
-                                  <div>
-                                    <label className="op-eyebrow mb-2 block">Instruction</label>
-                                    <textarea
-                                      value={block.instruction || ''}
-                                      onChange={(event) => handleBlockFieldChange(block.id, 'instruction', event.target.value)}
-                                      disabled={!blocksAreEditable}
-                                      rows={3}
-                                      className="op-input resize-none disabled:cursor-not-allowed disabled:opacity-60"
-                                      placeholder="Add a student-facing note only when this week needs one."
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </article>
+                      {option.value === 0 ? 'Current' : option.label}
+                    </button>
                   );
                 })}
               </div>
-            )}
+              <button
+                type="button"
+                onClick={() => setSelectedWeekOffset((value) => Math.min(4, value + 1))}
+                className="op-weekly-nav-btn"
+                title="Next week"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="op-weekly-body">
+            <main className="op-weekly-schedule">
+              <div
+                className={`op-weekly-banner ${isPersistedPlan || hasUnsavedEdits ? 'is-modified' : ''}`}
+              >
+                <CalendarDays className="h-3.5 w-3.5 flex-shrink-0" />
+                <span>
+                  {isPersistedPlan
+                    ? 'This student-week is saved. Regenerate after Curriculum changes before saving or publishing updates.'
+                    : hasUnsavedEdits
+                      ? 'This week has local edits. Save or publish to persist them.'
+                      : 'Using current subject blocks as the default schedule preview.'}
+                </span>
+              </div>
+
+              {renderMessage()}
+
+              {!editableBlocks.length ? (
+                <div className="op-proto-empty min-h-[280px]">
+                  <p className="text-[14px] font-label text-white">No active subject blocks are available.</p>
+                  <p className="mt-2 text-[12px] text-[rgba(238,234,248,0.54)]">Assign at least one active subject, then regenerate the weekly preview.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {groupedBlocks.map((group, groupIndex) => {
+                    const isOpen = expandedSubjectIds.has(group.id);
+                    const accent = getBlockAccent(groupIndex);
+                    const subject = subjectsById[group.id];
+                    const target = Number(subject?.block_count || group.blocks.length);
+                    const diff = group.blocks.length - target;
+
+                    return (
+                      <article
+                        key={group.id}
+                        className="op-weekly-subject-row"
+                        style={{ borderLeftColor: subject?.color || accent }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleSubjectGroup(group.id)}
+                          className="op-weekly-subject-header"
+                        >
+                          <span className="h-2 w-2 flex-shrink-0" style={{ backgroundColor: subject?.color || accent }} />
+                          <span className="min-w-0 flex-1 truncate text-[12px] font-label text-white">{group.title}</span>
+                          <span className="text-[10px] text-[rgba(238,234,248,0.46)]">{subject?.block_length || group.blocks[0]?.block?.planned_duration_minutes || 0}m/block</span>
+                          <span
+                            className="text-[11px] font-label"
+                            style={{ color: diff === 0 ? '#34d399' : '#f59e0b' }}
+                          >
+                            {group.blocks.length}/{target}
+                          </span>
+                          {diff !== 0 ? (
+                            <span className={`op-weekly-diff ${diff > 0 ? 'is-plus' : 'is-minus'}`}>{diff > 0 ? '+' : ''}{diff}</span>
+                          ) : null}
+                          <ChevronDown className={`h-3.5 w-3.5 text-[rgba(238,234,248,0.36)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {isOpen ? (
+                          <div className="op-weekly-subject-body">
+                            <div className="op-weekly-pill-row">
+                              {group.blocks.map(({ block, index }) => {
+                                const fieldCount = getConfiguredFieldCount(block.custom_fields);
+
+                                return (
+                                  <div
+                                    key={block.id}
+                                    className="op-weekly-block-pill"
+                                    style={{ borderColor: block.instruction ? `${accent}88` : 'rgba(255,255,255,0.14)' }}
+                                  >
+                                    <span className={`op-weekly-block-type ${block.instruction ? 'is-guided' : ''}`}>
+                                      {block.instruction ? 'OBJ' : 'STD'}
+                                    </span>
+                                    <span className="min-w-0 flex-1 truncate">
+                                      {block.title || block.legacy_subject_title || `Block ${index + 1}`}
+                                    </span>
+                                    <span className="text-[9px] text-[rgba(238,234,248,0.38)]">
+                                      {block.planned_duration_minutes || 0}m
+                                    </span>
+                                    {fieldCount > 0 ? (
+                                      <span className="op-weekly-field-count">{fieldCount}</span>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <div className="grid gap-2 pt-2">
+                              {group.blocks.map(({ block, index }) => (
+                                <div key={`${block.id}_edit`} className="op-weekly-edit-row">
+                                  <span className="op-weekly-edit-index">
+                                    {Number.isInteger(block.legacy_block_index) ? block.legacy_block_index + 1 : index + 1}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    value={block.title || ''}
+                                    onChange={(event) => handleBlockFieldChange(block.id, 'title', event.target.value)}
+                                    disabled={!blocksAreEditable}
+                                    className="op-weekly-inline-input"
+                                    placeholder={block.legacy_subject_title || `Block ${index + 1}`}
+                                  />
+                                  <input
+                                    type="text"
+                                    value={block.instruction || ''}
+                                    onChange={(event) => handleBlockFieldChange(block.id, 'instruction', event.target.value)}
+                                    disabled={!blocksAreEditable}
+                                    className="op-weekly-inline-input"
+                                    placeholder="Student-facing note"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </main>
+
+            <aside className="op-weekly-summary">
+              <div className="op-weekly-summary-header">This week</div>
+              <div className="op-weekly-summary-body">
+                <div className="op-proto-tray-stat">
+                  <span>{editableBlocks.length}</span>
+                  <p>blocks this week</p>
+                </div>
+                <div className="op-proto-tray-stat">
+                  <span>~{(totalMinutes / 60).toFixed(1)}h</span>
+                  <p>estimated study time</p>
+                </div>
+                <div className="h-px bg-[rgba(255,255,255,0.08)]" />
+                <div className="space-y-1.5">
+                  {groupedBlocks.map((group, index) => {
+                    const subject = subjectsById[group.id];
+                    const target = Number(subject?.block_count || group.blocks.length);
+                    const diff = group.blocks.length - target;
+
+                    return (
+                      <div key={group.id} className="op-weekly-summary-subject">
+                        <span className="h-1.5 w-1.5 flex-shrink-0" style={{ backgroundColor: subject?.color || getBlockAccent(index) }} />
+                        <span className="min-w-0 flex-1 truncate">{group.title}</span>
+                        <span className="font-label text-[rgba(238,234,248,0.8)]">{group.blocks.length}</span>
+                        {diff !== 0 ? (
+                          <span style={{ color: diff > 0 ? '#f87171' : '#f59e0b' }}>{diff > 0 ? '+' : ''}{diff}</span>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div
+                  className="border-l-2 px-2 py-1.5 text-[9px] leading-4"
+                  style={{
+                    backgroundColor: hasSubjectCountVariance ? 'rgba(245,158,11,0.1)' : planStatusMeta.surface,
+                    borderLeftColor: hasSubjectCountVariance ? '#f59e0b' : planStatusMeta.accent,
+                    color: hasSubjectCountVariance ? '#f59e0b' : planStatusMeta.text,
+                  }}
+                >
+                  {hasSubjectCountVariance
+                    ? 'Some subjects differ from their current weekly target.'
+                    : `${planStatusMeta.label}: ${planStatusMeta.detail}`}
+                </div>
+                <div className="text-[9px] leading-4 text-[rgba(238,234,248,0.42)]">
+                  Published: {planPublishedAt || 'Not published'}<br />
+                  Last save: {planUpdatedAt || 'none'}
+                </div>
+              </div>
+              <div className="op-weekly-summary-actions">
+                <button type="button" className="op-proto-btn w-full" disabled>
+                  <Copy className="h-3.5 w-3.5" />
+                  Copy to another week
+                </button>
+                <button type="button" className="op-proto-btn w-full" disabled>
+                  <Star className="h-3.5 w-3.5" />
+                  Save as default week
+                </button>
+              </div>
+            </aside>
           </div>
         </>
       )}

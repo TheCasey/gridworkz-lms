@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { serverTimestamp } from 'firebase/firestore';
-import { ArrowRight, BookOpen, CalendarDays, ListChecks, Plus, Trash2, Archive, Edit, ExternalLink, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, ListChecks, MessageSquareText, Plus, Settings, Trash2, Archive, Edit, Timer, Upload, X } from 'lucide-react';
 import BlockObjectivesEditor from '../components/curriculum/BlockObjectivesEditor';
 import { dashboardFeaturesById } from '../constants/dashboardFeatures';
 import useEntitlements from '../hooks/useEntitlements';
@@ -111,6 +111,41 @@ const getFirstConfiguredBlockIndex = (objectives = {}) => {
   return configuredIndexes[0] ?? 0;
 };
 
+const getSubjectStudentIds = (subject) => (
+  Array.isArray(subject?.student_ids) && subject.student_ids.length
+    ? subject.student_ids
+    : [subject?.student_id].filter(Boolean)
+);
+
+const isSubjectAssignedToStudent = (subject, studentId) => (
+  Boolean(studentId) && getSubjectStudentIds(subject).includes(studentId)
+);
+
+const getSubjectWeeklyMinutes = (subject) => (
+  (subject?.block_count || 10) * (subject?.block_length || 30)
+);
+
+const buildSubjectBlockRows = (subject, studentId) => {
+  const totalBlocks = subject?.block_count || 10;
+
+  return Array.from({ length: totalBlocks }, (_, index) => {
+    const objective = getNormalizedBlockObjectiveDraft(subject?.block_objectives?.[index]);
+    const override = objective.student_overrides?.[studentId] || null;
+    const instruction = override?.instruction || objective.instruction;
+    const customFields = getConfiguredFields(override?.custom_fields?.length ? override.custom_fields : objective.custom_fields);
+    const hasObjective = hasText(instruction);
+    const rowType = hasObjective ? 'Guided' : customFields.length ? 'Custom' : 'Standard';
+
+    return {
+      blockIndex: index,
+      customFields,
+      hasObjective,
+      instruction,
+      rowType,
+    };
+  });
+};
+
 const STEPS = [
   { label: 'Basics', description: 'Name, students & color' },
   { label: 'Schedule', description: 'Blocks & time settings' },
@@ -150,6 +185,8 @@ const Curriculum = () => {
   const [expandedObjectiveBlock, setExpandedObjectiveBlock] = useState(null);
   const [expandedStudentOverrides, setExpandedStudentOverrides] = useState({});
   const [currentStep, setCurrentStep] = useState(1);
+  const [selectedLibraryStudentId, setSelectedLibraryStudentId] = useState('');
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
 
   const { students } = useStudents({
     parentId: currentUser?.uid,
@@ -418,6 +455,48 @@ const Curriculum = () => {
     () => subjects.filter(isActiveCurriculumSubject),
     [subjects]
   );
+  const selectedLibraryStudent = useMemo(
+    () => students.find((student) => student.id === selectedLibraryStudentId) || null,
+    [selectedLibraryStudentId, students]
+  );
+  const selectedStudentSubjects = useMemo(
+    () => activeSubjects.filter((subject) => isSubjectAssignedToStudent(subject, selectedLibraryStudentId)),
+    [activeSubjects, selectedLibraryStudentId]
+  );
+  const selectedSubject = useMemo(
+    () => selectedStudentSubjects.find((subject) => subject.id === selectedSubjectId) || null,
+    [selectedStudentSubjects, selectedSubjectId]
+  );
+  const selectedSubjectRows = useMemo(
+    () => buildSubjectBlockRows(selectedSubject, selectedLibraryStudentId),
+    [selectedLibraryStudentId, selectedSubject]
+  );
+  const selectedStudentWeeklyHours = useMemo(
+    () => selectedStudentSubjects.reduce((totalMinutes, subject) => totalMinutes + getSubjectWeeklyMinutes(subject), 0) / 60,
+    [selectedStudentSubjects]
+  );
+
+  useEffect(() => {
+    if (!students.length) {
+      setSelectedLibraryStudentId('');
+      setSelectedSubjectId('');
+      return;
+    }
+
+    setSelectedLibraryStudentId((currentValue) => (
+      currentValue && students.some((student) => student.id === currentValue)
+        ? currentValue
+        : students[0].id
+    ));
+  }, [students]);
+
+  useEffect(() => {
+    setSelectedSubjectId((currentValue) => (
+      currentValue && selectedStudentSubjects.some((subject) => subject.id === currentValue)
+        ? currentValue
+        : ''
+    ));
+  }, [selectedStudentSubjects]);
 
   const handleEdit = (subject, { startStep = 1 } = {}) => {
     const studentIds = subject.student_ids || [subject.student_id].filter(Boolean);
@@ -464,81 +543,52 @@ const Curriculum = () => {
 
   return (
     <div className="op-page">
-      <div className="op-shell space-y-6">
-      <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-        <div className="max-w-3xl">
-          <p className="op-eyebrow">Curriculum</p>
-          <h1 className="op-title mt-3">Per-student subject library</h1>
-          <p className="op-subtle mt-4 max-w-2xl text-[14px] font-body leading-6">
-            Manage subject plans, learning resources, completion requirements, and the compatibility bridge into weekly planning.
-          </p>
-        </div>
-        <button
-          onClick={openCreateSubjectForm}
-          disabled={!canAddCurriculumItem}
-          className="op-button w-full sm:w-auto"
-        >
-          <Plus className="w-4 h-4" />
-          {curriculumLimitReached ? 'Subject Limit Reached' : 'Add Subject'}
-        </button>
-      </section>
-
-      <section className="op-panel-muted grid gap-4 p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-        <div className="max-w-3xl">
-          <p className="op-eyebrow">Weekly Planning</p>
-          <h2 className="mt-3 text-[24px] font-display leading-none text-white">
-            Publish weekly blocks from the dedicated planner
-          </h2>
-          <p className="op-subtle mt-3 text-[13px] font-body leading-5">
-            Curriculum remains the compatibility input path. After editing subject blocks or resources, reset the student-week in Weekly Blocking before saving or publishing.
-          </p>
-        </div>
-        <Link to={`/dashboard/${dashboardFeaturesById['weekly-blocking'].path}`} className="op-button">
-          <CalendarDays className="h-4 w-4" />
-          Weekly Blocking
-          <ArrowRight className="h-4 w-4" />
-        </Link>
-      </section>
-
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <p className="op-eyebrow mb-2">
-            Compatibility Input Path
-          </p>
-          <h3 className="text-[26px] font-display text-white" style={{ lineHeight: 1 }}>
-            Subject Editor
-          </h3>
-          <p className="op-subtle text-[14px] font-body mt-2">
-            Subjects remain the source input for weekly-plan generation in this phase. New subjects are written per student; legacy shared records still render and can be edited in place.
-          </p>
-        </div>
-        <button
-          onClick={openCreateSubjectForm}
-          disabled={!canAddCurriculumItem}
-          className="op-button hidden sm:inline-flex"
-        >
-          <Plus className="w-4 h-4" />
-          {curriculumLimitReached ? 'Subject Limit Reached' : 'Add Subject'}
-        </button>
-      </div>
-
-      {curriculumLimitCheck && (
-        <div
-          className="op-panel-muted mb-6 px-4 py-3"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <p className="op-eyebrow">
-              Active Subject Usage
+      <div className="op-proto-shell">
+        <div className="op-proto-topbar">
+          <div className="min-w-0 flex-1">
+            <p className="text-[14px] font-label text-white">Curriculum</p>
+            <p className="mt-1 truncate text-[10px] text-[rgba(238,234,248,0.42)]">
+              {selectedLibraryStudent?.name || 'Select a student'} · {selectedStudentSubjects.length} subject{selectedStudentSubjects.length === 1 ? '' : 's'} · ~{selectedStudentWeeklyHours.toFixed(1)}h/wk
             </p>
-            <span className="text-[12px] font-label text-[rgba(238,234,248,0.56)]">
-              {curriculumLimitCheck.isUnlimited ? `${curriculumLimitCheck.usage} active` : `${curriculumLimitCheck.usage}/${curriculumLimitCheck.limit}`}
-            </span>
           </div>
-          <p className="op-subtle mt-1.5 text-[13px] font-body leading-5">
-            {curriculumLimitMessage}
-          </p>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <Link to={`/dashboard/${dashboardFeaturesById['weekly-blocking'].path}`} className="op-proto-btn">
+              <CalendarDays className="h-3.5 w-3.5" />
+              Plan week
+            </Link>
+            <button
+              onClick={openCreateSubjectForm}
+              disabled={!canAddCurriculumItem}
+              className="op-proto-btn op-proto-btn-primary"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {curriculumLimitReached ? 'Limit reached' : 'Add subject'}
+            </button>
+          </div>
         </div>
-      )}
+
+        <div className="op-proto-tabs">
+          {students.map((student) => {
+            const studentSubjects = activeSubjects.filter((subject) => isSubjectAssignedToStudent(subject, student.id));
+            const studentHours = studentSubjects.reduce((total, subject) => total + getSubjectWeeklyMinutes(subject), 0) / 60;
+            const isActive = student.id === selectedLibraryStudentId;
+
+            return (
+              <button
+                type="button"
+                key={student.id}
+                onClick={() => {
+                  setSelectedLibraryStudentId(student.id);
+                  setSelectedSubjectId('');
+                }}
+                className={`op-proto-tab ${isActive ? 'is-active' : ''}`}
+              >
+                <span className="op-proto-tab-name">{student.name}</span>
+                <span className="op-proto-tab-meta">~{studentHours.toFixed(1)}h/wk planned</span>
+              </button>
+            );
+          })}
+        </div>
 
       {/* Add/Edit Modal */}
       {showAddForm && (
@@ -836,98 +886,227 @@ const Curriculum = () => {
         </div>
       )}
 
-      {/* Subjects Grid */}
-      {activeSubjects.length === 0 ? (
-        <div className="op-panel flex min-h-[360px] flex-col items-center justify-center px-6 py-16 text-center">
-          <BookOpen className="w-10 h-10 text-[#cbb7fb] mx-auto mb-4" />
-          <h3 className="text-[22px] font-display text-white mb-2">No subjects yet</h3>
-          <p className="op-subtle text-[14px] font-body mb-6">Add your first per-student subject to get started.</p>
+      {selectedSubject ? (
+        <div className="op-proto-detail">
+          <div className="op-proto-breadcrumb">
+            <button
+              type="button"
+              onClick={() => setSelectedSubjectId('')}
+              className="op-proto-link"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              All subjects
+            </button>
+            <span className="text-[rgba(238,234,248,0.24)]">/</span>
+            <span className="truncate text-[11px] font-label text-white">{selectedSubject.title}</span>
+            <div className="ml-auto flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleEdit(selectedSubject)}
+                className="op-proto-btn"
+              >
+                <Settings className="h-3.5 w-3.5" />
+                Settings
+              </button>
+              <button
+                type="button"
+                onClick={() => handleEdit(selectedSubject, { startStep: 4 })}
+                className="op-proto-btn op-proto-btn-primary"
+              >
+                <ListChecks className="h-3.5 w-3.5" />
+                Edit blocks
+              </button>
+              <button
+                type="button"
+                onClick={() => archiveSubject(selectedSubject.id)}
+                className="op-proto-icon-btn"
+                title="Archive subject"
+              >
+                <Archive className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteSubject(selectedSubject.id)}
+                className="op-proto-icon-btn"
+                title="Delete subject"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="op-proto-detail-grid">
+            <section className="op-proto-block-panel">
+              <div className="op-proto-section-header">
+                <span className="h-4 w-[3px]" style={{ backgroundColor: selectedSubject.color || '#7c6fd4' }} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-label text-white">{selectedSubject.title}</p>
+                  <p className="mt-0.5 text-[10px] text-[rgba(238,234,248,0.44)]">
+                    {selectedSubject.block_count || 10} blocks/wk · {selectedSubject.block_length || 30}m each
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleEdit(selectedSubject, { startStep: 4 })}
+                  className="op-proto-btn op-proto-btn-primary"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add objective
+                </button>
+              </div>
+
+              <div className="op-proto-block-list">
+                {selectedSubjectRows.map((row) => (
+                  <div
+                    key={row.blockIndex}
+                    className={`op-proto-block-row ${row.hasObjective ? 'is-guided' : row.customFields.length ? 'is-custom' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleEdit(selectedSubject, { startStep: 4 })}
+                      className="op-proto-pin"
+                      title="Edit block objective"
+                    >
+                      <ListChecks className="h-3.5 w-3.5" />
+                    </button>
+                    <span className={`op-proto-block-tag ${row.hasObjective ? 'is-guided' : row.customFields.length ? 'is-custom' : ''}`}>
+                      {row.rowType}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12px] font-label text-white">Block {row.blockIndex + 1}</p>
+                      <p className="mt-1 truncate text-[10px] text-[rgba(238,234,248,0.5)]">
+                        {row.instruction || 'Independent learning block'}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {selectedSubject.require_timer ? (
+                          <span className="op-proto-req"><Timer className="h-3 w-3" /> Timer</span>
+                        ) : null}
+                        {selectedSubject.require_input !== false ? (
+                          <span className="op-proto-req"><MessageSquareText className="h-3 w-3" /> Written response</span>
+                        ) : null}
+                        {row.customFields.length ? (
+                          <span className="op-proto-req"><Upload className="h-3 w-3" /> {row.customFields.length} custom field{row.customFields.length === 1 ? '' : 's'}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(selectedSubject, { startStep: 4 })}
+                        className="op-proto-icon-btn"
+                        title="Edit objective"
+                      >
+                        <Edit className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <aside className="op-proto-side-tray">
+              <div className="op-proto-section-header">
+                <CalendarDays className="h-4 w-4 text-[#b8adff]" />
+                <p className="text-[12px] font-label text-white">Plan week</p>
+              </div>
+              <div className="space-y-3 p-3">
+                <div className="op-proto-tray-stat">
+                  <span>{selectedSubject.block_count || 10}</span>
+                  <p>blocks available</p>
+                </div>
+                <div className="op-proto-tray-stat">
+                  <span>~{(getSubjectWeeklyMinutes(selectedSubject) / 60).toFixed(1)}h</span>
+                  <p>weekly target</p>
+                </div>
+                <div className="border-l-2 border-[#f59e0b] bg-[rgba(245,158,11,0.08)] px-3 py-2 text-[10px] leading-4 text-[#f59e0b]">
+                  Weekly assignment selection still lives in Weekly Blocking for this schema phase.
+                </div>
+                <Link
+                  to={`/dashboard/${dashboardFeaturesById['weekly-blocking'].path}`}
+                  className="op-proto-btn op-proto-btn-primary w-full"
+                >
+                  Full control
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            </aside>
+          </div>
+        </div>
+      ) : activeSubjects.length === 0 ? (
+        <div className="op-proto-empty">
+          <BookOpen className="mx-auto h-9 w-9 text-[#b8adff]" />
+          <h3 className="mt-4 text-[18px] font-label text-white">No subjects yet</h3>
+          <p className="mt-2 text-[12px] text-[rgba(238,234,248,0.54)]">Add your first subject to start building a weekly library.</p>
           <button onClick={openCreateSubjectForm}
             disabled={!canAddCurriculumItem}
-            className="op-button disabled:cursor-not-allowed">
-            <Plus className="w-4 h-4" /> {curriculumLimitReached ? 'Subject Limit Reached' : 'Add Your First Subject'}
+            className="op-proto-btn op-proto-btn-primary mt-5">
+            <Plus className="h-3.5 w-3.5" /> {curriculumLimitReached ? 'Subject limit reached' : 'Add subject'}
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {activeSubjects.map((subject) => {
-            const studentIds = subject.student_ids || [subject.student_id].filter(Boolean);
-            const studentNames = studentIds.map(id => students.find(s => s.id === id)?.name || 'Unknown').join(', ');
-            const configuredBlockCount = countConfiguredBlockObjectives(subject.block_objectives);
+        <div className="op-proto-library">
+          <div className="px-4 py-3">
+            <p className="text-[9px] font-label uppercase tracking-[0.12em] text-[rgba(238,234,248,0.32)]">
+              Subjects — click to view & edit blocks
+            </p>
+          </div>
+          <div className="op-proto-subject-grid">
+            {selectedStudentSubjects.map((subject) => {
+              const configuredBlockCount = countConfiguredBlockObjectives(subject.block_objectives);
+              const totalBlocks = subject.block_count || 10;
+              const pips = Array.from({ length: totalBlocks }, (_, index) => Boolean(subject.block_objectives?.[index]));
 
-            return (
-              <div key={subject.id} className="op-surface p-5 transition-colors hover:bg-[#292942]">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-3 h-8 flex-shrink-0" style={{ backgroundColor: subject.color || '#3B82F6' }} />
-                      <h3 className="text-[18px] font-display text-white truncate" style={{ lineHeight: 1.05 }}>
-                        {subject.title}
-                      </h3>
-                    </div>
-                    <p className="op-subtle text-[13px] font-body truncate">{studentNames || 'Unknown students'}</p>
-                  </div>
-                  <div className="flex gap-1 ml-2 flex-shrink-0">
-                    <button onClick={() => handleEdit(subject)}
-                      className="op-icon-button h-8 w-8" title="Edit">
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => handleEdit(subject, { startStep: 4 })}
-                      className="op-icon-button h-8 w-8" title="Edit block objectives">
-                      <ListChecks className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => archiveSubject(subject.id)}
-                      className="op-icon-button h-8 w-8" title="Archive">
-                      <Archive className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => deleteSubject(subject.id)}
-                      className="op-icon-button h-8 w-8" title="Delete">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="op-subtle text-[13px] font-body">Weekly Blocks</span>
-                    <span className="text-[13px] font-display text-white">{subject.block_count || 10}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="op-subtle text-[13px] font-body">Block Length</span>
-                    <span className="text-[13px] font-display text-white">{subject.block_length || 30} min</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleEdit(subject, { startStep: 4 })}
-                    className="flex w-full items-center justify-between border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)] px-3 py-2 text-left transition-colors hover:bg-[rgba(238,234,248,0.08)]"
-                  >
-                    <span className="flex items-center gap-2 text-[13px] font-body text-[rgba(250,249,255,0.9)]">
-                      <ListChecks className="h-3.5 w-3.5 text-[#cbb7fb]" />
-                      Block Objectives
+              return (
+                <button
+                  type="button"
+                  key={subject.id}
+                  onClick={() => setSelectedSubjectId(subject.id)}
+                  className="op-proto-subject-card"
+                  style={{ borderLeftColor: subject.color || '#7c6fd4' }}
+                >
+                  <span className="flex items-start justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block truncate text-[12px] font-label text-white">{subject.title}</span>
+                      <span className="mt-2 flex flex-wrap gap-3 text-[10px] text-[rgba(238,234,248,0.52)]">
+                        <span><b className="font-label text-[rgba(238,234,248,0.82)]">{totalBlocks}</b> blks/wk</span>
+                        <span><b className="font-label text-[rgba(238,234,248,0.82)]">{subject.block_length || 30}m</b></span>
+                        <span><b className="font-label text-[rgba(238,234,248,0.82)]">{(getSubjectWeeklyMinutes(subject) / 60).toFixed(1)}h</b></span>
+                      </span>
                     </span>
-                    <span className="op-pill">
-                      {configuredBlockCount}/{subject.block_count || 10}
-                    </span>
-                  </button>
+                    <Settings className="h-3.5 w-3.5 flex-shrink-0 text-[rgba(238,234,248,0.24)]" />
+                  </span>
+                  <span className="mt-3 flex flex-wrap gap-[3px]">
+                    {pips.map((configured, index) => (
+                      <span
+                        key={index}
+                        className={`op-proto-pip ${configured ? 'is-guided' : ''}`}
+                        title={`Block ${index + 1}${configured ? ' has an objective' : ''}`}
+                      />
+                    ))}
+                  </span>
+                  <span className="mt-3 flex items-center justify-between text-[10px] text-[rgba(238,234,248,0.42)]">
+                    <span>{configuredBlockCount} configured objective{configuredBlockCount === 1 ? '' : 's'}</span>
+                    <span className="text-[#b8adff]">Open</span>
+                  </span>
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={openCreateSubjectForm}
+              disabled={!canAddCurriculumItem}
+              className="op-proto-add-card"
+            >
+              <Plus className="h-5 w-5" />
+              <span>{curriculumLimitReached ? 'Subject limit reached' : 'Add subject'}</span>
+            </button>
+          </div>
 
-                  {subject.resources && subject.resources.length > 0 && (
-                    <div className="pt-3" style={{ borderTop: '1px solid rgba(238,234,248,0.12)' }}>
-                      <p className="op-eyebrow mb-2">Resources</p>
-                      <div className="space-y-1.5">
-                        {subject.resources.map((r, i) => (
-                          <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 text-[13px] text-[#cbb7fb] hover:text-[#e0d5ff] font-body transition-colors">
-                            <ExternalLink className="w-3 h-3" />
-                            {r.name}
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {curriculumLimitCheck ? (
+            <div className="border-t border-[rgba(238,234,248,0.08)] px-4 py-3 text-[11px] leading-5 text-[rgba(238,234,248,0.46)]">
+              {curriculumLimitMessage}
+            </div>
+          ) : null}
         </div>
       )}
       </div>
