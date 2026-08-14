@@ -175,6 +175,12 @@ const getBlockAccent = (index) => {
   return accents[index % accents.length];
 };
 
+const getConfiguredFieldCount = (fields) => (
+  Array.isArray(fields)
+    ? fields.filter((field) => typeof field?.label === 'string' && field.label.trim().length > 0).length
+    : 0
+);
+
 const WeeklyPlanReviewPanel = ({
   activeSubjects = [],
   currentUser = null,
@@ -260,6 +266,7 @@ const WeeklyPlanReviewPanel = ({
   const planRequiresAttention = Boolean(hasUnsavedEdits || !weeklyPlan);
   const isArchived = weeklyPlan?.status === WeeklyPlanStatuses.ARCHIVED;
   const isPublished = weeklyPlan?.status === WeeklyPlanStatuses.PUBLISHED;
+  const isPersistedPlan = Boolean(weeklyPlan);
   const saveButtonLabel = isPublished ? 'Save as Draft' : 'Save Draft';
   const publishButtonLabel = isPublished ? 'Publish Updates' : 'Publish Week';
   const blocksAreEditable = Boolean(sourcePlan) && !isArchived;
@@ -435,7 +442,7 @@ const WeeklyPlanReviewPanel = ({
             className="op-button op-button-secondary"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Reset to Default
+            Regenerate from Subjects
           </button>
           <button
             type="button"
@@ -575,14 +582,19 @@ const WeeklyPlanReviewPanel = ({
           <div
             className="mt-5 flex items-start gap-3 border border-l-[3px] px-4 py-3"
             style={{
-              backgroundColor: STATUS_TONES.preview.surface,
+              backgroundColor: isPersistedPlan ? STATUS_TONES.warning.surface : STATUS_TONES.preview.surface,
               borderColor: 'rgba(238, 234, 248, 0.14)',
-              borderLeftColor: STATUS_TONES.preview.accent,
+              borderLeftColor: isPersistedPlan ? STATUS_TONES.warning.accent : STATUS_TONES.preview.accent,
             }}
           >
-            <CalendarDays className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#cbb7fb]" />
+            <CalendarDays
+              className="mt-0.5 h-4 w-4 flex-shrink-0"
+              style={{ color: isPersistedPlan ? STATUS_TONES.warning.accent : STATUS_TONES.preview.accent }}
+            />
             <p className="op-subtle text-[13px] font-body leading-5">
-              Subject records remain the compatibility input path. After changing subjects, reset to default here before saving or publishing this week.
+              {isPersistedPlan
+                ? 'This view is using a saved weekly plan. After changing Curriculum block objectives, regenerate from subjects here before saving or publishing this student-week.'
+                : 'This preview is generated from current Curriculum subjects, including saved block objectives and per-student overrides.'}
             </p>
           </div>
 
@@ -644,43 +656,59 @@ const WeeklyPlanReviewPanel = ({
 
                       {isOpen ? (
                         <div className="space-y-3 border-t border-[rgba(238,234,248,0.1)] px-4 py-4">
-                          {group.blocks.map(({ block, index }) => (
-                            <div key={block.id} className="op-surface p-4">
-                              <div className="mb-3 flex flex-wrap items-center gap-2">
-                                <span className="op-pill">
-                                  Block {Number.isInteger(block.legacy_block_index) ? block.legacy_block_index + 1 : index + 1}
-                                </span>
-                                <span className="op-pill">{block.planned_duration_minutes || 0} min</span>
-                                <span className="op-pill">{block.completion_mode || 'time_boxed'}</span>
-                              </div>
+                          {group.blocks.map(({ block, index }) => {
+                            const fieldCount = getConfiguredFieldCount(block.custom_fields);
 
-                              <div className="grid gap-3 lg:grid-cols-[1fr_1.35fr]">
-                                <div>
-                                  <label className="op-eyebrow mb-2 block">Block Title</label>
-                                  <input
-                                    type="text"
-                                    value={block.title || ''}
-                                    onChange={(event) => handleBlockFieldChange(block.id, 'title', event.target.value)}
-                                    disabled={!blocksAreEditable}
-                                    className="op-input disabled:cursor-not-allowed disabled:opacity-60"
-                                    placeholder={block.legacy_subject_title || `Block ${index + 1}`}
-                                  />
+                            return (
+                              <div
+                                key={block.id}
+                                className="op-surface p-4"
+                                style={{ borderLeft: `3px solid ${block.instruction ? accent : 'rgba(238,234,248,0.14)'}` }}
+                              >
+                                <div className="mb-3 flex flex-wrap items-center gap-2">
+                                  <span className="op-pill">
+                                    Block {Number.isInteger(block.legacy_block_index) ? block.legacy_block_index + 1 : index + 1}
+                                  </span>
+                                  <span className="op-pill">{block.planned_duration_minutes || 0} min</span>
+                                  <span className="op-pill">{block.completion_mode || 'time_boxed'}</span>
+                                  {block.instruction ? (
+                                    <span className="op-pill">Objective</span>
+                                  ) : null}
+                                  {fieldCount > 0 ? (
+                                    <span className="op-pill">
+                                      {fieldCount} field{fieldCount === 1 ? '' : 's'}
+                                    </span>
+                                  ) : null}
                                 </div>
 
-                                <div>
-                                  <label className="op-eyebrow mb-2 block">Instruction</label>
-                                  <textarea
-                                    value={block.instruction || ''}
-                                    onChange={(event) => handleBlockFieldChange(block.id, 'instruction', event.target.value)}
-                                    disabled={!blocksAreEditable}
-                                    rows={3}
-                                    className="op-input resize-none disabled:cursor-not-allowed disabled:opacity-60"
-                                    placeholder="Add a student-facing note only when this week needs one."
-                                  />
+                                <div className="grid gap-3 lg:grid-cols-[1fr_1.35fr]">
+                                  <div>
+                                    <label className="op-eyebrow mb-2 block">Block Title</label>
+                                    <input
+                                      type="text"
+                                      value={block.title || ''}
+                                      onChange={(event) => handleBlockFieldChange(block.id, 'title', event.target.value)}
+                                      disabled={!blocksAreEditable}
+                                      className="op-input disabled:cursor-not-allowed disabled:opacity-60"
+                                      placeholder={block.legacy_subject_title || `Block ${index + 1}`}
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className="op-eyebrow mb-2 block">Instruction</label>
+                                    <textarea
+                                      value={block.instruction || ''}
+                                      onChange={(event) => handleBlockFieldChange(block.id, 'instruction', event.target.value)}
+                                      disabled={!blocksAreEditable}
+                                      rows={3}
+                                      className="op-input resize-none disabled:cursor-not-allowed disabled:opacity-60"
+                                      placeholder="Add a student-facing note only when this week needs one."
+                                    />
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : null}
                     </article>

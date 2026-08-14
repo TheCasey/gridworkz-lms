@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { serverTimestamp } from 'firebase/firestore';
-import { ArrowRight, BookOpen, CalendarDays, Plus, Trash2, Archive, Edit, ExternalLink, X } from 'lucide-react';
+import { ArrowRight, BookOpen, CalendarDays, ListChecks, Plus, Trash2, Archive, Edit, ExternalLink, X } from 'lucide-react';
 import BlockObjectivesEditor from '../components/curriculum/BlockObjectivesEditor';
 import { dashboardFeaturesById } from '../constants/dashboardFeatures';
 import useEntitlements from '../hooks/useEntitlements';
@@ -48,6 +48,68 @@ const getConfiguredFields = (fields) => (
 const hasConfiguredOverride = (override) => (
   hasText(override?.instruction) || getConfiguredFields(override?.custom_fields).length > 0
 );
+
+const emptyBlockObjective = {
+  instruction: '',
+  custom_fields: [],
+  student_overrides: {},
+};
+
+const createEmptyBlockObjective = () => ({
+  instruction: '',
+  custom_fields: [],
+  student_overrides: {},
+});
+
+const getNormalizedBlockObjectiveDraft = (objective = {}) => ({
+  ...emptyBlockObjective,
+  ...(objective || {}),
+  instruction: typeof objective?.instruction === 'string' ? objective.instruction : '',
+  custom_fields: Array.isArray(objective?.custom_fields) ? objective.custom_fields : [],
+  student_overrides: objective?.student_overrides && typeof objective.student_overrides === 'object'
+    ? objective.student_overrides
+    : {},
+});
+
+const normalizeBlockObjectivesForSave = (objectives = {}) => Object.fromEntries(
+  Object.entries(objectives || {})
+    .filter(([, objective]) => {
+      const normalizedObjective = getNormalizedBlockObjectiveDraft(objective);
+      if (hasText(normalizedObjective.instruction)) return true;
+      if (getConfiguredFields(normalizedObjective.custom_fields).length > 0) return true;
+      return Object.values(normalizedObjective.student_overrides).some(hasConfiguredOverride);
+    })
+    .map(([blockIndex, objective]) => {
+      const normalizedObjective = getNormalizedBlockObjectiveDraft(objective);
+      const cleanedOverrides = Object.fromEntries(
+        Object.entries(normalizedObjective.student_overrides)
+          .filter(([, override]) => hasConfiguredOverride(override))
+          .map(([studentId, override]) => [studentId, {
+            instruction: typeof override?.instruction === 'string' ? override.instruction.trim() : '',
+            custom_fields: getConfiguredFields(override?.custom_fields),
+          }])
+      );
+
+      return [blockIndex, {
+        instruction: normalizedObjective.instruction.trim(),
+        custom_fields: getConfiguredFields(normalizedObjective.custom_fields),
+        student_overrides: cleanedOverrides,
+      }];
+    })
+);
+
+const countConfiguredBlockObjectives = (objectives = {}) => (
+  Object.keys(normalizeBlockObjectivesForSave(objectives)).length
+);
+
+const getFirstConfiguredBlockIndex = (objectives = {}) => {
+  const configuredIndexes = Object.keys(normalizeBlockObjectivesForSave(objectives))
+    .map((value) => Number.parseInt(value, 10))
+    .filter(Number.isInteger)
+    .sort((left, right) => left - right);
+
+  return configuredIndexes[0] ?? 0;
+};
 
 const STEPS = [
   { label: 'Basics', description: 'Name, students & color' },
@@ -143,33 +205,44 @@ const Curriculum = () => {
       setBlockObjectives(prev => { const next = { ...prev }; delete next[blockIndex]; return next; });
       setExpandedObjectiveBlock(blockIndex);
     } else {
-      setBlockObjectives(prev => ({ ...prev, [blockIndex]: { instruction: '', custom_fields: [] } }));
+      setBlockObjectives(prev => ({ ...prev, [blockIndex]: createEmptyBlockObjective() }));
       setExpandedObjectiveBlock(blockIndex);
     }
   };
   const handleObjectiveChange = (blockIndex, value) => {
-    setBlockObjectives(prev => ({ ...prev, [blockIndex]: { ...prev[blockIndex], instruction: value } }));
+    setBlockObjectives(prev => ({
+      ...prev,
+      [blockIndex]: {
+        ...getNormalizedBlockObjectiveDraft(prev[blockIndex]),
+        instruction: value,
+      },
+    }));
   };
   const handleAddObjectiveCustomField = (blockIndex) => {
     setBlockObjectives(prev => ({
       ...prev, [blockIndex]: {
-        ...(prev[blockIndex] || {}),
-        instruction: prev[blockIndex]?.instruction || '',
-        custom_fields: [...(prev[blockIndex]?.custom_fields || []), { id: Date.now().toString(), type: 'text', label: '', placeholder: '', required: false }]
+        ...getNormalizedBlockObjectiveDraft(prev[blockIndex]),
+        custom_fields: [
+          ...getNormalizedBlockObjectiveDraft(prev[blockIndex]).custom_fields,
+          { id: Date.now().toString(), type: 'text', label: '', placeholder: '', required: false },
+        ],
       }
     }));
   };
   const handleRemoveObjectiveCustomField = (blockIndex, fieldId) => {
     setBlockObjectives(prev => ({
-      ...prev, [blockIndex]: { ...(prev[blockIndex] || {}), custom_fields: (prev[blockIndex]?.custom_fields || []).filter(f => f.id !== fieldId) }
+      ...prev,
+      [blockIndex]: {
+        ...getNormalizedBlockObjectiveDraft(prev[blockIndex]),
+        custom_fields: getNormalizedBlockObjectiveDraft(prev[blockIndex]).custom_fields.filter(f => f.id !== fieldId),
+      },
     }));
   };
   const handleObjectiveCustomFieldChange = (blockIndex, fieldId, key, value) => {
     setBlockObjectives(prev => ({
       ...prev, [blockIndex]: {
-        ...(prev[blockIndex] || {}),
-        instruction: prev[blockIndex]?.instruction || '',
-        custom_fields: (prev[blockIndex]?.custom_fields || []).map(f => f.id === fieldId ? { ...f, [key]: value } : f)
+        ...getNormalizedBlockObjectiveDraft(prev[blockIndex]),
+        custom_fields: getNormalizedBlockObjectiveDraft(prev[blockIndex]).custom_fields.map(f => f.id === fieldId ? { ...f, [key]: value } : f),
       }
     }));
   };
@@ -324,26 +397,7 @@ const Curriculum = () => {
         require_input: requireSummary,
         custom_fields: customFields.filter(f => f.label.trim()),
         require_timer: requireTimer,
-        block_objectives: Object.fromEntries(
-          Object.entries(blockObjectives)
-            .filter(([, obj]) => {
-              if (hasText(obj?.instruction)) return true;
-              if (getConfiguredFields(obj?.custom_fields).length > 0) return true;
-              return Object.values(obj?.student_overrides || {}).some(hasConfiguredOverride);
-            })
-            .map(([k, obj]) => {
-              const cleanedOverrides = Object.fromEntries(
-                Object.entries(obj.student_overrides || {})
-                  .filter(([, ov]) => hasConfiguredOverride(ov))
-                  .map(([sid, ov]) => [sid, { instruction: ov.instruction || '', custom_fields: getConfiguredFields(ov.custom_fields) }])
-              );
-              return [k, {
-                instruction: obj.instruction || '',
-                custom_fields: getConfiguredFields(obj.custom_fields),
-                student_overrides: cleanedOverrides
-              }];
-            })
-        ),
+        block_objectives: normalizeBlockObjectivesForSave(blockObjectives),
         is_active: true,
         updated_at: serverTimestamp()
       };
@@ -365,8 +419,9 @@ const Curriculum = () => {
     [subjects]
   );
 
-  const handleEdit = (subject) => {
+  const handleEdit = (subject, { startStep = 1 } = {}) => {
     const studentIds = subject.student_ids || [subject.student_id].filter(Boolean);
+    const nextBlockObjectives = subject.block_objectives || {};
     setSelectedStudents(studentIds);
     setSubjectName(subject.title);
     setTotalBlocks(subject.block_count || 10);
@@ -376,8 +431,10 @@ const Curriculum = () => {
     setResources(subject.resources?.length ? subject.resources : [{ name: '', url: '' }]);
     setCustomFields(subject.custom_fields || []);
     setRequireTimer(subject.require_timer || false);
-    setBlockObjectives(subject.block_objectives || {});
-    setExpandedObjectiveBlock(null);
+    setBlockObjectives(nextBlockObjectives);
+    setExpandedObjectiveBlock(startStep === 4 ? getFirstConfiguredBlockIndex(nextBlockObjectives) : null);
+    setExpandedStudentOverrides({});
+    setCurrentStep(startStep);
     setEditingSubject(subject);
     setShowAddForm(true);
   };
@@ -796,6 +853,7 @@ const Curriculum = () => {
           {activeSubjects.map((subject) => {
             const studentIds = subject.student_ids || [subject.student_id].filter(Boolean);
             const studentNames = studentIds.map(id => students.find(s => s.id === id)?.name || 'Unknown').join(', ');
+            const configuredBlockCount = countConfiguredBlockObjectives(subject.block_objectives);
 
             return (
               <div key={subject.id} className="op-surface p-5 transition-colors hover:bg-[#292942]">
@@ -813,6 +871,10 @@ const Curriculum = () => {
                     <button onClick={() => handleEdit(subject)}
                       className="op-icon-button h-8 w-8" title="Edit">
                       <Edit className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleEdit(subject, { startStep: 4 })}
+                      className="op-icon-button h-8 w-8" title="Edit block objectives">
+                      <ListChecks className="w-4 h-4" />
                     </button>
                     <button onClick={() => archiveSubject(subject.id)}
                       className="op-icon-button h-8 w-8" title="Archive">
@@ -834,6 +896,19 @@ const Curriculum = () => {
                     <span className="op-subtle text-[13px] font-body">Block Length</span>
                     <span className="text-[13px] font-display text-white">{subject.block_length || 30} min</span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => handleEdit(subject, { startStep: 4 })}
+                    className="flex w-full items-center justify-between border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)] px-3 py-2 text-left transition-colors hover:bg-[rgba(238,234,248,0.08)]"
+                  >
+                    <span className="flex items-center gap-2 text-[13px] font-body text-[rgba(250,249,255,0.9)]">
+                      <ListChecks className="h-3.5 w-3.5 text-[#cbb7fb]" />
+                      Block Objectives
+                    </span>
+                    <span className="op-pill">
+                      {configuredBlockCount}/{subject.block_count || 10}
+                    </span>
+                  </button>
 
                   {subject.resources && subject.resources.length > 0 && (
                     <div className="pt-3" style={{ borderTop: '1px solid rgba(238,234,248,0.12)' }}>
