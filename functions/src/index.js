@@ -3935,6 +3935,9 @@ const normalizeCurriculumBlocks = (curriculumBlocks = []) => {
         title: trimString(block?.title) || `Block ${index + 1}`,
         type: trimString(block?.type) || 'standard',
         instruction: trimString(block?.instruction),
+        resources: normalizeResourceList(block?.resources || []),
+        require_timer: typeof block?.require_timer === 'boolean' ? block.require_timer : null,
+        require_input: typeof block?.require_input === 'boolean' ? block.require_input : null,
         custom_fields: normalizeCustomFields(block?.custom_fields || []),
         default_quantity: Number.isFinite(defaultQuantity) && defaultQuantity >= 0
           ? Math.min(defaultQuantity, 20)

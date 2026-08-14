@@ -45,6 +45,20 @@ const hasConfiguredField = (field) => hasText(field?.label);
 const getConfiguredFields = (fields) => (
   Array.isArray(fields) ? fields.filter(hasConfiguredField) : []
 );
+const getConfiguredResources = (resourceList) => (
+  Array.isArray(resourceList)
+    ? resourceList
+      .map((resource) => ({
+        name: typeof resource?.name === 'string' ? resource.name.trim() : '',
+        url: typeof resource?.url === 'string' ? resource.url.trim() : '',
+        lockdown_origin: typeof resource?.lockdown_origin === 'string' ? resource.lockdown_origin.trim() : '',
+        youtube_channel_id: typeof resource?.youtube_channel_id === 'string' ? resource.youtube_channel_id.trim() : '',
+        youtube_channel_title: typeof resource?.youtube_channel_title === 'string' ? resource.youtube_channel_title.trim() : '',
+        youtube_channel_handle: typeof resource?.youtube_channel_handle === 'string' ? resource.youtube_channel_handle.trim() : '',
+      }))
+      .filter((resource) => resource.name)
+    : []
+);
 const hasConfiguredOverride = (override) => (
   hasText(override?.instruction) || getConfiguredFields(override?.custom_fields).length > 0
 );
@@ -132,6 +146,9 @@ const createEmptyCurriculumBlock = ({ index = 0 } = {}) => ({
   title: `Block ${index + 1}`,
   type: 'standard',
   instruction: '',
+  resources: [],
+  require_timer: null,
+  require_input: null,
   custom_fields: [],
   default_quantity: index === 0 ? 1 : 0,
   pinned: index < 2,
@@ -152,6 +169,9 @@ const normalizeCurriculumBlock = (block = {}, index = 0) => {
     title,
     type,
     instruction: typeof block?.instruction === 'string' ? block.instruction.trim() : '',
+    resources: getConfiguredResources(block?.resources),
+    require_timer: typeof block?.require_timer === 'boolean' ? block.require_timer : null,
+    require_input: typeof block?.require_input === 'boolean' ? block.require_input : null,
     custom_fields: getConfiguredFields(block?.custom_fields),
     default_quantity: Number.isFinite(defaultQuantity) && defaultQuantity >= 0
       ? Math.min(defaultQuantity, 20)
@@ -181,6 +201,9 @@ const buildCurriculumBlocksFromSubject = (subject = {}) => {
       title: hasObjective ? `Block ${index + 1}` : `${subject?.title || 'Subject'} block`,
       type: hasObjective ? 'standard' : 'standard',
       instruction: objective.instruction,
+      resources: getConfiguredResources(subject?.resources),
+      require_timer: Boolean(subject?.require_timer),
+      require_input: subject?.require_input !== false,
       custom_fields: objective.custom_fields,
       default_quantity: index < (subject?.block_count || 10) ? 1 : 0,
       pinned: index < 2 || hasObjective,
@@ -558,6 +581,9 @@ const Curriculum = () => {
                 title: hasText(objective.instruction) ? `Block ${index + 1}` : `${subjectName.trim()} block`,
                 type: 'standard',
                 instruction: objective.instruction,
+                resources: getConfiguredResources(resources),
+                require_timer: requireTimer,
+                require_input: requireSummary,
                 custom_fields: objective.custom_fields,
                 default_quantity: 1,
                 pinned: index < 2 || hasText(objective.instruction),
@@ -568,6 +594,9 @@ const Curriculum = () => {
               title: `${subjectName.trim()} block`,
               type: 'standard',
               instruction: '',
+              resources: getConfiguredResources(resources),
+              require_timer: requireTimer,
+              require_input: requireSummary,
               custom_fields: [],
               default_quantity: 1,
               pinned: index < 2,
@@ -665,12 +694,84 @@ const Curriculum = () => {
     setDetailBlockDraft({
       ...createEmptyCurriculumBlock({ index: nextIndex }),
       title: '',
+      resources: getConfiguredResources(selectedSubject?.resources),
+      require_timer: Boolean(selectedSubject?.require_timer),
+      require_input: selectedSubject?.require_input !== false,
       default_quantity: 1,
     });
   };
 
   const openEditDetailBlockDraft = (block) => {
-    setDetailBlockDraft(normalizeCurriculumBlock(block));
+    const normalizedBlock = normalizeCurriculumBlock(block);
+    setDetailBlockDraft({
+      ...normalizedBlock,
+      resources: normalizedBlock.resources.length
+        ? normalizedBlock.resources
+        : getConfiguredResources(selectedSubject?.resources),
+      require_timer: typeof normalizedBlock.require_timer === 'boolean'
+        ? normalizedBlock.require_timer
+        : Boolean(selectedSubject?.require_timer),
+      require_input: typeof normalizedBlock.require_input === 'boolean'
+        ? normalizedBlock.require_input
+        : selectedSubject?.require_input !== false,
+    });
+  };
+
+  const updateDetailBlockDraft = (patch) => {
+    setDetailBlockDraft((draft) => (draft ? { ...draft, ...patch } : draft));
+  };
+
+  const handleDraftResourceChange = (index, field, value) => {
+    setDetailBlockDraft((draft) => {
+      if (!draft) return draft;
+      const nextResources = [...(Array.isArray(draft.resources) ? draft.resources : [])];
+      nextResources[index] = {
+        ...(nextResources[index] || { name: '', url: '' }),
+        [field]: value,
+      };
+      return { ...draft, resources: nextResources };
+    });
+  };
+
+  const handleAddDraftResource = () => {
+    setDetailBlockDraft((draft) => (draft
+      ? { ...draft, resources: [...(Array.isArray(draft.resources) ? draft.resources : []), { name: '', url: '' }] }
+      : draft));
+  };
+
+  const handleRemoveDraftResource = (index) => {
+    setDetailBlockDraft((draft) => (draft
+      ? { ...draft, resources: (Array.isArray(draft.resources) ? draft.resources : []).filter((_, itemIndex) => itemIndex !== index) }
+      : draft));
+  };
+
+  const handleAddDraftCustomField = () => {
+    setDetailBlockDraft((draft) => (draft
+      ? {
+        ...draft,
+        custom_fields: [
+          ...(Array.isArray(draft.custom_fields) ? draft.custom_fields : []),
+          { id: Date.now().toString(), type: 'text', label: '', placeholder: '', required: true },
+        ],
+      }
+      : draft));
+  };
+
+  const handleRemoveDraftCustomField = (fieldId) => {
+    setDetailBlockDraft((draft) => (draft
+      ? { ...draft, custom_fields: (Array.isArray(draft.custom_fields) ? draft.custom_fields : []).filter((field) => field.id !== fieldId) }
+      : draft));
+  };
+
+  const handleDraftCustomFieldChange = (fieldId, key, value) => {
+    setDetailBlockDraft((draft) => (draft
+      ? {
+        ...draft,
+        custom_fields: (Array.isArray(draft.custom_fields) ? draft.custom_fields : []).map((field) => (
+          field.id === fieldId ? { ...field, [key]: value } : field
+        )),
+      }
+      : draft));
   };
 
   const handleSaveDetailBlock = async () => {
@@ -1128,6 +1229,225 @@ const Curriculum = () => {
         </div>
       )}
 
+      {detailBlockDraft ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-4" role="dialog" aria-modal="true" aria-label="Edit curriculum block">
+          <div className="op-curriculum-block-modal">
+            <div className="op-curriculum-block-modal-header">
+              <div className="min-w-0">
+                <p className="op-eyebrow">Block Editor</p>
+                <h2 className="mt-2 truncate text-[22px] font-display leading-none text-white">
+                  {detailBlockDraft.title || 'New block'}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailBlockDraft(null)}
+                className="op-icon-button"
+                title="Close block editor"
+                disabled={savingDetailBlock}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="op-curriculum-block-modal-body">
+              <section className="op-curriculum-block-modal-section">
+                <div>
+                  <p className="text-[13px] font-label text-white">Instructions & resources</p>
+                  <p className="mt-1 text-[11px] leading-5 text-[rgba(238,234,248,0.5)]">
+                    What the student sees before starting this block.
+                  </p>
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-[minmax(0,1.2fr)_140px_100px]">
+                  <input
+                    type="text"
+                    value={detailBlockDraft.title}
+                    onChange={(event) => updateDetailBlockDraft({ title: event.target.value })}
+                    className="op-weekly-inline-input"
+                    placeholder="Block name, e.g. Article summary"
+                  />
+                  <select
+                    value={detailBlockDraft.type}
+                    onChange={(event) => updateDetailBlockDraft({ type: event.target.value })}
+                    className="op-weekly-inline-input"
+                  >
+                    {Object.entries(CURRICULUM_BLOCK_TYPES).map(([value, meta]) => (
+                      <option key={value} value={value}>{meta.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min="0"
+                    max="20"
+                    value={detailBlockDraft.default_quantity}
+                    onChange={(event) => updateDetailBlockDraft({ default_quantity: event.target.value })}
+                    className="op-weekly-inline-input"
+                    aria-label="Default weekly quantity"
+                  />
+                </div>
+
+                <textarea
+                  value={detailBlockDraft.instruction}
+                  onChange={(event) => updateDetailBlockDraft({ instruction: event.target.value })}
+                  className="op-curriculum-block-textarea"
+                  placeholder="Student-facing instructions, objective, reading range, project direction, or completion notes"
+                />
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  <div className="op-curriculum-block-toggle-row">
+                    <div>
+                      <p className="text-[12px] font-label text-white">Timer mandatory</p>
+                      <p className="mt-1 text-[10px] text-[rgba(238,234,248,0.46)]">Require a timer for this block only.</p>
+                    </div>
+                    <Toggle
+                      value={Boolean(detailBlockDraft.require_timer)}
+                      onChange={(value) => updateDetailBlockDraft({ require_timer: value })}
+                    />
+                  </div>
+                  <div className="op-curriculum-block-toggle-row">
+                    <div>
+                      <p className="text-[12px] font-label text-white">Written response</p>
+                      <p className="mt-1 text-[10px] text-[rgba(238,234,248,0.46)]">Ask for the standard summary response.</p>
+                    </div>
+                    <Toggle
+                      value={detailBlockDraft.require_input !== false}
+                      onChange={(value) => updateDetailBlockDraft({ require_input: value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <label className={labelCls}>Resources</label>
+                    <button type="button" onClick={handleAddDraftResource} className="op-proto-btn">
+                      <Plus className="h-3.5 w-3.5" />
+                      Add resource
+                    </button>
+                  </div>
+                  {(Array.isArray(detailBlockDraft.resources) && detailBlockDraft.resources.length > 0
+                    ? detailBlockDraft.resources
+                    : [{ name: '', url: '' }]
+                  ).map((resource, index) => (
+                    <div key={index} className="grid gap-2 md:grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)_28px]">
+                      <input
+                        type="text"
+                        value={resource.name}
+                        onChange={(event) => handleDraftResourceChange(index, 'name', event.target.value)}
+                        className="op-weekly-inline-input"
+                        placeholder="Resource name"
+                      />
+                      <input
+                        type="url"
+                        value={resource.url}
+                        onChange={(event) => handleDraftResourceChange(index, 'url', event.target.value)}
+                        className="op-weekly-inline-input"
+                        placeholder="https://..."
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveDraftResource(index)}
+                        className="op-proto-icon-btn"
+                        title="Remove resource"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="op-curriculum-block-modal-section">
+                <div>
+                  <p className="text-[13px] font-label text-white">Student response</p>
+                  <p className="mt-1 text-[11px] leading-5 text-[rgba(238,234,248,0.5)]">
+                    Define exactly what proves this block is complete.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  {(Array.isArray(detailBlockDraft.custom_fields) ? detailBlockDraft.custom_fields : []).map((field) => (
+                    <div key={field.id} className="op-curriculum-response-field">
+                      <div className="grid gap-2 md:grid-cols-[116px_minmax(0,1fr)]">
+                        <select
+                          value={field.type || 'text'}
+                          onChange={(event) => handleDraftCustomFieldChange(field.id, 'type', event.target.value)}
+                          className="op-weekly-inline-input"
+                        >
+                          <option value="text">Text</option>
+                          <option value="number">Number</option>
+                          <option value="file">Upload</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={field.label || ''}
+                          onChange={(event) => handleDraftCustomFieldChange(field.id, 'label', event.target.value)}
+                          className="op-weekly-inline-input"
+                          placeholder="Required response, e.g. Upload project photo"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        value={field.placeholder || ''}
+                        onChange={(event) => handleDraftCustomFieldChange(field.id, 'placeholder', event.target.value)}
+                        className="op-weekly-inline-input"
+                        placeholder="Student helper text, e.g. Pages 42-51 or brief paragraph"
+                      />
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="flex items-center gap-2 text-[11px] text-[rgba(238,234,248,0.62)]">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(field.required)}
+                            onChange={(event) => handleDraftCustomFieldChange(field.id, 'required', event.target.checked)}
+                            className="h-3.5 w-3.5 accent-amethyst-link"
+                          />
+                          Required
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDraftCustomField(field.id)}
+                          className="text-[11px] text-[rgba(238,234,248,0.42)] hover:text-white"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button type="button" onClick={handleAddDraftCustomField} className="op-proto-btn op-proto-btn-primary">
+                  <Plus className="h-3.5 w-3.5" />
+                  Add response field
+                </button>
+
+                <div className="border-l-2 border-[#7c6fd4] bg-[rgba(124,111,212,0.1)] px-3 py-2 text-[10px] leading-4 text-[#cbb7fb]">
+                  Use response fields for page numbers, project photos, worksheet uploads, or block-specific summary prompts.
+                </div>
+              </section>
+            </div>
+
+            <div className="op-curriculum-block-modal-footer">
+              <button
+                type="button"
+                onClick={() => setDetailBlockDraft(null)}
+                className="op-proto-btn"
+                disabled={savingDetailBlock}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveDetailBlock}
+                className="op-proto-btn op-proto-btn-primary"
+                disabled={savingDetailBlock}
+              >
+                {savingDetailBlock ? 'Saving...' : 'Save block'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {selectedSubject ? (
         <div className="op-proto-detail">
           <div className="op-proto-breadcrumb">
@@ -1152,11 +1472,11 @@ const Curriculum = () => {
               </button>
               <button
                 type="button"
-                onClick={() => handleEdit(selectedSubject, { startStep: 4 })}
+                onClick={openNewDetailBlockDraft}
                 className="op-proto-btn op-proto-btn-primary"
               >
-                <ListChecks className="h-3.5 w-3.5" />
-                Edit blocks
+                <Plus className="h-3.5 w-3.5" />
+                Add block
               </button>
               <button
                 type="button"
@@ -1198,62 +1518,16 @@ const Curriculum = () => {
             </div>
 
               <div className="op-proto-block-list">
-                {detailBlockDraft ? (
-                  <div className="op-curriculum-block-editor">
-                    <div className="grid gap-2 md:grid-cols-[minmax(0,1.2fr)_120px_90px]">
-                      <input
-                        type="text"
-                        value={detailBlockDraft.title}
-                        onChange={(event) => setDetailBlockDraft((draft) => ({ ...draft, title: event.target.value }))}
-                        className="op-weekly-inline-input"
-                        placeholder="Block name, e.g. Beast Academy practice"
-                      />
-                      <select
-                        value={detailBlockDraft.type}
-                        onChange={(event) => setDetailBlockDraft((draft) => ({ ...draft, type: event.target.value }))}
-                        className="op-weekly-inline-input"
-                      >
-                        {Object.entries(CURRICULUM_BLOCK_TYPES).map(([value, meta]) => (
-                          <option key={value} value={value}>{meta.name}</option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        min="0"
-                        max="20"
-                        value={detailBlockDraft.default_quantity}
-                        onChange={(event) => setDetailBlockDraft((draft) => ({ ...draft, default_quantity: event.target.value }))}
-                        className="op-weekly-inline-input"
-                        aria-label="Default weekly quantity"
-                      />
-                    </div>
-                    <textarea
-                      value={detailBlockDraft.instruction}
-                      onChange={(event) => setDetailBlockDraft((draft) => ({ ...draft, instruction: event.target.value }))}
-                      className="op-curriculum-block-textarea"
-                      placeholder="Student-facing instruction or objective for this reusable block"
-                    />
-                    <div className="flex flex-wrap justify-end gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setDetailBlockDraft(null)}
-                        className="op-proto-btn"
-                        disabled={savingDetailBlock}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSaveDetailBlock}
-                        className="op-proto-btn op-proto-btn-primary"
-                        disabled={savingDetailBlock}
-                      >
-                        {savingDetailBlock ? 'Saving...' : 'Save block'}
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-                {selectedSubjectRows.map((row) => (
+                {selectedSubjectRows.map((row) => {
+                  const rowRequiresTimer = typeof row.require_timer === 'boolean'
+                    ? row.require_timer
+                    : Boolean(selectedSubject.require_timer);
+                  const rowRequiresInput = typeof row.require_input === 'boolean'
+                    ? row.require_input
+                    : selectedSubject.require_input !== false;
+                  const rowResources = getConfiguredResources(row.resources?.length ? row.resources : selectedSubject.resources);
+
+                  return (
                   <div
                     key={row.id}
                     className={`op-proto-block-row ${row.type === 'project' ? 'is-custom' : row.hasObjective ? 'is-guided' : row.customFields.length ? 'is-custom' : ''}`}
@@ -1277,14 +1551,17 @@ const Curriculum = () => {
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <span className="op-proto-req">{row.default_quantity || 0} default/wk</span>
-                        {selectedSubject.require_timer ? (
+                        {rowRequiresTimer ? (
                           <span className="op-proto-req"><Timer className="h-3 w-3" /> Timer</span>
                         ) : null}
-                        {selectedSubject.require_input !== false ? (
+                        {rowRequiresInput ? (
                           <span className="op-proto-req"><MessageSquareText className="h-3 w-3" /> Written response</span>
                         ) : null}
+                        {rowResources.length ? (
+                          <span className="op-proto-req"><BookOpen className="h-3 w-3" /> {rowResources.length} resource{rowResources.length === 1 ? '' : 's'}</span>
+                        ) : null}
                         {row.customFields.length ? (
-                          <span className="op-proto-req"><Upload className="h-3 w-3" /> {row.customFields.length} custom field{row.customFields.length === 1 ? '' : 's'}</span>
+                          <span className="op-proto-req"><Upload className="h-3 w-3" /> {row.customFields.length} response field{row.customFields.length === 1 ? '' : 's'}</span>
                         ) : null}
                       </div>
                     </div>
@@ -1307,7 +1584,8 @@ const Curriculum = () => {
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
 

@@ -76,6 +76,9 @@ export const normalizeSubjectCurriculumBlock = (block = {}, index = 0) => {
     title,
     type: isNonEmptyString(block?.type) ? block.type.trim() : DEFAULT_CURRICULUM_BLOCK_TYPE,
     instruction: isNonEmptyString(block?.instruction) ? block.instruction.trim() : '',
+    resources: cloneArray(block?.resources),
+    require_timer: typeof block?.require_timer === 'boolean' ? block.require_timer : null,
+    require_input: typeof block?.require_input === 'boolean' ? block.require_input : null,
     custom_fields: cloneArray(block?.custom_fields),
     default_quantity: Number.isFinite(defaultQuantity) && defaultQuantity >= 0 ? defaultQuantity : 0,
     pinned: block?.pinned !== false,
@@ -98,6 +101,9 @@ export const getSubjectCurriculumBlocks = (subject) => {
         : `${subject?.title || 'Subject'} block`,
       type: DEFAULT_CURRICULUM_BLOCK_TYPE,
       instruction: objective?.instruction || '',
+      resources: cloneArray(subject?.resources),
+      require_timer: Boolean(subject?.require_timer),
+      require_input: subject?.require_input !== false,
       custom_fields: objective?.custom_fields || [],
       default_quantity: 1,
       pinned: blockIndex < 2 || isNonEmptyString(objective?.instruction),
@@ -235,38 +241,50 @@ export const buildLegacySubjectWeeklyBlockSeeds = ({ subject, studentId }) => {
       block: normalizeSubjectCurriculumBlock({
         id: `legacy_${blockIndex + 1}`,
         title: `${subject?.title || 'Subject'} block`,
+        resources: cloneArray(subject?.resources),
+        require_timer: Boolean(subject?.require_timer),
+        require_input: subject?.require_input !== false,
         default_quantity: 1,
       }, blockIndex),
       blockDefinitionIndex: blockIndex,
       occurrenceIndex: 0,
     }));
 
-  return fallbackDefinitions.map(({ block, blockDefinitionIndex, occurrenceIndex }, blockIndex) => ({
-    ...buildLegacySubjectReferences(subject),
-    student_id: studentId,
-    title: block.title || subject?.title || '',
-    color: subject?.color || DEFAULT_SUBJECT_COLOR,
-    planned_duration_minutes: blockLength,
-    category: block.type === 'project'
-      ? WeeklyBlockCategories.PROJECT_WORK
-      : block.type === 'test'
-        ? WeeklyBlockCategories.ASSESSMENT
-        : inferLegacySubjectWeeklyBlockCategory({ subject, blockIndex: blockDefinitionIndex, studentId }),
-    completion_mode: inferLegacySubjectCompletionMode({ subject, blockIndex: blockDefinitionIndex, studentId }),
-    require_timer: Boolean(subject?.require_timer),
-    require_input: subject?.require_input !== false,
-    instruction: block.instruction || getEffectiveSubjectInstruction({ subject, blockIndex: blockDefinitionIndex, studentId }) || '',
-    resources: cloneArray(subject?.resources),
-    custom_fields: block.custom_fields?.length
+  return fallbackDefinitions.map(({ block, blockDefinitionIndex, occurrenceIndex }, blockIndex) => {
+    const customFields = block.custom_fields?.length
       ? cloneArray(block.custom_fields)
-      : getEffectiveSubjectCustomFields({ subject, blockIndex: blockDefinitionIndex, studentId }),
-    legacy_block_index: blockIndex,
-    curriculum_block_id: block.id,
-    curriculum_block_title: block.title,
-    curriculum_block_type: block.type,
-    curriculum_block_source_index: blockDefinitionIndex,
-    curriculum_block_occurrence: occurrenceIndex,
-  }));
+      : getEffectiveSubjectCustomFields({ subject, blockIndex: blockDefinitionIndex, studentId });
+    const requireInput = typeof block.require_input === 'boolean'
+      ? block.require_input
+      : subject?.require_input !== false;
+
+    return {
+      ...buildLegacySubjectReferences(subject),
+      student_id: studentId,
+      title: block.title || subject?.title || '',
+      color: subject?.color || DEFAULT_SUBJECT_COLOR,
+      planned_duration_minutes: blockLength,
+      category: block.type === 'project'
+        ? WeeklyBlockCategories.PROJECT_WORK
+        : block.type === 'test'
+          ? WeeklyBlockCategories.ASSESSMENT
+          : inferLegacySubjectWeeklyBlockCategory({ subject, blockIndex: blockDefinitionIndex, studentId }),
+      completion_mode: requireInput || customFields.length
+        ? WeeklyBlockCompletionModes.HYBRID
+        : WeeklyBlockCompletionModes.TIME_BOXED,
+      require_timer: typeof block.require_timer === 'boolean' ? block.require_timer : Boolean(subject?.require_timer),
+      require_input: requireInput,
+      instruction: block.instruction || getEffectiveSubjectInstruction({ subject, blockIndex: blockDefinitionIndex, studentId }) || '',
+      resources: block.resources?.length ? cloneArray(block.resources) : cloneArray(subject?.resources),
+      custom_fields: customFields,
+      legacy_block_index: blockIndex,
+      curriculum_block_id: block.id,
+      curriculum_block_title: block.title,
+      curriculum_block_type: block.type,
+      curriculum_block_source_index: blockDefinitionIndex,
+      curriculum_block_occurrence: occurrenceIndex,
+    };
+  });
 };
 
 export const derivePlanningInputsFromLegacySubject = (subject) => {

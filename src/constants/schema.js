@@ -116,6 +116,9 @@ export const CurriculumBlockDefinitionSchema = {
   title: "string", // Parent/student-facing block name
   type: "string", // standard, project, parent_led, test, or custom
   instruction: "string", // Default instruction used when this block is assigned
+  resources: "array", // Optional block-specific ResourceSchema items; falls back to subject resources when empty
+  require_timer: "boolean", // Optional block-specific timer requirement
+  require_input: "boolean", // Optional block-specific written response requirement
   custom_fields: "array", // Optional block-level prompts
   default_quantity: "number", // Quantity used when building the default week
   pinned: "boolean", // Whether this block is promoted in quick planning surfaces

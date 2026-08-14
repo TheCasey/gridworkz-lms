@@ -268,6 +268,15 @@ const buildPlanBlocksFromQuantities = ({ subjects = [], studentId = '', quantiti
         const customFields = Array.isArray(block.custom_fields) && block.custom_fields.length
           ? block.custom_fields
           : (Array.isArray(subject.custom_fields) ? subject.custom_fields : []);
+        const requireInput = typeof block.require_input === 'boolean'
+          ? block.require_input
+          : subject.require_input !== false;
+        const requireTimer = typeof block.require_timer === 'boolean'
+          ? block.require_timer
+          : Boolean(subject.require_timer);
+        const blockResources = Array.isArray(block.resources) && block.resources.length
+          ? block.resources
+          : (Array.isArray(subject.resources) ? subject.resources : []);
 
         return {
           id: buildWeeklyPlanBlockId({
@@ -280,13 +289,13 @@ const buildPlanBlocksFromQuantities = ({ subjects = [], studentId = '', quantiti
           color: subject.color || '#3B82F6',
           planned_duration_minutes: getSubjectBlockLengthMinutes(subject),
           category: getBlockCategory(block),
-          completion_mode: subject.require_input !== false || customFields.length > 0
+          completion_mode: requireInput || customFields.length > 0
             ? WeeklyBlockCompletionModes.HYBRID
             : WeeklyBlockCompletionModes.TIME_BOXED,
-          require_timer: Boolean(subject.require_timer),
-          require_input: subject.require_input !== false,
+          require_timer: requireTimer,
+          require_input: requireInput,
           instruction: block.instruction || '',
-          resources: Array.isArray(subject.resources) ? subject.resources : [],
+          resources: blockResources,
           custom_fields: customFields,
           legacy_subject_id: subject.id,
           legacy_subject_title: subject.title || '',
