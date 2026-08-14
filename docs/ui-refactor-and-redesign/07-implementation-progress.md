@@ -6,7 +6,7 @@ This note tracks the route-by-route redesign implementation so the work order st
 
 ## Started
 
-- `/dashboard/homeschool` overview surface has been started in app code and now uses the prototype compact topbar, week/setup banner, navigation strip, stats, coverage, planning notes, and recent-subject layout.
+- `/dashboard/homeschool` overview surface has been started in app code and now closely follows `ownpath_homeschool_overview.html` for the visible dashboard: compact topbar, all-family/student focus tabs, week draft banner, navigation strip, active-subjects-by-student panel, quick stats, and attention items. It remains real-data driven from students/subjects/week settings; lower recent-completions feed and real all-family publish state are not wired yet.
 - `/dashboard/chores` overview surface has been started in app code and now reflects `ownpath_chores_overview.html` with compact topbar/subbar, stats strip, navigation strip, student snapshot list, focused-student summary, and activity feed while preserving trusted chore/reward/allowance handlers.
 - `/dashboard/chores/daily-routines` has started through the shared chores route; routine cards and editor shell are converted.
 - `/dashboard/chores/weekly-chores` has started through the shared chores route; pool cards, shared editor shell, and review queue are converted.
