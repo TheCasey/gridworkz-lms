@@ -835,17 +835,21 @@ const ParentDashboard = () => {
       <div className="flex h-screen">
 
         {/* Sidebar */}
-        <div className="w-64 flex flex-col flex-shrink-0 border-r border-[rgba(203,183,251,0.12)] bg-[#181829]">
-          <div className="px-6 pt-7 pb-6" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-            <div className="mb-3 h-[3px] w-6 bg-[#cbb7fb]" />
-            <h1 style={{ fontSize: 20, fontWeight: 540, lineHeight: 0.96, letterSpacing: 0, color: '#ffffff' }}>
-              OWN PATH
-            </h1>
-            <p className="text-[12px] mt-1.5" style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 460 }}>Parent Portal</p>
+        <div className="w-[190px] flex flex-col flex-shrink-0 border-r border-[rgba(255,255,255,0.08)] bg-[#181828]">
+          <div className="flex items-center gap-2 px-4 py-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center bg-[#7c6fd4]">
+              <div className="h-3.5 w-2.5 border-b-[3px] border-white/90 border-l-[3px] border-r-[3px] border-l-white/40 border-r-white/60" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="truncate text-[12px] font-label tracking-[0.06em] text-white">
+                OWN PATH
+              </h1>
+              <p className="mt-0.5 truncate text-[9px] text-[rgba(238,234,248,0.45)]">Parent Portal</p>
+            </div>
           </div>
 
-          <nav key={location.pathname} className="flex-1 p-3">
-            <div className="space-y-2">
+          <nav key={location.pathname} className="flex-1 overflow-y-auto py-1.5">
+            <div className="space-y-0.5">
               {resolvedDashboardNavigation.map((section) => {
                 const Icon = section.icon;
                 const isSectionActive = activeSectionId === section.sectionId;
@@ -868,10 +872,10 @@ const ParentDashboard = () => {
                             ? C.lavender
                             : (section.isLocked ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.5)'),
                           fontWeight: isSectionActive ? 540 : 460,
-                          fontSize: 14,
+                          fontSize: 11,
                         }}
                       >
-                        <Icon className="h-4 w-4 flex-shrink-0" />
+                        <Icon className="h-3.5 w-3.5 flex-shrink-0" />
                         <span className="truncate">{section.label}</span>
                         {showLockedBadge ? (
                           <span
@@ -897,7 +901,7 @@ const ParentDashboard = () => {
                           aria-expanded={isExpanded}
                         >
                           <ChevronDown
-                            className="h-4 w-4 transition-transform"
+                            className="h-3 w-3 transition-transform"
                             style={{ transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}
                           />
                         </button>
@@ -906,7 +910,7 @@ const ParentDashboard = () => {
 
                     {hasChildren && isExpanded ? (
                       <div
-                        className="ml-6 mt-1 space-y-1 border-l pl-4"
+                        className="ml-4 mt-0.5 space-y-0.5 border-l pl-2"
                         style={{ borderColor: 'rgba(255,255,255,0.08)' }}
                       >
                         {section.children.map((child) => {
@@ -914,7 +918,7 @@ const ParentDashboard = () => {
                             return (
                               <div
                                 key={child.id}
-                                className="flex items-center gap-3 px-3 py-2 text-[13px]"
+                                className="flex items-center gap-3 px-3 py-1.5 text-[11px]"
                                 style={{ color: 'rgba(255,255,255,0.46)' }}
                               >
                                 <span>{child.label}</span>
@@ -930,7 +934,7 @@ const ParentDashboard = () => {
                             <NavLink
                               key={child.id}
                               to={child.path}
-                              className="flex items-center gap-3 border-l-2 px-3 py-2 text-[13px] transition-colors hover:bg-white/5"
+                              className="flex items-center gap-3 border-l-2 px-3 py-1.5 text-[11px] transition-colors hover:bg-white/5"
                               style={{
                                 backgroundColor: isChildActive
                                   ? 'rgba(203,183,251,0.12)'
@@ -966,14 +970,14 @@ const ParentDashboard = () => {
             </div>
           </nav>
 
-          <div className="p-3" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="p-2" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
             <button
-              className="w-full flex items-center justify-center gap-2 border border-[rgba(238,234,248,0.14)] px-4 py-2.5 transition-all"
-              style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.62)', fontSize: 13, fontWeight: 700 }}
+              className="w-full flex items-center justify-center gap-1.5 border border-[rgba(238,234,248,0.14)] px-2 py-2 transition-all"
+              style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.62)', fontSize: 11, fontWeight: 700 }}
               onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.12)'}
               onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'}
             >
-              <Heart className="w-4 h-4" />
+              <Heart className="w-3.5 h-3.5" />
               Support Project
             </button>
           </div>
@@ -982,17 +986,17 @@ const ParentDashboard = () => {
         {/* Main Content */}
         <div className="relative flex-1 flex flex-col overflow-hidden bg-[#1f1f32]">
           {/* Header */}
-          <header className="flex-shrink-0 border-b border-[rgba(203,183,251,0.12)] bg-[#202034] px-8 py-4">
+          <header className="flex-shrink-0 border-b border-[rgba(255,255,255,0.08)] bg-[#181828] px-4 py-2">
             <div className="flex items-center justify-between">
               <div>
-                <h2 style={{ fontSize: 22, fontWeight: 540, lineHeight: 0.96, letterSpacing: 0, color: 'rgba(250,249,255,0.96)' }}>
+                <h2 style={{ fontSize: 14, fontWeight: 540, lineHeight: 1.1, letterSpacing: 0, color: 'rgba(250,249,255,0.96)' }}>
                   {activeFeature.header.title}
                 </h2>
-                <p className="text-[13px] mt-1" style={{ color: 'rgba(238,234,248,0.5)', fontWeight: 460 }}>
+                <p className="text-[10px] mt-0.5" style={{ color: 'rgba(238,234,248,0.42)', fontWeight: 460 }}>
                   {activeFeature.header.description}
                 </p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5">
                 {activeFeatureShell.headerSlots.primaryAction && renderHeaderPrimaryAction(activeFeatureShell.headerSlots.primaryAction)}
                 {activeFeatureShell.headerSlots.filters.map((filterId) => (
                   <React.Fragment key={filterId}>
@@ -1011,11 +1015,12 @@ const ParentDashboard = () => {
                   aria-expanded={isLivePulseOpen}
                   className="op-button op-button-secondary"
                   style={{
-                    fontSize: 13,
+                    fontSize: 11,
+                    minHeight: 28,
                     fontWeight: isLivePulseOpen ? 700 : 540,
                   }}
                 >
-                  <Activity className="w-4 h-4" />
+                  <Activity className="w-3.5 h-3.5" />
                   {isLivePulseOpen ? 'Hide Live Pulse' : 'Live Pulse'}
                 </button>
 
@@ -1026,11 +1031,11 @@ const ParentDashboard = () => {
                     paddingLeft: hasShellHeaderControls ? 12 : 0,
                   }}
                 >
-                  <span className="text-[13px]" style={{ color: 'rgba(238,234,248,0.5)', fontWeight: 460 }}>{currentUser?.email}</span>
+                  <span className="hidden max-w-[180px] truncate text-[11px] lg:inline" style={{ color: 'rgba(238,234,248,0.5)', fontWeight: 460 }}>{currentUser?.email}</span>
                   <NavLink
                     to={accountSettingsPath}
                     end
-                    className="border px-3 py-1.5 text-[13px] transition-colors"
+                    className="border px-2 py-1 text-[11px] transition-colors"
                     style={{
                       backgroundColor: isAccountSettingsActive ? 'rgba(203,183,251,0.14)' : 'transparent',
                       borderColor: isAccountSettingsActive ? 'rgba(203,183,251,0.42)' : 'rgba(238,234,248,0.14)',
@@ -1042,7 +1047,7 @@ const ParentDashboard = () => {
                   </NavLink>
                   <button
                     onClick={handleLogout}
-                    className="text-[13px] hover:underline"
+                    className="text-[11px] hover:underline"
                     style={{ color: C.lavender, fontWeight: 460 }}
                   >
                     Log Out

@@ -6,20 +6,20 @@ This note tracks the route-by-route redesign implementation so the work order st
 
 ## Started
 
-- `/dashboard/homeschool` overview surface has been started in app code.
-- `/dashboard/chores` overview surface has been started in app code.
+- `/dashboard/homeschool` overview surface has been started in app code and now uses the prototype compact topbar, week/setup banner, navigation strip, stats, coverage, planning notes, and recent-subject layout.
+- `/dashboard/chores` overview surface has been started in app code and now reflects `ownpath_chores_overview.html` with compact topbar/subbar, stats strip, navigation strip, student snapshot list, focused-student summary, and activity feed while preserving trusted chore/reward/allowance handlers.
 - `/dashboard/chores/daily-routines` has started through the shared chores route; routine cards and editor shell are converted.
 - `/dashboard/chores/weekly-chores` has started through the shared chores route; pool cards, shared editor shell, and review queue are converted.
 - `/dashboard/chores/monthly-chores` has started through the shared chores route; it shares the converted weekly/monthly pool path.
 - `/dashboard/chores/allowance` has started through the shared chores route; student allowance cards, allowance settings, quota/progress cards, and bookkeeping inputs are converted while preserving trusted allowance handlers.
 - `/dashboard/chores/rewards` has started through the shared chores route; reward catalog, redemption cards, point settings, point wallet cards, reward editor, and built-in reward placeholders are converted while preserving trusted point/reward handlers.
-- `/dashboard/students` has been started in app code; roster/detail shell, portal copy actions, Add Student modal, fallback `StudentCard`, and PIN visual/validation behavior use the redesign language.
+- `/dashboard/students` has been started in app code; the route now follows `ownpath_students.html` with compact topbar, roster/search pane, selected-student detail pane, portal copy actions, Add Student modal, fallback `StudentCard`, and PIN visual/validation behavior in the redesign language.
 - `/dashboard/curriculum` has started in app code; route shell, student tabs, compact subject tile grid, subject detail/block list view, usage notice, add/edit modal frame, schedule/resources internals, and `BlockObjectivesEditor` have been moved closer to `curriculum.html`. New subject creates now write per-student records through `useSubjectMutations` while legacy shared records remain readable/editable. Weekly publishing has moved out to the dedicated Weekly Blocking route. Block-objective saves now share a normalized save contract, and subject cards/detail view expose direct block-objective edit shortcuts plus configured objective counts.
 - `/dashboard/weekly-blocking` has started in app code; navigation, prototype-style topbar, student tabs, week chips, subject-row weekly schedule, summary rail, regenerate-from-subjects, draft save, and publish now use the redesign language while preserving the existing `weeklyPlans` hook/schema behavior. Saved weekly-plan views now explicitly warn that regenerated subject objectives require regeneration before save/publish, and block rows surface objective/field badges.
-- `/dashboard/reports` has started in app code; live report shell, filters, student weekly cards, collapsible subject rows, and official records list have been moved to the redesign language while preserving save/print/delete semantics. Current behavior has been reviewed, and published weekly-plan snapshots now use an allow-with-warning readiness contract for incomplete assigned blocks and completed required-response blocks missing written detail.
+- `/dashboard/reports` has started in app code; the route now follows `ownpath_reports.html` with a compact topbar, filter toolbar, summary strip, report list, compliance rail, and official records panel while preserving save/print/delete semantics. Current behavior has been reviewed, and published weekly-plan snapshots now use an allow-with-warning readiness contract for incomplete assigned blocks and completed required-response blocks missing written detail.
 - `/dashboard/settings` has started in app code; account plan/access status, usage cards, school-year controls, quarter preview, timezone, weekly reset, and save footer have been moved to the redesign language while preserving the parent settings save flow.
 - Shared redesign tokens/classes for the new dashboard language have started.
-- Parent dashboard shell/header/sidebar have started moving to the dark redesign language.
+- Parent dashboard shell/header/sidebar have started moving to the dark redesign language and now use the compact 190px rail/topbar proportions from the HTML examples.
 
 ## Still Remaining
 
@@ -30,7 +30,7 @@ This note tracks the route-by-route redesign implementation so the work order st
 - Student portal redesign.
 - Mobile polish pass across the student-facing surfaces.
 - Final end-to-end QA of the redesign shell and route transitions.
-- Remaining Chores polish only: any nested edge-case light utility panels discovered during visual QA.
+- Chores child-page deep prototype polish: daily routines, weekly chores, monthly chores, allowance, and rewards still use preserved editor/detail sections inside the compact chores frame; the overview is the most closely matched child surface in this pass.
 
 ## Suggested Next Order
 

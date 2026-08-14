@@ -456,6 +456,23 @@ const Reports = ({ parentSettings = {} }) => {
       return true;
     })
   ), [normalizedWeeklyReports, selectedQuarter, selectedSchoolYear, selectedStudentIds, selectedSubjectIds]);
+  const reportTotals = useMemo(() => (
+    Object.values(studentDataMap).reduce((totals, data) => {
+      if (!data) return totals;
+
+      return {
+        completedBlocks: totals.completedBlocks + (data.totalBlocks || 0),
+        goalBlocks: totals.goalBlocks + (data.goalBlocks || 0),
+        hours: totals.hours + (data.totalMinutes || 0),
+        subjects: totals.subjects + (data.subjectData?.length || 0),
+      };
+    }, {
+      completedBlocks: 0,
+      goalBlocks: 0,
+      hours: 0,
+      subjects: 0,
+    })
+  ), [studentDataMap]);
 
   const handleResetFilters = () => {
     setSelectedStudentIds([]);
@@ -514,7 +531,7 @@ const Reports = ({ parentSettings = {} }) => {
   if (loading) {
     return (
       <div className="op-page">
-        <div className="op-shell flex min-h-[360px] items-center justify-center">
+        <div className="op-proto-shell flex min-h-[360px] items-center justify-center">
           <div className="h-7 w-7 animate-spin border-2 border-transparent border-b-[#cbb7fb]" />
         </div>
       </div>
@@ -526,24 +543,39 @@ const Reports = ({ parentSettings = {} }) => {
 
   return (
     <div className="op-page">
-      <div className="op-shell space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <p className="op-eyebrow">Reports</p>
-          <h1 className="op-title mt-3">Weekly accountability records</h1>
-          <p className="op-subtle text-[14px] font-body mt-4 max-w-2xl leading-6">
-            Review live weekly progress, save official snapshots, and print filtered record sets without changing student data.
-          </p>
+      <div className="op-proto-shell op-report-shell">
+        <div className="op-proto-topbar">
+          <div className="min-w-0 flex-1">
+            <p className="text-[14px] font-label text-white">Reports</p>
+            <p className="mt-1 truncate text-[10px] text-[rgba(238,234,248,0.42)]">
+              {getWeekLabel(weekOffset)} · {weekRangeDisplay}
+            </p>
+          </div>
+          <button
+            onClick={() => printWeekReport(students, weekStart, weekEnd, studentDataMap)}
+            disabled={!weekHasReportableData}
+            className="op-proto-btn disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            Print report
+          </button>
+          <button
+            onClick={handleSaveRecord}
+            disabled={savingRecord || !weekHasReportableData}
+            className="op-proto-btn op-proto-btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Archive className="w-3.5 h-3.5" />
+            {savingRecord ? 'Saving...' : 'Save record'}
+          </button>
         </div>
-        <div className="flex flex-wrap items-center gap-3 flex-shrink-0">
-          {/* Week picker */}
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-[rgba(238,234,248,0.52)]" />
+
+        <div className="op-report-toolbar">
+          <div className="op-report-filter">
+            <span>Week</span>
             <select
               value={weekOffset}
               onChange={e => setWeekOffset(parseInt(e.target.value))}
-              className="op-input max-w-[220px] py-2 text-[13px]"
+              className="op-report-select op-report-select-wide"
             >
               {weekPickerOptions.map(opt => (
                 <option key={opt.value} value={opt.value}>
@@ -552,148 +584,12 @@ const Reports = ({ parentSettings = {} }) => {
               ))}
             </select>
           </div>
-
-          {/* Print live week */}
-          <button
-            onClick={() => printWeekReport(students, weekStart, weekEnd, studentDataMap)}
-            disabled={!weekHasReportableData}
-            className="op-button op-button-secondary disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Printer className="w-4 h-4" />
-            Print Report
-          </button>
-
-          {/* Save official record */}
-          <button
-            onClick={handleSaveRecord}
-            disabled={savingRecord || !weekHasReportableData}
-            className="op-button disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Archive className="w-4 h-4" />
-            {savingRecord ? 'Saving…' : 'Save Record'}
-          </button>
-        </div>
-      </div>
-
-      {/* Week label */}
-      <p className="op-pill w-fit">
-        {getWeekLabel(weekOffset)} — {weekRangeDisplay}
-      </p>
-
-      {readinessTotals.checkedStudentCount > 0 ? (
-        <section
-          className="flex flex-col gap-4 border border-l-[3px] px-5 py-4 md:flex-row md:items-center md:justify-between"
-          style={{
-            backgroundColor: hasReadinessWarnings ? 'rgba(245,158,11,0.08)' : 'rgba(52,211,153,0.08)',
-            borderColor: 'rgba(238,234,248,0.14)',
-            borderLeftColor: hasReadinessWarnings ? '#f59e0b' : '#34d399',
-          }}
-        >
-          <div className="flex items-start gap-3">
-            <AlertTriangle
-              className="mt-0.5 h-4 w-4 flex-shrink-0"
-              style={{ color: hasReadinessWarnings ? '#f59e0b' : '#34d399' }}
-            />
-            <div>
-              <p className="text-[14px] font-display text-white">
-                Official record readiness
-              </p>
-              <p className="op-subtle mt-1 text-[13px] font-body leading-5">
-                {hasReadinessWarnings
-                  ? 'Save remains available, but this published weekly-plan snapshot has items worth reviewing first.'
-                  : 'Published weekly-plan snapshots for this week have no readiness warnings.'}
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <span className="op-pill">{readinessTotals.checkedStudentCount} checked</span>
-            <span className="op-pill">{readinessTotals.incompleteBlockCount} incomplete</span>
-            <span className="op-pill">{readinessTotals.missingRequiredDetailCount} missing detail</span>
-          </div>
-        </section>
-      ) : null}
-
-      <div className="op-panel p-5 md:p-6">
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Filter className="w-4 h-4 text-[#cbb7fb]" />
-              <h3 className="text-[22px] font-display text-white">Custom Report Builder</h3>
-            </div>
-            <p className="op-subtle text-[13px] font-body leading-5">
-              Filter official records by student, subject, school year, quarter, or any combination.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleResetFilters}
-              className="op-button op-button-secondary"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Reset
-            </button>
-            <button
-              onClick={handlePrintFilteredRecords}
-              disabled={filteredWeeklyReports.length === 0}
-              className="op-button disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Printer className="w-4 h-4" />
-              Print Filtered
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
-          <div className="border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)] p-4">
-            <p className="op-eyebrow mb-3">Students</p>
-            <div className="flex flex-wrap gap-2">
-              {students.map(student => (
-                <button
-                  key={student.id}
-                  onClick={() => toggleSelection(student.id, setSelectedStudentIds)}
-                  className="px-3 py-1.5 text-[12px] transition-colors"
-                  style={{
-                    backgroundColor: selectedStudentIds.includes(student.id) ? 'rgba(203,183,251,0.16)' : 'transparent',
-                    color: selectedStudentIds.includes(student.id) ? C.lavender : 'rgba(238,234,248,0.68)',
-                    border: `1px solid ${selectedStudentIds.includes(student.id) ? 'rgba(203,183,251,0.42)' : 'rgba(238,234,248,0.14)'}`,
-                    fontWeight: 700,
-                  }}
-                >
-                  {student.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)] p-4">
-            <p className="op-eyebrow mb-3">Subjects</p>
-            <div className="flex flex-wrap gap-2">
-              {subjects.map(subject => (
-                <button
-                  key={subject.id}
-                  onClick={() => toggleSelection(subject.id, setSelectedSubjectIds)}
-                  className="px-3 py-1.5 text-[12px] transition-colors"
-                  style={{
-                    backgroundColor: selectedSubjectIds.includes(subject.id) ? 'rgba(203,183,251,0.16)' : 'transparent',
-                    color: selectedSubjectIds.includes(subject.id) ? C.lavender : 'rgba(238,234,248,0.68)',
-                    border: `1px solid ${selectedSubjectIds.includes(subject.id) ? 'rgba(203,183,251,0.42)' : 'rgba(238,234,248,0.14)'}`,
-                    fontWeight: 700,
-                  }}
-                >
-                  {subject.title}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="op-eyebrow mb-1.5 block">School Year</label>
+          <div className="op-report-filter">
+            <span>School year</span>
             <select
               value={selectedSchoolYear}
               onChange={event => setSelectedSchoolYear(event.target.value)}
-              className="op-input text-[13px]"
+              className="op-report-select"
             >
               <option value="all">All school years</option>
               {schoolYearOptions.map(option => (
@@ -701,13 +597,12 @@ const Reports = ({ parentSettings = {} }) => {
               ))}
             </select>
           </div>
-
-          <div>
-            <label className="op-eyebrow mb-1.5 block">Quarter</label>
+          <div className="op-report-filter">
+            <span>Quarter</span>
             <select
               value={selectedQuarter}
               onChange={event => setSelectedQuarter(event.target.value)}
-              className="op-input text-[13px]"
+              className="op-report-select"
             >
               <option value="all">All quarters</option>
               <option value="1">Q1</option>
@@ -716,176 +611,256 @@ const Reports = ({ parentSettings = {} }) => {
               <option value="4">Q4</option>
             </select>
           </div>
-        </div>
-
-        <p className="op-subtle text-[13px] font-body">
-          {filteredWeeklyReports.length} official record{filteredWeeklyReports.length === 1 ? '' : 's'} match the current filters.
-        </p>
-      </div>
-
-      {/* Per-student live report cards */}
-      {students.length === 0 ? (
-        <div className="op-panel flex min-h-[320px] flex-col items-center justify-center px-6 py-16 text-center">
-          <FileText className="w-10 h-10 text-[#cbb7fb] mx-auto mb-4" />
-          <p className="text-[20px] font-display text-white mb-1">No students yet</p>
-          <p className="op-subtle text-[13px] font-body">Add students from the dashboard to see their reports here.</p>
-        </div>
-      ) : (
-        <div className="space-y-6 mb-10">
-          {students.map(student => {
-            const data = studentDataMap[student.id];
-            if (!data) return null;
-            const pct = data.goalBlocks > 0 ? Math.round((data.totalBlocks / data.goalBlocks) * 100) : 0;
-            const hours = Math.round(data.totalMinutes / 60 * 10) / 10;
-            const readiness = readinessByStudentId[student.id];
-            const studentNeedsReview = readiness?.needsReview;
-
-            return (
-              <div key={student.id} className="op-panel p-5 md:p-6">
-                {/* Student header */}
-                <div className="flex items-center gap-4 mb-5">
-                  <div className="w-11 h-11 flex items-center justify-center flex-shrink-0 border border-[rgba(203,183,251,0.28)] bg-[#202034]">
-                    <span className="text-[17px] font-display" style={{ color: C.amethyst }}>
-                      {student.name.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-[20px] font-display text-white" style={{ lineHeight: 1.05 }}>{student.name}</h3>
-                    <p className="op-subtle text-[13px] font-body mt-1">
-                      {data.totalBlocks} of {data.goalBlocks} blocks completed this week
-                    </p>
-                  </div>
-                  {/* Metrics pills */}
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    {readiness?.checked ? (
-                      <div
-                        className="border px-4 py-2.5 text-center"
-                        style={{
-                          backgroundColor: studentNeedsReview ? 'rgba(245,158,11,0.08)' : 'rgba(52,211,153,0.08)',
-                          borderColor: studentNeedsReview ? 'rgba(245,158,11,0.32)' : 'rgba(52,211,153,0.24)',
-                        }}
-                      >
-                        <div className="text-[16px] font-display text-white">{studentNeedsReview ? 'Review' : 'Ready'}</div>
-                        <div className="op-eyebrow mt-1">Record</div>
-                      </div>
-                    ) : null}
-                    {[
-                      { label: 'Blocks', value: `${data.totalBlocks}/${data.goalBlocks}` },
-                      { label: 'Hours', value: `${hours}h` },
-                      { label: 'Progress', value: `${pct}%` },
-                    ].map(({ label, value }) => (
-                      <div key={label} className="border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)] px-4 py-2.5 text-center">
-                        <div className="text-[16px] font-display text-white">{value}</div>
-                        <div className="op-eyebrow mt-1">{label}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Progress bar */}
-                <div className="w-full h-1.5 mb-5 overflow-hidden" style={{ backgroundColor: 'rgba(238,234,248,0.16)' }}>
-                  <div className="h-1.5 transition-all duration-500"
-                    style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: C.lavender }} />
-                </div>
-
-                {readiness?.checked && studentNeedsReview ? (
-                  <div className="mb-5 border border-[rgba(245,158,11,0.28)] bg-[rgba(245,158,11,0.08)] px-4 py-3">
-                    <p className="text-[13px] font-body leading-5 text-[rgba(254,243,199,0.86)]">
-                      {readiness.incompleteBlockCount} assigned block{readiness.incompleteBlockCount === 1 ? '' : 's'} incomplete
-                      {readiness.missingRequiredDetailCount > 0
-                        ? `; ${readiness.missingRequiredDetailCount} completed required-response block${readiness.missingRequiredDetailCount === 1 ? '' : 's'} missing written detail.`
-                        : '.'}
-                    </p>
-                  </div>
-                ) : null}
-
-                {/* Subject rows */}
-                {data.subjectData.length === 0 ? (
-                  <p className="text-[13px] text-[rgba(238,234,248,0.34)] italic font-body text-center py-4">
-                    No subjects assigned to this student.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="op-eyebrow mb-2">
-                      Subjects — click to expand block details
-                    </p>
-                    {data.subjectData.map(sd => (
-                      <SubjectRow key={sd.subject.id} subjectDatum={sd} />
-                    ))}
-                  </div>
-                )}
-
-                {data.totalBlocks === 0 && (
-                  <p className="text-center text-[13px] font-body mt-4" style={{ color: 'rgba(238,234,248,0.34)' }}>
-                    No blocks completed {weekOffset === 0 ? 'this week yet' : 'during this week'}.
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Official Records section */}
-      <div>
-        <button
-          className="flex items-center gap-2 mb-4"
-          onClick={() => setShowRecords(r => !r)}
-        >
-          {showRecords
-            ? <ChevronDown className="w-4 h-4" style={{ color: 'rgba(238,234,248,0.5)' }} />
-            : <ChevronRight className="w-4 h-4" style={{ color: 'rgba(238,234,248,0.5)' }} />}
-          <span className="op-eyebrow">
-            Official Records ({filteredWeeklyReports.length}/{normalizedWeeklyReports.length})
-          </span>
-        </button>
-
-        {showRecords && (
-          filteredWeeklyReports.length === 0 ? (
-            <p className="text-[13px] text-[rgba(238,234,248,0.34)] italic font-body pl-6">
-              No official records match the current filters.
-            </p>
-          ) : (
-            <div className="space-y-2 pl-6">
-              {filteredWeeklyReports.map(report => {
-                const ws = report.week_start?.toDate?.() || new Date(report.week_start);
-                const we = report.week_ending?.toDate?.() || new Date(report.week_ending);
-                return (
-                  <div key={report.id} className="op-surface flex items-center gap-3 px-4 py-3">
-                    <div className="w-1.5 h-8 flex-shrink-0" style={{ backgroundColor: C.lavender }} />
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[14px] font-display text-white">{report.student_name}</span>
-                      <span className="text-[12px] font-body ml-2" style={{ color: 'rgba(238,234,248,0.46)' }}>
-                        {formatWeekRange(ws, we)}
-                      </span>
-                      {report.school_quarter_label && (
-                        <span className="text-[11px] font-body ml-2" style={{ color: C.amethyst }}>
-                          {report.school_quarter_label}{report.school_year_label ? ` • ${report.school_year_label}` : ''}
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[12px] font-body" style={{ color: 'rgba(238,234,248,0.46)' }}>
-                      {report.total_blocks}/{report.weekly_goal} blocks
-                    </span>
-                    <button onClick={() => handlePrintRecord(report)}
-                      className="op-icon-button h-8 w-8"
-                      onMouseEnter={e => e.currentTarget.style.color = C.amethyst}
-                      title="Print">
-                      <Printer className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => handleDeleteRecord(report.id)}
-                      className="op-icon-button h-8 w-8"
-                      onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                      title="Delete">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                );
-              })}
+          <div className="op-report-filter op-report-filter-grow">
+            <span>Student</span>
+            <div className="op-report-chip-row">
+              {students.map(student => (
+                <button
+                  key={student.id}
+                  type="button"
+                  onClick={() => toggleSelection(student.id, setSelectedStudentIds)}
+                  className={`op-report-chip ${selectedStudentIds.includes(student.id) ? 'is-active' : ''}`}
+                >
+                  {student.name}
+                </button>
+              ))}
             </div>
-          )
-        )}
-      </div>
+          </div>
+          <div className="op-report-filter op-report-filter-grow">
+            <span>Subject</span>
+            <div className="op-report-chip-row">
+              {subjects.map(subject => (
+                <button
+                  key={subject.id}
+                  type="button"
+                  onClick={() => toggleSelection(subject.id, setSelectedSubjectIds)}
+                  className={`op-report-chip ${selectedSubjectIds.includes(subject.id) ? 'is-active' : ''}`}
+                >
+                  {subject.title}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="op-report-toolbar-actions">
+            <span className="op-report-status">
+              <Calendar className="h-3 w-3" />
+              <b>{filteredWeeklyReports.length}</b> records
+            </span>
+            <button
+              onClick={handleResetFilters}
+              className="op-proto-btn"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Reset
+            </button>
+            <button
+              onClick={handlePrintFilteredRecords}
+              disabled={filteredWeeklyReports.length === 0}
+              className="op-proto-btn disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              Print filtered
+            </button>
+          </div>
+        </div>
+
+        <div className="op-report-body">
+          <div className="op-report-area">
+            {readinessTotals.checkedStudentCount > 0 ? (
+              <section className={`op-weekly-banner ${hasReadinessWarnings ? 'is-modified' : ''}`}>
+                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                <span>
+                  {hasReadinessWarnings
+                    ? `${readinessTotals.incompleteBlockCount} incomplete and ${readinessTotals.missingRequiredDetailCount} missing required detail across published snapshots.`
+                    : 'Published weekly-plan snapshots for this week have no readiness warnings.'}
+                </span>
+              </section>
+            ) : null}
+
+            <section className="op-report-summary-grid">
+              <div className="op-report-summary-card accent">
+                <div className="value">{reportTotals.completedBlocks}/{reportTotals.goalBlocks}</div>
+                <div className="label">Blocks</div>
+              </div>
+              <div className="op-report-summary-card good">
+                <div className="value">{Math.round((reportTotals.hours / 60) * 10) / 10}h</div>
+                <div className="label">Logged time</div>
+              </div>
+              <div className="op-report-summary-card">
+                <div className="value">{students.length}</div>
+                <div className="label">Students</div>
+              </div>
+              <div className="op-report-summary-card">
+                <div className="value">{reportTotals.subjects}</div>
+                <div className="label">Subject rows</div>
+              </div>
+              <div className={`op-report-summary-card ${hasReadinessWarnings ? 'warn' : 'good'}`}>
+                <div className="value">{hasReadinessWarnings ? 'Review' : 'Ready'}</div>
+                <div className="label">Record state</div>
+              </div>
+            </section>
+
+            <div className="op-report-content-wrap">
+              <div className="op-report-list">
+                {students.length === 0 ? (
+                  <div className="op-proto-empty">
+                    <FileText className="w-10 h-10 text-[#cbb7fb]" />
+                    <p className="mt-4 text-[16px] font-label text-white">No students yet</p>
+                    <p className="mt-2 text-[11px] text-[rgba(238,234,248,0.48)]">Add students from the dashboard to see reports here.</p>
+                  </div>
+                ) : students.map(student => {
+                  const data = studentDataMap[student.id];
+                  if (!data) return null;
+                  const pct = data.goalBlocks > 0 ? Math.round((data.totalBlocks / data.goalBlocks) * 100) : 0;
+                  const hours = Math.round(data.totalMinutes / 60 * 10) / 10;
+                  const readiness = readinessByStudentId[student.id];
+                  const studentNeedsReview = readiness?.needsReview;
+
+                  return (
+                    <section key={student.id} className="op-report-student-section">
+                      <div className="op-report-student-head">
+                        <div className="op-student-avatar">
+                          {student.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="op-report-student-meta">
+                          <p className="op-report-student-name">
+                            {student.name}
+                            {readiness?.checked ? (
+                              <span className={`op-report-chip is-static ${studentNeedsReview ? 'is-warn' : 'is-good'}`}>
+                                {studentNeedsReview ? 'Review' : 'Ready'}
+                              </span>
+                            ) : null}
+                          </p>
+                          <p className="op-report-student-sub">
+                            {data.totalBlocks} of {data.goalBlocks} blocks · {hours}h · {pct}% progress
+                          </p>
+                        </div>
+                        <div className="op-report-student-stats">
+                          <div><strong>{data.totalBlocks}/{data.goalBlocks}</strong><span>blocks</span></div>
+                          <div><strong>{hours}h</strong><span>hours</span></div>
+                          <div><strong>{pct}%</strong><span>progress</span></div>
+                        </div>
+                      </div>
+                      {readiness?.checked && studentNeedsReview ? (
+                        <div className="op-weekly-banner is-modified mx-3 my-2">
+                          <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span>
+                            {readiness.incompleteBlockCount} assigned block{readiness.incompleteBlockCount === 1 ? '' : 's'} incomplete
+                            {readiness.missingRequiredDetailCount > 0
+                              ? `; ${readiness.missingRequiredDetailCount} completed required-response block${readiness.missingRequiredDetailCount === 1 ? '' : 's'} missing written detail.`
+                              : '.'}
+                          </span>
+                        </div>
+                      ) : null}
+                      <div className="op-report-section-body">
+                        {data.subjectData.length === 0 ? (
+                          <p className="px-4 py-4 text-[11px] italic text-[rgba(238,234,248,0.42)]">
+                            No subjects assigned to this student.
+                          </p>
+                        ) : data.subjectData.map(sd => (
+                          <SubjectRow key={sd.subject.id} subjectDatum={sd} />
+                        ))}
+                        {data.totalBlocks === 0 ? (
+                          <p className="px-4 py-3 text-[11px] text-[rgba(238,234,248,0.38)]">
+                            No blocks completed {weekOffset === 0 ? 'this week yet' : 'during this week'}.
+                          </p>
+                        ) : null}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <aside className="op-report-summary-panel">
+            <div className="op-report-side-head">
+              <span>Compliance</span>
+              <button
+                type="button"
+                className="op-proto-icon-btn"
+                onClick={() => setShowRecords((current) => !current)}
+                title="Toggle official records"
+              >
+                {showRecords ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+            <div className="op-report-side-body">
+              <div className={`op-report-side-box ${hasReadinessWarnings ? 'warn' : 'good'}`}>
+                <p className="text-[11px] font-label text-white">
+                  {hasReadinessWarnings ? 'Review before filing' : 'Ready to file'}
+                </p>
+                <p className="mt-2 text-[10px] leading-4 text-[rgba(238,234,248,0.5)]">
+                  Saving creates an official snapshot and does not change student data.
+                </p>
+              </div>
+              <div className="op-report-panel-list">
+                <div><strong>{readinessTotals.checkedStudentCount}</strong><span>checked students</span></div>
+                <div><strong>{readinessTotals.incompleteBlockCount}</strong><span>incomplete blocks</span></div>
+                <div><strong>{readinessTotals.missingRequiredDetailCount}</strong><span>missing detail</span></div>
+                <div><strong>{filteredWeeklyReports.length}/{normalizedWeeklyReports.length}</strong><span>filtered records</span></div>
+              </div>
+              <div className="op-report-side-box">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-label text-white">Official records</p>
+                  <Filter className="h-3.5 w-3.5 text-[rgba(238,234,248,0.42)]" />
+                </div>
+                <p className="mt-2 text-[10px] leading-4 text-[rgba(238,234,248,0.48)]">
+                  {filteredWeeklyReports.length} official record{filteredWeeklyReports.length === 1 ? '' : 's'} match current filters.
+                </p>
+              </div>
+              {showRecords ? (
+                <div className="op-report-record-list">
+                  {filteredWeeklyReports.length === 0 ? (
+                    <p className="px-2 py-2 text-[10px] italic text-[rgba(238,234,248,0.38)]">
+                      No official records match the current filters.
+                    </p>
+                  ) : filteredWeeklyReports.map(report => {
+                    const ws = report.week_start?.toDate?.() || new Date(report.week_start);
+                    const we = report.week_ending?.toDate?.() || new Date(report.week_ending);
+
+                    return (
+                      <div key={report.id} className="op-report-record-row">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[11px] font-label text-white">{report.student_name}</p>
+                          <p className="mt-1 truncate text-[9px] text-[rgba(238,234,248,0.42)]">
+                            {formatWeekRange(ws, we)}
+                          </p>
+                          {report.school_quarter_label ? (
+                            <p className="mt-1 truncate text-[9px] text-[#b8adff]">
+                              {report.school_quarter_label}{report.school_year_label ? ` · ${report.school_year_label}` : ''}
+                            </p>
+                          ) : null}
+                        </div>
+                        <span className="text-[10px] text-[rgba(238,234,248,0.52)]">
+                          {report.total_blocks}/{report.weekly_goal}
+                        </span>
+                        <button onClick={() => handlePrintRecord(report)} className="op-proto-icon-btn" title="Print">
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleDeleteRecord(report.id)} className="op-proto-icon-btn" title="Delete">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+            <div className="op-report-side-actions">
+              <button onClick={() => setShowRecords((current) => !current)} className="op-proto-btn">
+                {showRecords ? 'Hide records' : 'Show records'}
+              </button>
+              <button
+                onClick={handlePrintFilteredRecords}
+                disabled={filteredWeeklyReports.length === 0}
+                className="op-proto-btn disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Print filtered
+              </button>
+            </div>
+          </aside>
+        </div>
       </div>
     </div>
   );

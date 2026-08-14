@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import {
   ArrowRight,
+  BarChart3,
   BookOpen,
   CalendarRange,
   CheckCircle2,
@@ -111,28 +112,74 @@ const HomeschoolRoute = () => {
 
   return (
     <div className="op-page">
-      <div className="op-shell space-y-6">
-        <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-3xl">
-            <p className="op-eyebrow">Homeschool</p>
-            <h1 className="op-title mt-3">School planning overview</h1>
-            <p className="op-subtle mt-4 max-w-2xl text-[14px] leading-6">
-              A parent command surface for curriculum setup, weekly planning, and report readiness across all students.
+      <div className="op-proto-shell">
+        <div className="op-proto-topbar">
+          <div className="min-w-0 flex-1">
+            <p className="text-[14px] font-label text-white">Homeschool Overview</p>
+            <p className="mt-1 truncate text-[10px] text-[rgba(238,234,248,0.42)]">
+              {formatWeekRange(currentWeek.weekStart, currentWeek.weekEnd)} · {studentsWithoutSubjects.length ? `${studentsWithoutSubjects.length} setup item${studentsWithoutSubjects.length === 1 ? '' : 's'}` : 'Ready for weekly review'}
             </p>
           </div>
-
-          <div className="op-pill min-h-[34px]">
-            <CalendarRange className="h-3.5 w-3.5" />
-            {formatWeekRange(currentWeek.weekStart, currentWeek.weekEnd)}
+          <div className="hidden min-w-0 items-center gap-2 border border-[rgba(255,255,255,0.1)] bg-[rgba(124,111,212,0.12)] px-3 py-1.5 text-[10px] text-[#b8adff] md:flex">
+            <CalendarRange className="h-3.5 w-3.5 flex-shrink-0" />
+            <span className="truncate">{formatWeekRange(currentWeek.weekStart, currentWeek.weekEnd)}</span>
           </div>
-        </section>
-
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <Link to={`/dashboard/${dashboardFeaturesById.curriculum.path}`} className="op-proto-btn">
+              <Plus className="h-3.5 w-3.5" />
+              Add subject
+            </Link>
+            <Link to={`/dashboard/${dashboardFeaturesById['weekly-blocking'].path}`} className="op-proto-btn op-proto-btn-primary">
+              <CalendarRange className="h-3.5 w-3.5" />
+              Plan this week
+            </Link>
+            <Link to={`/dashboard/${dashboardFeaturesById.reports.path}`} className="op-proto-btn">
+              <BarChart3 className="h-3.5 w-3.5" />
+              View reports
+            </Link>
+          </div>
+        </div>
         {loading ? (
-          <div className="op-panel flex min-h-[360px] items-center justify-center">
+          <div className="flex min-h-[360px] items-center justify-center">
             <div className="h-8 w-8 animate-spin border-2 border-transparent border-b-[#cbb7fb]" />
           </div>
         ) : (
-          <>
+          <div className="op-overview-content">
+            <section
+              className={`op-weekly-banner ${studentsWithoutSubjects.length ? 'is-modified' : ''}`}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
+              <span>
+                {studentsWithoutSubjects.length
+                  ? `${studentsWithoutSubjects.length} student${studentsWithoutSubjects.length === 1 ? '' : 's'} still need subject setup before weekly publishing is useful.`
+                  : 'Subject setup is ready for weekly planning review.'}
+              </span>
+            </section>
+
+            <section className="op-overview-nav-strip">
+              <Link to={`/dashboard/${dashboardFeaturesById.curriculum.path}`} className="op-overview-nav-card" style={{ borderLeftColor: '#7c6fd4' }}>
+                <span>
+                  <span className="op-overview-nav-title">Curriculum <ArrowRight className="h-3.5 w-3.5" /></span>
+                  <span className="op-overview-nav-sub">Edit per-student subjects, blocks, and completion rules.</span>
+                </span>
+                <span className="op-overview-nav-meta">Open subject library</span>
+              </Link>
+              <Link to={`/dashboard/${dashboardFeaturesById['weekly-blocking'].path}`} className="op-overview-nav-card" style={{ borderLeftColor: '#0f9e7a' }}>
+                <span>
+                  <span className="op-overview-nav-title">Weekly Blocking <ArrowRight className="h-3.5 w-3.5" /></span>
+                  <span className="op-overview-nav-sub">Plan the full family week and publish changes from subjects.</span>
+                </span>
+                <span className="op-overview-nav-meta">Weekly publish flow</span>
+              </Link>
+              <Link to={`/dashboard/${dashboardFeaturesById.reports.path}`} className="op-overview-nav-card" style={{ borderLeftColor: '#185fa5' }}>
+                <span>
+                  <span className="op-overview-nav-title">Reports <ArrowRight className="h-3.5 w-3.5" /></span>
+                  <span className="op-overview-nav-sub">Review weekly progress, subject history, and printable summaries.</span>
+                </span>
+                <span className="op-overview-nav-meta">Records</span>
+              </Link>
+            </section>
+
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <StatPanel label="Students" value={students.length} detail="Learners with an active dashboard profile." />
               <StatPanel label="Subjects" value={activeSubjects.length} detail="Active per-student subject records." />
@@ -262,7 +309,7 @@ const HomeschoolRoute = () => {
                 </div>
               </div>
             </section>
-          </>
+          </div>
         )}
       </div>
     </div>

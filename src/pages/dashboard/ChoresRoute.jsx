@@ -100,41 +100,6 @@ const SummaryCard = ({ label, value, detail }) => (
   </div>
 );
 
-const ChoresLaunchCard = ({
-  description,
-  detail,
-  isLocked = false,
-  label,
-  statValue,
-  to,
-}) => (
-  <Link
-    to={to}
-    className="op-surface block p-5 transition-colors hover:bg-[#292942]"
-  >
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <p className="op-eyebrow">{label}</p>
-        <p className="mt-3 text-[26px] font-display text-white" style={{ lineHeight: 1 }}>
-          {statValue}
-        </p>
-      </div>
-      {isLocked ? (
-        <span className="op-pill">
-          <Lock className="h-3 w-3" />
-          Locked
-        </span>
-      ) : null}
-    </div>
-    <p className="op-subtle mt-4 text-[14px] font-body leading-relaxed">{description}</p>
-    <p className="mt-3 text-[12px] font-body leading-5 text-[rgba(203,183,251,0.68)]">{detail}</p>
-    <span className="mt-5 inline-flex items-center gap-2 text-[13px] font-label text-[#cbb7fb]">
-      {isLocked ? 'View read-only' : 'Open page'}
-      <ArrowRight className="h-4 w-4" />
-    </span>
-  </Link>
-);
-
 const ActionButton = ({ children, disabled, onClick, tone = 'dark', type = 'button' }) => (
   <button
     type={type}
@@ -286,6 +251,7 @@ const ChoresRoute = () => {
   const [rewardBusyId, setRewardBusyId] = useState('');
   const [reviewingRewardId, setReviewingRewardId] = useState('');
   const [hasAttemptedAllowanceSync, setHasAttemptedAllowanceSync] = useState(false);
+  const [selectedChoresOverviewStudentId, setSelectedChoresOverviewStudentId] = useState('');
 
   useEffect(() => {
     setSettingsDraft(buildChoreSettingsDraft({
@@ -885,33 +851,71 @@ const ChoresRoute = () => {
       featureId: DASHBOARD_CHORES_CHILD_FEATURE_IDS.DAILY_ROUTINES,
       description: 'Keep grouped household routines current without turning repeated checklists into separate chores.',
       detail: summaryCards[0].detail,
+      icon: Sparkles,
       statValue: summaryCards[0].value,
     },
     {
       featureId: DASHBOARD_CHORES_CHILD_FEATURE_IDS.WEEKLY_CHORES,
       description: 'Manage the shared weekly pool and keep approvals next to the chores that generated them.',
       detail: summaryCards[1].detail,
+      icon: ListTodo,
       statValue: summaryCards[1].value,
     },
     {
       featureId: DASHBOARD_CHORES_CHILD_FEATURE_IDS.MONTHLY_CHORES,
       description: 'Review the longer-cycle pool with the same entitlement-aware setup and review behavior.',
       detail: summaryCards[2].detail,
+      icon: Clock3,
       statValue: summaryCards[2].value,
     },
     {
       featureId: DASHBOARD_CHORES_CHILD_FEATURE_IDS.ALLOWANCE,
       description: 'Set quota targets, keep the allowance policy current, and review trusted bookkeeping totals.',
       detail: allowancePeriod.period_label || 'Save allowance settings to start tracking the current period.',
+      icon: CheckCircle2,
       statValue: formatCurrency(allowanceSummary.remaining_total || 0),
     },
     {
       featureId: DASHBOARD_CHORES_CHILD_FEATURE_IDS.REWARDS,
       description: 'Manage point settings, stocked rewards, and the live reward redemption queue in one place.',
       detail: `${openRewardRequestCards.length} open request${openRewardRequestCards.length === 1 ? '' : 's'} and ${activeParentRewardCards.length} active parent reward${activeParentRewardCards.length === 1 ? '' : 's'}.`,
+      icon: Gift,
       statValue: openRewardRequestCards.length,
     },
   ];
+  const selectedChoresOverviewStudent = progressCards.find((card) => (
+    card.student_id === selectedChoresOverviewStudentId
+  )) || progressCards[0] || null;
+  const selectedChoresStudentName = selectedChoresOverviewStudent?.student_name || 'Household';
+  const overviewActivityCards = [
+    ...filteredPendingReview.slice(0, 5).map((record) => ({
+      id: `review-${record.id}`,
+      tone: 'review',
+      title: record.chore_title || 'Chore awaiting review',
+      detail: `${record.student_name || 'Student'} submitted ${record.frequency_pool || 'chore'} work.`,
+      meta: formatDateTime(record.submitted_at || record.completed_at) || 'Pending review',
+      action: isReadOnly ? 'Read-only' : 'Review',
+    })),
+    ...openRewardRequestCards.slice(0, 4).map((record) => ({
+      id: `reward-${record.id}`,
+      tone: 'reward',
+      title: record.title_snapshot,
+      detail: `${record.student_name} requested a ${record.point_cost_snapshot} point reward.`,
+      meta: formatDateTime(record.requested_at_date) || 'Reward queue',
+      action: isRewardReadOnly ? 'Read-only' : 'Open',
+    })),
+    ...allowanceCards
+      .filter((card) => Number(card.remaining_amount || 0) > 0)
+      .slice(0, 4)
+      .map((card) => ({
+        id: `allowance-${card.student_id}`,
+        tone: 'money',
+        title: `${card.student_name} allowance due`,
+        detail: `${formatCurrency(card.remaining_amount)} remaining for ${card.period_label || allowancePeriod.period_label || 'current period'}.`,
+        meta: card.paid_status?.replace('_', ' ') || 'Allowance ledger',
+        action: 'Ledger',
+      })),
+  ].slice(0, 8);
 
   const renderRoutineCard = (routine) => (
     <div
@@ -1329,8 +1333,59 @@ const ChoresRoute = () => {
 
   return (
     <div className="op-page">
-      <div className="op-shell">
-      <div className="space-y-6">
+      <div className="op-proto-shell op-chores-shell">
+        <div className="op-proto-topbar">
+          <div className="min-w-0 flex-1">
+            <p className="flex items-center gap-2 text-[14px] font-label text-white">
+              <ListTodo className="h-3.5 w-3.5 text-[#b8adff]" />
+              Chores
+              <span className="text-[10px] font-normal text-[rgba(238,234,248,0.42)]">
+                {isSectionDashboard ? 'Overview' : (resolvedDashboardFeaturesById?.[activeChoresFeatureId]?.label || 'Detail')}
+              </span>
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <Link to={`/dashboard/${dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.WEEKLY_CHORES].path}`} className="op-proto-btn">
+              <Plus className="h-3.5 w-3.5" />
+              Add chore
+            </Link>
+            <Link to={`/dashboard/${dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.ALLOWANCE].path}`} className="op-proto-btn">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              View allowance
+            </Link>
+            <Link to={`/dashboard/${dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.REWARDS].path}`} className="op-proto-btn op-proto-btn-primary">
+              <Gift className="h-3.5 w-3.5" />
+              Rewards
+            </Link>
+          </div>
+        </div>
+        <div className="op-chores-subbar">
+          <div className="op-report-chip-row">
+            <Link
+              to={`/dashboard/${dashboardFeaturesById.chores.path}`}
+              className={`op-report-chip ${isSectionDashboard ? 'is-active' : ''}`}
+            >
+              Overview
+            </Link>
+            {choresDashboardLaunchCards.map((card) => {
+              const feature = resolvedChoresChildFeaturesById[card.featureId];
+
+              return (
+                <Link
+                  key={card.featureId}
+                  to={`/dashboard/${feature?.path || dashboardFeaturesById[card.featureId].path}`}
+                  className={`op-report-chip ${activeChoresFeatureId === card.featureId ? 'is-active' : ''}`}
+                >
+                  {feature?.label || card.featureId}
+                </Link>
+              );
+            })}
+          </div>
+          <span className="op-chores-notice">
+            Household chore status at a glance
+          </span>
+        </div>
+      <div className="op-chores-body">
         {(isReadOnly || isRoutineReadOnly || isRewardReadOnly) ? (
           <div
             className="op-panel-muted px-4 py-3"
@@ -1369,59 +1424,167 @@ const ChoresRoute = () => {
 
         {isSectionDashboard ? (
           <>
-            <div>
-              <p className="op-eyebrow">Chores</p>
-              <h2 className="op-title mt-3">
-                Household work overview
-              </h2>
-              <p className="op-subtle mt-4 max-w-2xl text-[14px] font-body leading-6">
-                Launch daily routines, shared weekly and monthly chore pools, allowance bookkeeping, and rewards from one household surface.
-              </p>
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-4">
-              {summaryCards.map((card) => (
-                <SummaryCard
+            <section className="op-chores-stats-grid">
+              {[
+                ...summaryCards,
+                {
+                  label: 'Rewards',
+                  value: openRewardRequestCards.length,
+                  detail: `${activeParentRewardCards.length} active parent reward${activeParentRewardCards.length === 1 ? '' : 's'}.`,
+                },
+              ].map((card, index) => (
+                <button
                   key={card.label}
-                  colors={colors}
-                  label={card.label}
-                  value={card.value}
-                  detail={card.detail}
-                />
+                  type="button"
+                  className="op-chores-stat-card"
+                  style={{
+                    borderLeftColor: ['#7c6fd4', '#0f9e7a', '#185fa5', '#f59e0b', '#993556'][index] || '#7c6fd4',
+                  }}
+                >
+                  <span className="op-chores-stat-label">{card.label}</span>
+                  <span className="op-chores-stat-value">{card.value}</span>
+                  <span className="op-chores-stat-sub">{card.detail}</span>
+                </button>
               ))}
-            </div>
+            </section>
 
-            <SectionCard colors={colors}>
-              <div>
-                <p className="op-eyebrow">
-                  Chores Pages
-                </p>
-                <h3 className="mt-3 text-[26px] font-display text-white" style={{ lineHeight: 1 }}>
-                  Open the detailed household surface you need
-                </h3>
-                <p className="op-subtle mt-3 max-w-[40rem] text-[14px] font-body leading-6">
-                  Each child page keeps the current chores setup, review, allowance, and rewards behavior intact while narrowing the dashboard shell to one chores area at a time.
-                </p>
+            <section className="op-chores-actions-grid">
+              {choresDashboardLaunchCards.map((card, index) => {
+                const feature = resolvedChoresChildFeaturesById[card.featureId];
+                const Icon = card.icon;
+
+                return (
+                  <Link
+                    key={card.featureId}
+                    to={`/dashboard/${feature?.path || dashboardFeaturesById[card.featureId].path}`}
+                    className="op-chores-nav-card"
+                    style={{
+                      borderLeftColor: ['#ba7517', '#0f9e7a', '#185fa5', '#3b8c11', '#993556'][index] || '#7c6fd4',
+                    }}
+                  >
+                    <span className="op-chores-nav-top">
+                      <span className="op-chores-nav-icon"><Icon className="h-3.5 w-3.5" /></span>
+                      <span className="op-chores-nav-name">{feature?.label || card.featureId}</span>
+                      {feature?.isLocked ? <Lock className="h-3 w-3 text-[rgba(238,234,248,0.42)]" /> : null}
+                    </span>
+                    <span className="op-chores-nav-sub">{card.description}</span>
+                    <span className="op-chores-nav-foot">
+                      {card.statValue}
+                      <ArrowRight className="ml-auto h-3.5 w-3.5 text-[#b8adff]" />
+                    </span>
+                  </Link>
+                );
+              })}
+            </section>
+
+            <section className="op-chores-main-grid">
+              <div className="op-chores-panel">
+                <div className="op-chores-panel-head">
+                  <p className="op-chores-panel-title">
+                    <Users className="h-3.5 w-3.5" />
+                    Student snapshot
+                  </p>
+                  <p className="op-chores-panel-meta">Household totals</p>
+                </div>
+                <div className="op-chores-student-list">
+                  {progressCards.length === 0 ? (
+                    <div className="px-3 py-8 text-center text-[11px] text-[rgba(238,234,248,0.42)]">
+                      Add students to see chores progress.
+                    </div>
+                  ) : progressCards.map((progressCard) => {
+                    const routineTotal = Number(progressCard.quotas?.required_routine_days || 0);
+                    const weeklyTotal = Number(progressCard.quotas?.required_weekly_chore_blocks || 0);
+                    const monthlyTotal = Number(progressCard.quotas?.required_monthly_chore_blocks || 0);
+                    const completed = Number(progressCard.progress?.routine_days_completed || 0)
+                      + Number(progressCard.progress?.weekly_blocks_completed || 0)
+                      + Number(progressCard.progress?.monthly_blocks_completed || 0);
+                    const target = routineTotal + weeklyTotal + monthlyTotal;
+                    const pct = target > 0 ? Math.round((completed / target) * 100) : 0;
+
+                    return (
+                      <button
+                        key={progressCard.student_id}
+                        type="button"
+                        className={`op-chores-student-row ${selectedChoresOverviewStudent?.student_id === progressCard.student_id ? 'is-selected' : ''}`}
+                        onClick={() => setSelectedChoresOverviewStudentId(progressCard.student_id)}
+                      >
+                        <span className="op-chores-student-main">
+                          <span className="op-chores-student-top">
+                            <span className="op-chores-dot" />
+                            <span className="op-chores-student-name">{progressCard.student_name}</span>
+                            <span className="op-report-chip is-static">{progressCard.pending_review_count || 0} review</span>
+                          </span>
+                          <span className="op-chores-student-meta">
+                            <span>{progressCard.active_routine_count || 0} routines</span>
+                            <span>{progressCard.available_counts?.weekly || 0} weekly</span>
+                            <span>{progressCard.available_counts?.monthly || 0} monthly</span>
+                          </span>
+                          <span className="op-chores-line"><span style={{ width: `${Math.min(100, pct)}%` }} /></span>
+                        </span>
+                        <span className="op-chores-score">
+                          <strong>{pct}%</strong>
+                          <span>target</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                {choresDashboardLaunchCards.map((card) => {
-                  const feature = resolvedChoresChildFeaturesById[card.featureId];
-
-                  return (
-                    <ChoresLaunchCard
-                      key={card.featureId}
-                      description={card.description}
-                      detail={card.detail}
-                      isLocked={feature?.isLocked}
-                      label={feature?.label || card.featureId}
-                      statValue={card.statValue}
-                      to={`/dashboard/${feature?.path || dashboardFeaturesById[card.featureId].path}`}
-                    />
-                  );
-                })}
+              <div className="op-chores-panel">
+                <div className="op-chores-panel-head">
+                  <p className="op-chores-panel-title">
+                    <ListTodo className="h-3.5 w-3.5" />
+                    Focused student
+                  </p>
+                  <p className="op-chores-panel-meta">Live summary</p>
+                </div>
+                <div className="op-chores-focus-top">
+                  <p className="op-chores-focus-name">
+                    <span className="op-chores-dot" />
+                    {selectedChoresStudentName}
+                  </p>
+                  <p className="op-chores-focus-sub">
+                    Review routines, pool availability, allowance status, and reward requests from one compact household surface.
+                  </p>
+                  <div className="op-chores-focus-stats">
+                    <div><span>Routines</span><strong>{selectedChoresOverviewStudent?.active_routine_count || 0}</strong></div>
+                    <div><span>Weekly</span><strong>{selectedChoresOverviewStudent?.available_counts?.weekly || 0}</strong></div>
+                    <div><span>Monthly</span><strong>{selectedChoresOverviewStudent?.available_counts?.monthly || 0}</strong></div>
+                    <div><span>Review</span><strong>{selectedChoresOverviewStudent?.pending_review_count || 0}</strong></div>
+                  </div>
+                </div>
+                <div className="op-chores-focus-strip">
+                  <span className="op-report-chip is-active">All</span>
+                  <span className="op-report-chip is-static">Approvals</span>
+                  <span className="op-report-chip is-static">Allowance</span>
+                  <span className="op-report-chip is-static">Rewards</span>
+                </div>
+                <div className="op-chores-activity">
+                  {overviewActivityCards.length === 0 ? (
+                    <div className="px-3 py-8 text-center text-[11px] text-[rgba(238,234,248,0.42)]">
+                      No chores activity is waiting for review.
+                    </div>
+                  ) : overviewActivityCards.map((activity) => (
+                    <div key={activity.id} className={`op-chores-activity-row ${activity.tone}`}>
+                      <span className="op-chores-activity-icon">
+                        {activity.tone === 'reward' ? <Gift className="h-3.5 w-3.5" /> : activity.tone === 'money' ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="op-chores-activity-title">{activity.title}</span>
+                        <span className="op-chores-activity-detail">{activity.detail}</span>
+                        <span className="op-chores-activity-meta">{activity.meta}</span>
+                      </span>
+                      <span className="op-chores-activity-action">{activity.action}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="op-chores-focus-footer">
+                  <span>{filteredPendingReview.length} approval item{filteredPendingReview.length === 1 ? '' : 's'} and {openRewardRequestCards.length} reward request{openRewardRequestCards.length === 1 ? '' : 's'} are open.</span>
+                  <span className="op-report-chip is-warn">{allowanceSummary.unpaid_count || 0} unpaid</span>
+                </div>
               </div>
-            </SectionCard>
+            </section>
           </>
         ) : null}
 
