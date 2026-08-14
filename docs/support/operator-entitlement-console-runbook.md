@@ -38,6 +38,15 @@ Missing `accountEntitlements/{parentId}` records are repaired by initializing a 
 }
 ```
 
+For disposable emulator or staging smoke data, `scripts/seed-private-beta-smoke-fixtures.mjs` can create a support operator allowlist record and representative parent household:
+
+```bash
+# with local Auth and Firestore emulators running:
+node scripts/seed-private-beta-smoke-fixtures.mjs --write --target emulator
+# with local Auth and Functions emulators running after fixture write:
+node scripts/smoke-private-beta-callables.mjs --run --target emulator
+```
+
 2. Sign in as that Firebase user and open `/ops/entitlements`.
 3. Search by parent email, parent uid, or school name, or use `Open my account`.
 4. Review `Effective State`, `Billing State`, `Manual Override`, usage, Lockdown summary, downgrade warnings, and the audit timeline before changing anything.

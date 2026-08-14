@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { FileText, Calendar, Archive, Trash2, Printer, ChevronDown, ChevronRight, Filter, RotateCcw } from 'lucide-react';
+import { AlertTriangle, FileText, Calendar, Archive, Trash2, Printer, ChevronDown, ChevronRight, Filter, RotateCcw } from 'lucide-react';
 import useStudents from '../hooks/useStudents';
 import useSubjects from '../hooks/useSubjects';
 import useWeeklyActivity from '../hooks/useWeeklyActivity';
@@ -20,6 +20,7 @@ import {
 } from '../utils/schoolSettingsUtils';
 import {
   buildStudentWeeklySnapshot,
+  buildWeeklyReportReadinessSummary,
   canSaveWeeklyReportSnapshot,
   escapeReportHtml,
 } from '../utils/reportUtils';
@@ -182,54 +183,54 @@ const SubjectRow = ({ subjectDatum }) => {
   const pct = Math.round((completedCount / totalCount) * 100);
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.parchment}` }}>
+    <div className="overflow-hidden border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)]">
       <button
         className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
-        style={{ backgroundColor: completedCount > 0 ? `${C.lavenderTint}` : '#faf9f8' }}
+        style={{ backgroundColor: completedCount > 0 ? 'rgba(203,183,251,0.1)' : 'rgba(238,234,248,0.03)' }}
         onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
         onMouseLeave={e => e.currentTarget.style.opacity = '1'}
         onClick={() => blocks.length > 0 && setOpen(o => !o)}
       >
         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: subject.color || C.lavender }} />
-        <span className="text-[14px] flex-1 min-w-0 truncate" style={{ color: C.charcoal, fontWeight: 540 }}>{subject.title}</span>
-        <span className="text-[12px] flex-shrink-0" style={{ color: 'rgba(41,40,39,0.45)', fontWeight: 460 }}>
+        <span className="text-[14px] flex-1 min-w-0 truncate" style={{ color: 'rgba(250,249,255,0.92)', fontWeight: 540 }}>{subject.title}</span>
+        <span className="text-[12px] flex-shrink-0" style={{ color: 'rgba(238,234,248,0.5)', fontWeight: 460 }}>
           {completedCount}/{totalCount} blocks
           {totalMinutes > 0 && <> &bull; {hours}h</>}
         </span>
-        <div className="w-16 rounded-full h-1.5 overflow-hidden flex-shrink-0 mx-2" style={{ backgroundColor: C.parchment }}>
-          <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: C.lavender }} />
+        <div className="w-16 h-1.5 overflow-hidden flex-shrink-0 mx-2" style={{ backgroundColor: 'rgba(238,234,248,0.16)' }}>
+          <div className="h-full" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: C.lavender }} />
         </div>
         {blocks.length > 0
           ? open
-            ? <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'rgba(41,40,39,0.3)' }} />
-            : <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'rgba(41,40,39,0.3)' }} />
+            ? <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'rgba(238,234,248,0.42)' }} />
+            : <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'rgba(238,234,248,0.42)' }} />
           : <div className="w-3.5" />}
       </button>
 
       {open && blocks.length > 0 && (
-        <div className="divide-y" style={{ borderTop: `1px solid ${C.parchment}` }}>
+        <div className="divide-y divide-[rgba(238,234,248,0.1)]" style={{ borderTop: '1px solid rgba(238,234,248,0.12)' }}>
           {blocks.map((b, i) => {
             const date = b.timestamp?.toDate?.() || new Date(b.timestamp);
             const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
             const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
             return (
-              <div key={b.id || i} className="px-4 py-3 bg-white">
+              <div key={b.id || i} className="px-4 py-3 bg-[#202034]">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-[10px] uppercase tracking-wider font-label" style={{ color: C.amethyst }}>
                     Block {(b.block_index ?? i) + 1}
                   </span>
                   {b.manual_override && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: C.cream, color: 'rgba(41,40,39,0.5)', fontWeight: 700 }}>
+                    <span className="text-[10px] px-1.5 py-0.5" style={{ backgroundColor: 'rgba(238,234,248,0.08)', color: 'rgba(238,234,248,0.58)', fontWeight: 700 }}>
                       Parent-led
                     </span>
                   )}
-                  <span className="ml-auto text-[11px]" style={{ color: 'rgba(41,40,39,0.35)', fontWeight: 460 }}>
+                  <span className="ml-auto text-[11px]" style={{ color: 'rgba(238,234,248,0.42)', fontWeight: 460 }}>
                     {dateStr} at {timeStr} &bull; {b.block_duration || 30} min
                   </span>
                 </div>
                 {b.summary_text
-                  ? <p className="text-[13px] leading-relaxed" style={{ color: 'rgba(41,40,39,0.65)', fontWeight: 460 }}>{b.summary_text}</p>
-                  : <p className="text-[12px] italic" style={{ color: 'rgba(41,40,39,0.3)', fontWeight: 460 }}>No summary written</p>}
+                  ? <p className="text-[13px] leading-relaxed" style={{ color: 'rgba(238,234,248,0.68)', fontWeight: 460 }}>{b.summary_text}</p>
+                  : <p className="text-[12px] italic" style={{ color: 'rgba(238,234,248,0.34)', fontWeight: 460 }}>No summary written</p>}
               </div>
             );
           })}
@@ -322,10 +323,33 @@ const Reports = ({ parentSettings = {} }) => {
     () => Object.values(studentDataMap).some(canSaveWeeklyReportSnapshot),
     [studentDataMap]
   );
+  const readinessByStudentId = useMemo(() => (
+    Object.fromEntries(students.map((student) => [
+      student.id,
+      buildWeeklyReportReadinessSummary(studentDataMap[student.id]),
+    ]))
+  ), [studentDataMap, students]);
+  const readinessTotals = useMemo(() => (
+    Object.values(readinessByStudentId).reduce((totals, readiness) => ({
+      checkedStudentCount: totals.checkedStudentCount + (readiness.checked ? 1 : 0),
+      incompleteBlockCount: totals.incompleteBlockCount + readiness.incompleteBlockCount,
+      missingRequiredDetailCount: totals.missingRequiredDetailCount + readiness.missingRequiredDetailCount,
+    }), {
+      checkedStudentCount: 0,
+      incompleteBlockCount: 0,
+      missingRequiredDetailCount: 0,
+    })
+  ), [readinessByStudentId]);
+  const hasReadinessWarnings = readinessTotals.incompleteBlockCount > 0
+    || readinessTotals.missingRequiredDetailCount > 0;
 
   // Save a non-destructive official record snapshot
   const handleSaveRecord = async () => {
-    if (!window.confirm('Save an official record snapshot for this week? This does not affect any student data.')) return;
+    const readinessCopy = hasReadinessWarnings
+      ? `\n\nReview note: ${readinessTotals.incompleteBlockCount} assigned block${readinessTotals.incompleteBlockCount === 1 ? '' : 's'} incomplete and ${readinessTotals.missingRequiredDetailCount} completed required-response block${readinessTotals.missingRequiredDetailCount === 1 ? '' : 's'} missing written detail.`
+      : '';
+
+    if (!window.confirm(`Save an official record snapshot for this week? This does not affect any student data.${readinessCopy}`)) return;
 
     const saved = await saveWeeklyRecordSnapshot({
       submissions,
@@ -489,8 +513,10 @@ const Reports = ({ parentSettings = {} }) => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-7 w-7 border-b-2" style={{ borderColor: C.lavender }} />
+      <div className="op-page">
+        <div className="op-shell flex min-h-[360px] items-center justify-center">
+          <div className="h-7 w-7 animate-spin border-2 border-transparent border-b-[#cbb7fb]" />
+        </div>
       </div>
     );
   }
@@ -499,22 +525,25 @@ const Reports = ({ parentSettings = {} }) => {
   const weekRangeDisplay = formatWeekRange(weekStart, weekEnd);
 
   return (
-    <div className="p-8">
+    <div className="op-page">
+      <div className="op-shell space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <h2 className="text-[26px] font-display text-charcoal-ink" style={{ lineHeight: 1.1, letterSpacing: '-0.5px' }}>Reports</h2>
-          <p className="text-[14px] text-charcoal-ink/50 font-body mt-1">Live view of student activity by week</p>
+          <p className="op-eyebrow">Reports</p>
+          <h1 className="op-title mt-3">Weekly accountability records</h1>
+          <p className="op-subtle text-[14px] font-body mt-4 max-w-2xl leading-6">
+            Review live weekly progress, save official snapshots, and print filtered record sets without changing student data.
+          </p>
         </div>
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-3 flex-shrink-0">
           {/* Week picker */}
           <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4" style={{ color: 'rgba(41,40,39,0.4)' }} />
+            <Calendar className="w-4 h-4 text-[rgba(238,234,248,0.52)]" />
             <select
               value={weekOffset}
               onChange={e => setWeekOffset(parseInt(e.target.value))}
-              className="px-3 py-2 rounded-lg text-[13px] focus:outline-none"
-              style={{ border: `1px solid ${C.parchment}`, backgroundColor: '#fff', color: C.charcoal, fontWeight: 460 }}
+              className="op-input max-w-[220px] py-2 text-[13px]"
             >
               {weekPickerOptions.map(opt => (
                 <option key={opt.value} value={opt.value}>
@@ -528,10 +557,7 @@ const Reports = ({ parentSettings = {} }) => {
           <button
             onClick={() => printWeekReport(students, weekStart, weekEnd, studentDataMap)}
             disabled={!weekHasReportableData}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-label text-[14px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            style={{ backgroundColor: C.cream, color: C.charcoal }}
-            onMouseEnter={e => { if (weekHasReportableData) e.currentTarget.style.backgroundColor = C.parchment; }}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}
+            className="op-button op-button-secondary disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Printer className="w-4 h-4" />
             Print Report
@@ -541,10 +567,7 @@ const Reports = ({ parentSettings = {} }) => {
           <button
             onClick={handleSaveRecord}
             disabled={savingRecord || !weekHasReportableData}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-label text-[14px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            style={{ backgroundColor: C.charcoal, color: '#ffffff' }}
-            onMouseEnter={e => { if (!savingRecord && weekHasReportableData) e.currentTarget.style.backgroundColor = '#3a3937'; }}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}
+            className="op-button disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Archive className="w-4 h-4" />
             {savingRecord ? 'Saving…' : 'Save Record'}
@@ -553,26 +576,58 @@ const Reports = ({ parentSettings = {} }) => {
       </div>
 
       {/* Week label */}
-      <p className="text-[12px] uppercase tracking-wider mb-6" style={{ color: C.amethyst, fontWeight: 700 }}>
+      <p className="op-pill w-fit">
         {getWeekLabel(weekOffset)} — {weekRangeDisplay}
       </p>
 
-      <div className="mb-8 bg-white rounded-2xl p-6" style={{ border: `1px solid ${C.parchment}` }}>
+      {readinessTotals.checkedStudentCount > 0 ? (
+        <section
+          className="flex flex-col gap-4 border border-l-[3px] px-5 py-4 md:flex-row md:items-center md:justify-between"
+          style={{
+            backgroundColor: hasReadinessWarnings ? 'rgba(245,158,11,0.08)' : 'rgba(52,211,153,0.08)',
+            borderColor: 'rgba(238,234,248,0.14)',
+            borderLeftColor: hasReadinessWarnings ? '#f59e0b' : '#34d399',
+          }}
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle
+              className="mt-0.5 h-4 w-4 flex-shrink-0"
+              style={{ color: hasReadinessWarnings ? '#f59e0b' : '#34d399' }}
+            />
+            <div>
+              <p className="text-[14px] font-display text-white">
+                Official record readiness
+              </p>
+              <p className="op-subtle mt-1 text-[13px] font-body leading-5">
+                {hasReadinessWarnings
+                  ? 'Save remains available, but this published weekly-plan snapshot has items worth reviewing first.'
+                  : 'Published weekly-plan snapshots for this week have no readiness warnings.'}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="op-pill">{readinessTotals.checkedStudentCount} checked</span>
+            <span className="op-pill">{readinessTotals.incompleteBlockCount} incomplete</span>
+            <span className="op-pill">{readinessTotals.missingRequiredDetailCount} missing detail</span>
+          </div>
+        </section>
+      ) : null}
+
+      <div className="op-panel p-5 md:p-6">
         <div className="flex items-start justify-between gap-4 mb-5">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <Filter className="w-4 h-4" style={{ color: C.amethyst }} />
-              <h3 className="text-[17px] font-display text-charcoal-ink">Custom Report Builder</h3>
+              <Filter className="w-4 h-4 text-[#cbb7fb]" />
+              <h3 className="text-[22px] font-display text-white">Custom Report Builder</h3>
             </div>
-            <p className="text-[13px] font-body text-charcoal-ink/45">
+            <p className="op-subtle text-[13px] font-body leading-5">
               Filter official records by student, subject, school year, quarter, or any combination.
             </p>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleResetFilters}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] transition-colors"
-              style={{ backgroundColor: C.cream, color: C.charcoal, fontWeight: 700 }}
+              className="op-button op-button-secondary"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Reset
@@ -580,8 +635,7 @@ const Reports = ({ parentSettings = {} }) => {
             <button
               onClick={handlePrintFilteredRecords}
               disabled={filteredWeeklyReports.length === 0}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              style={{ backgroundColor: C.charcoal, color: '#fff', fontWeight: 700 }}
+              className="op-button disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Printer className="w-4 h-4" />
               Print Filtered
@@ -590,18 +644,18 @@ const Reports = ({ parentSettings = {} }) => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
-          <div className="rounded-xl p-4" style={{ backgroundColor: `${C.lavenderTint}65` }}>
-            <p className="text-[11px] uppercase tracking-wider font-label mb-3" style={{ color: C.amethyst }}>Students</p>
+          <div className="border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)] p-4">
+            <p className="op-eyebrow mb-3">Students</p>
             <div className="flex flex-wrap gap-2">
               {students.map(student => (
                 <button
                   key={student.id}
                   onClick={() => toggleSelection(student.id, setSelectedStudentIds)}
-                  className="px-3 py-1.5 rounded-full text-[12px] transition-colors"
+                  className="px-3 py-1.5 text-[12px] transition-colors"
                   style={{
-                    backgroundColor: selectedStudentIds.includes(student.id) ? C.charcoal : '#fff',
-                    color: selectedStudentIds.includes(student.id) ? '#fff' : C.charcoal,
-                    border: `1px solid ${selectedStudentIds.includes(student.id) ? C.charcoal : C.parchment}`,
+                    backgroundColor: selectedStudentIds.includes(student.id) ? 'rgba(203,183,251,0.16)' : 'transparent',
+                    color: selectedStudentIds.includes(student.id) ? C.lavender : 'rgba(238,234,248,0.68)',
+                    border: `1px solid ${selectedStudentIds.includes(student.id) ? 'rgba(203,183,251,0.42)' : 'rgba(238,234,248,0.14)'}`,
                     fontWeight: 700,
                   }}
                 >
@@ -611,18 +665,18 @@ const Reports = ({ parentSettings = {} }) => {
             </div>
           </div>
 
-          <div className="rounded-xl p-4" style={{ backgroundColor: `${C.lavenderTint}65` }}>
-            <p className="text-[11px] uppercase tracking-wider font-label mb-3" style={{ color: C.amethyst }}>Subjects</p>
+          <div className="border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)] p-4">
+            <p className="op-eyebrow mb-3">Subjects</p>
             <div className="flex flex-wrap gap-2">
               {subjects.map(subject => (
                 <button
                   key={subject.id}
                   onClick={() => toggleSelection(subject.id, setSelectedSubjectIds)}
-                  className="px-3 py-1.5 rounded-full text-[12px] transition-colors"
+                  className="px-3 py-1.5 text-[12px] transition-colors"
                   style={{
-                    backgroundColor: selectedSubjectIds.includes(subject.id) ? C.charcoal : '#fff',
-                    color: selectedSubjectIds.includes(subject.id) ? '#fff' : C.charcoal,
-                    border: `1px solid ${selectedSubjectIds.includes(subject.id) ? C.charcoal : C.parchment}`,
+                    backgroundColor: selectedSubjectIds.includes(subject.id) ? 'rgba(203,183,251,0.16)' : 'transparent',
+                    color: selectedSubjectIds.includes(subject.id) ? C.lavender : 'rgba(238,234,248,0.68)',
+                    border: `1px solid ${selectedSubjectIds.includes(subject.id) ? 'rgba(203,183,251,0.42)' : 'rgba(238,234,248,0.14)'}`,
                     fontWeight: 700,
                   }}
                 >
@@ -635,12 +689,11 @@ const Reports = ({ parentSettings = {} }) => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="block text-[11px] uppercase tracking-wider font-label mb-1.5" style={{ color: 'rgba(41,40,39,0.4)' }}>School Year</label>
+            <label className="op-eyebrow mb-1.5 block">School Year</label>
             <select
               value={selectedSchoolYear}
               onChange={event => setSelectedSchoolYear(event.target.value)}
-              className="w-full px-3 py-2.5 rounded-lg text-[13px] focus:outline-none"
-              style={{ border: `1px solid ${C.parchment}`, backgroundColor: '#fff', color: C.charcoal, fontWeight: 460 }}
+              className="op-input text-[13px]"
             >
               <option value="all">All school years</option>
               {schoolYearOptions.map(option => (
@@ -650,12 +703,11 @@ const Reports = ({ parentSettings = {} }) => {
           </div>
 
           <div>
-            <label className="block text-[11px] uppercase tracking-wider font-label mb-1.5" style={{ color: 'rgba(41,40,39,0.4)' }}>Quarter</label>
+            <label className="op-eyebrow mb-1.5 block">Quarter</label>
             <select
               value={selectedQuarter}
               onChange={event => setSelectedQuarter(event.target.value)}
-              className="w-full px-3 py-2.5 rounded-lg text-[13px] focus:outline-none"
-              style={{ border: `1px solid ${C.parchment}`, backgroundColor: '#fff', color: C.charcoal, fontWeight: 460 }}
+              className="op-input text-[13px]"
             >
               <option value="all">All quarters</option>
               <option value="1">Q1</option>
@@ -666,17 +718,17 @@ const Reports = ({ parentSettings = {} }) => {
           </div>
         </div>
 
-        <p className="text-[13px] font-body" style={{ color: 'rgba(41,40,39,0.5)' }}>
+        <p className="op-subtle text-[13px] font-body">
           {filteredWeeklyReports.length} official record{filteredWeeklyReports.length === 1 ? '' : 's'} match the current filters.
         </p>
       </div>
 
       {/* Per-student live report cards */}
       {students.length === 0 ? (
-        <div className="text-center py-16">
-          <FileText className="w-10 h-10 text-charcoal-ink/20 mx-auto mb-4" />
-          <p className="text-[15px] font-display text-charcoal-ink mb-1">No students yet</p>
-          <p className="text-[13px] text-charcoal-ink/40 font-body">Add students from the dashboard to see their reports here.</p>
+        <div className="op-panel flex min-h-[320px] flex-col items-center justify-center px-6 py-16 text-center">
+          <FileText className="w-10 h-10 text-[#cbb7fb] mx-auto mb-4" />
+          <p className="text-[20px] font-display text-white mb-1">No students yet</p>
+          <p className="op-subtle text-[13px] font-body">Add students from the dashboard to see their reports here.</p>
         </div>
       ) : (
         <div className="space-y-6 mb-10">
@@ -685,51 +737,76 @@ const Reports = ({ parentSettings = {} }) => {
             if (!data) return null;
             const pct = data.goalBlocks > 0 ? Math.round((data.totalBlocks / data.goalBlocks) * 100) : 0;
             const hours = Math.round(data.totalMinutes / 60 * 10) / 10;
+            const readiness = readinessByStudentId[student.id];
+            const studentNeedsReview = readiness?.needsReview;
 
             return (
-              <div key={student.id} className="bg-white rounded-2xl p-6" style={{ border: `1px solid ${C.parchment}` }}>
+              <div key={student.id} className="op-panel p-5 md:p-6">
                 {/* Student header */}
                 <div className="flex items-center gap-4 mb-5">
-                  <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: C.lavenderTint }}>
+                  <div className="w-11 h-11 flex items-center justify-center flex-shrink-0 border border-[rgba(203,183,251,0.28)] bg-[#202034]">
                     <span className="text-[17px] font-display" style={{ color: C.amethyst }}>
                       {student.name.charAt(0).toUpperCase()}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-[17px] font-display text-charcoal-ink" style={{ lineHeight: 1.2 }}>{student.name}</h3>
-                    <p className="text-[13px] font-body mt-0.5" style={{ color: 'rgba(41,40,39,0.45)' }}>
+                    <h3 className="text-[20px] font-display text-white" style={{ lineHeight: 1.05 }}>{student.name}</h3>
+                    <p className="op-subtle text-[13px] font-body mt-1">
                       {data.totalBlocks} of {data.goalBlocks} blocks completed this week
                     </p>
                   </div>
                   {/* Metrics pills */}
                   <div className="flex items-center gap-3 flex-shrink-0">
+                    {readiness?.checked ? (
+                      <div
+                        className="border px-4 py-2.5 text-center"
+                        style={{
+                          backgroundColor: studentNeedsReview ? 'rgba(245,158,11,0.08)' : 'rgba(52,211,153,0.08)',
+                          borderColor: studentNeedsReview ? 'rgba(245,158,11,0.32)' : 'rgba(52,211,153,0.24)',
+                        }}
+                      >
+                        <div className="text-[16px] font-display text-white">{studentNeedsReview ? 'Review' : 'Ready'}</div>
+                        <div className="op-eyebrow mt-1">Record</div>
+                      </div>
+                    ) : null}
                     {[
                       { label: 'Blocks', value: `${data.totalBlocks}/${data.goalBlocks}` },
                       { label: 'Hours', value: `${hours}h` },
                       { label: 'Progress', value: `${pct}%` },
                     ].map(({ label, value }) => (
-                      <div key={label} className="text-center rounded-lg px-4 py-2.5" style={{ backgroundColor: `${C.lavenderTint}80` }}>
-                        <div className="text-[16px] font-display text-amethyst-link">{value}</div>
-                        <div className="text-[11px] text-charcoal-ink/40 font-body">{label}</div>
+                      <div key={label} className="border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)] px-4 py-2.5 text-center">
+                        <div className="text-[16px] font-display text-white">{value}</div>
+                        <div className="op-eyebrow mt-1">{label}</div>
                       </div>
                     ))}
                   </div>
                 </div>
 
                 {/* Progress bar */}
-                <div className="w-full rounded-full h-1.5 mb-5 overflow-hidden" style={{ backgroundColor: C.parchment }}>
-                  <div className="h-1.5 rounded-full transition-all duration-500"
+                <div className="w-full h-1.5 mb-5 overflow-hidden" style={{ backgroundColor: 'rgba(238,234,248,0.16)' }}>
+                  <div className="h-1.5 transition-all duration-500"
                     style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: C.lavender }} />
                 </div>
 
+                {readiness?.checked && studentNeedsReview ? (
+                  <div className="mb-5 border border-[rgba(245,158,11,0.28)] bg-[rgba(245,158,11,0.08)] px-4 py-3">
+                    <p className="text-[13px] font-body leading-5 text-[rgba(254,243,199,0.86)]">
+                      {readiness.incompleteBlockCount} assigned block{readiness.incompleteBlockCount === 1 ? '' : 's'} incomplete
+                      {readiness.missingRequiredDetailCount > 0
+                        ? `; ${readiness.missingRequiredDetailCount} completed required-response block${readiness.missingRequiredDetailCount === 1 ? '' : 's'} missing written detail.`
+                        : '.'}
+                    </p>
+                  </div>
+                ) : null}
+
                 {/* Subject rows */}
                 {data.subjectData.length === 0 ? (
-                  <p className="text-[13px] text-charcoal-ink/30 italic font-body text-center py-4">
+                  <p className="text-[13px] text-[rgba(238,234,248,0.34)] italic font-body text-center py-4">
                     No subjects assigned to this student.
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    <p className="text-[11px] font-label uppercase tracking-wider mb-2" style={{ color: 'rgba(41,40,39,0.4)' }}>
+                    <p className="op-eyebrow mb-2">
                       Subjects — click to expand block details
                     </p>
                     {data.subjectData.map(sd => (
@@ -739,7 +816,7 @@ const Reports = ({ parentSettings = {} }) => {
                 )}
 
                 {data.totalBlocks === 0 && (
-                  <p className="text-center text-[13px] font-body mt-4" style={{ color: 'rgba(41,40,39,0.3)' }}>
+                  <p className="text-center text-[13px] font-body mt-4" style={{ color: 'rgba(238,234,248,0.34)' }}>
                     No blocks completed {weekOffset === 0 ? 'this week yet' : 'during this week'}.
                   </p>
                 )}
@@ -756,16 +833,16 @@ const Reports = ({ parentSettings = {} }) => {
           onClick={() => setShowRecords(r => !r)}
         >
           {showRecords
-            ? <ChevronDown className="w-4 h-4" style={{ color: 'rgba(41,40,39,0.4)' }} />
-            : <ChevronRight className="w-4 h-4" style={{ color: 'rgba(41,40,39,0.4)' }} />}
-          <span className="text-[12px] uppercase tracking-wider font-label" style={{ color: 'rgba(41,40,39,0.5)' }}>
+            ? <ChevronDown className="w-4 h-4" style={{ color: 'rgba(238,234,248,0.5)' }} />
+            : <ChevronRight className="w-4 h-4" style={{ color: 'rgba(238,234,248,0.5)' }} />}
+          <span className="op-eyebrow">
             Official Records ({filteredWeeklyReports.length}/{normalizedWeeklyReports.length})
           </span>
         </button>
 
         {showRecords && (
           filteredWeeklyReports.length === 0 ? (
-            <p className="text-[13px] text-charcoal-ink/30 italic font-body pl-6">
+            <p className="text-[13px] text-[rgba(238,234,248,0.34)] italic font-body pl-6">
               No official records match the current filters.
             </p>
           ) : (
@@ -774,12 +851,11 @@ const Reports = ({ parentSettings = {} }) => {
                 const ws = report.week_start?.toDate?.() || new Date(report.week_start);
                 const we = report.week_ending?.toDate?.() || new Date(report.week_ending);
                 return (
-                  <div key={report.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white"
-                    style={{ border: `1px solid ${C.parchment}` }}>
-                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: C.lavender }} />
+                  <div key={report.id} className="op-surface flex items-center gap-3 px-4 py-3">
+                    <div className="w-1.5 h-8 flex-shrink-0" style={{ backgroundColor: C.lavender }} />
                     <div className="flex-1 min-w-0">
-                      <span className="text-[14px] font-display text-charcoal-ink">{report.student_name}</span>
-                      <span className="text-[12px] font-body ml-2" style={{ color: 'rgba(41,40,39,0.4)' }}>
+                      <span className="text-[14px] font-display text-white">{report.student_name}</span>
+                      <span className="text-[12px] font-body ml-2" style={{ color: 'rgba(238,234,248,0.46)' }}>
                         {formatWeekRange(ws, we)}
                       </span>
                       {report.school_quarter_label && (
@@ -788,20 +864,18 @@ const Reports = ({ parentSettings = {} }) => {
                         </span>
                       )}
                     </div>
-                    <span className="text-[12px] font-body" style={{ color: 'rgba(41,40,39,0.4)' }}>
+                    <span className="text-[12px] font-body" style={{ color: 'rgba(238,234,248,0.46)' }}>
                       {report.total_blocks}/{report.weekly_goal} blocks
                     </span>
                     <button onClick={() => handlePrintRecord(report)}
-                      className="p-1.5 transition-colors" style={{ color: 'rgba(41,40,39,0.3)' }}
+                      className="op-icon-button h-8 w-8"
                       onMouseEnter={e => e.currentTarget.style.color = C.amethyst}
-                      onMouseLeave={e => e.currentTarget.style.color = 'rgba(41,40,39,0.3)'}
                       title="Print">
                       <Printer className="w-4 h-4" />
                     </button>
                     <button onClick={() => handleDeleteRecord(report.id)}
-                      className="p-1.5 transition-colors" style={{ color: 'rgba(41,40,39,0.3)' }}
+                      className="op-icon-button h-8 w-8"
                       onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                      onMouseLeave={e => e.currentTarget.style.color = 'rgba(41,40,39,0.3)'}
                       title="Delete">
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -811,6 +885,7 @@ const Reports = ({ parentSettings = {} }) => {
             </div>
           )
         )}
+      </div>
       </div>
     </div>
   );

@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--n0:#181828;--n1:#1f1f32;--n2:#26263c;--n3:#2e2e48;--n4:#383858;--vi:#7c6fd4;--vl:#b8adff;--vf:rgba(124,111,212,0.14);--bd:rgba(255,255,255,0.08);--bd2:rgba(255,255,255,0.14);--t1:#eeeaf8;--t2:#c4bedc;--t3:#8f8aaa;--t4:#585674;--amber:#f59e0b;--green:#34d399;--red:#f87171;--blue:#60a5fa;}
+body{background:var(--n0);color:var(--t1);font-family:system-ui,sans-serif;margin:0}
+.shell{display:flex;flex-direction:column;height:580px;overflow:hidden;border:0.5px solid var(--bd2);background:var(--n1)}
+.topbar{height:50px;background:var(--n0);border-bottom:0.5px solid var(--bd);display:flex;align-items:center;padding:0 16px;gap:8px;flex-shrink:0}
+.tb-title{font-size:14px;font-weight:500;color:var(--t1);flex:1}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;font-size:11px;cursor:pointer;border:0.5px solid var(--bd2);background:transparent;color:var(--t2);transition:all .15s}
+.btn:hover{background:var(--n3);color:var(--t1)}
+.btn.pri{background:var(--vi);color:#fff;border-color:var(--vi)}
+.btn.pri:hover{background:#6c60c0}
+.btn.sm{padding:3px 8px;font-size:10px}
+.btn i{font-size:13px}
+.week-bar{height:36px;background:var(--n0);border-bottom:0.5px solid var(--bd);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0}
+.wnav-btn{width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:0.5px solid var(--bd2);color:var(--t3);transition:all .15s;flex-shrink:0}
+.wnav-btn:hover{background:var(--n3);color:var(--t1)}
+.wnav-btn.dis{opacity:.3;pointer-events:none}
+.wnav-btn i{font-size:12px}
+.week-lbl{font-size:11px;font-weight:500;min-width:130px;text-align:center}
+.week-lbl.past{color:var(--amber)}
+.week-lbl.cur{color:var(--t2)}
+.wbar-right{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:10px;color:var(--t3)}
+.body{flex:1;display:flex;overflow:hidden}
+.pool{width:340px;flex-shrink:0;border-right:0.5px solid var(--bd);display:flex;flex-direction:column;overflow:hidden}
+.pool-hdr{padding:8px 14px;border-bottom:0.5px solid var(--bd);display:flex;align-items:center;gap:8px;background:var(--n0);flex-shrink:0}
+.pool-hdr-lbl{font-size:11px;font-weight:500;color:var(--t2);flex:1}
+.pool-list{flex:1;overflow-y:auto}
+.chore-row{display:flex;align-items:flex-start;gap:0;border-bottom:0.5px solid var(--bd);border-left:3px solid transparent;cursor:pointer;transition:background .15s}
+.chore-row:hover{background:var(--n2)}
+.chore-row.sel{background:var(--n2);border-left-color:var(--vi)}
+.cr-main{flex:1;padding:9px 12px;min-width:0}
+.cr-name{font-size:12px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.cr-meta{font-size:10px;color:var(--t3);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+.cr-meta span{display:flex;align-items:center;gap:3px}
+.cr-meta i{font-size:11px}
+.cr-badges{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap}
+.badge{font-size:8px;padding:2px 5px;font-weight:500;letter-spacing:.03em;white-space:nowrap}
+.b-avail{background:rgba(52,211,153,.15);color:var(--green)}
+.b-claimed{background:rgba(96,165,250,.15);color:var(--blue)}
+.b-done{background:rgba(124,111,212,.2);color:var(--vl)}
+.b-cool{background:rgba(245,158,11,.15);color:var(--amber)}
+.b-pend{background:rgba(248,113,113,.15);color:var(--red)}
+.b-allow{background:rgba(52,211,153,.1);color:var(--green);border:0.5px solid rgba(52,211,153,.3)}
+.b-photo{background:rgba(96,165,250,.1);color:var(--blue);border:0.5px solid rgba(96,165,250,.3)}
+.b-appr{background:rgba(245,158,11,.1);color:var(--amber);border:0.5px solid rgba(245,158,11,.3)}
+.cr-acts{display:flex;flex-direction:column;gap:0;padding:6px 4px;flex-shrink:0}
+.cr-act{width:22px;height:22px;display:flex;align-items:center;justify-content:center;color:var(--t4);cursor:pointer;transition:all .15s}
+.cr-act:hover{color:var(--t1);background:var(--n4)}
+.cr-act i{font-size:11px}
+.add-chore{display:flex;align-items:center;gap:6px;padding:9px 14px;color:var(--t4);font-size:10px;cursor:pointer;transition:all .15s;border-left:3px solid transparent}
+.add-chore:hover{color:var(--vl);background:var(--n2);border-left-color:var(--vi)}
+.add-chore i{font-size:12px}
+.activity{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.act-tabs{display:flex;background:var(--n0);border-bottom:0.5px solid var(--bd);flex-shrink:0}
+.act-tab{padding:8px 14px;font-size:11px;cursor:pointer;color:var(--t3);border-bottom:2px solid transparent;display:flex;flex-direction:column;align-items:flex-start;transition:all .15s}
+.act-tab:hover{color:var(--t2)}
+.act-tab.act{color:var(--vl);border-bottom-color:var(--vi)}
+.act-tab-name{font-size:11px;font-weight:500}
+.act-tab-sub{font-size:9px;color:var(--t4);margin-top:1px}
+.act-tab.act .act-tab-sub{color:var(--t3)}
+.act-body{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.act-empty{padding:20px;font-size:11px;color:var(--t4);text-align:center}
+.act-banner{display:flex;align-items:center;gap:8px;padding:7px 10px;border-left:3px solid var(--vi);background:var(--vf);font-size:10px;color:var(--vl)}
+.act-banner i{font-size:12px;flex-shrink:0}
+.act-section-lbl{font-size:9px;color:var(--t4);letter-spacing:.08em;text-transform:uppercase;padding:4px 0 2px}
+.act-row{background:var(--n2);border-left:3px solid transparent;padding:8px 10px;display:flex;align-items:flex-start;gap:8px}
+.ar-info{flex:1;min-width:0}
+.ar-name{font-size:11px;font-weight:500;color:var(--t1)}
+.ar-meta{font-size:10px;color:var(--t3);margin-top:2px}
+.ar-acts{display:flex;gap:4px;flex-shrink:0;margin-top:1px}
+.ar-btn{font-size:9px;padding:2px 7px;cursor:pointer;border:0.5px solid var(--bd2);background:transparent;color:var(--t3);transition:all .15s;white-space:nowrap}
+.ar-btn:hover{background:var(--n3);color:var(--t1)}
+.ar-btn.app{border-color:rgba(52,211,153,.4);color:var(--green);background:rgba(52,211,153,.08)}
+.ar-btn.app:hover{background:rgba(52,211,153,.18)}
+.ar-btn.rej{border-color:rgba(248,113,113,.3);color:var(--red);background:rgba(248,113,113,.07)}
+.ar-btn.rej:hover{background:rgba(248,113,113,.15)}
+.sp-stat-row{display:flex;gap:8px}
+.sp-stat{flex:1;display:flex;flex-direction:column;gap:2px;padding:8px 10px;background:var(--n2)}
+.sp-stat-val{font-size:18px;font-weight:500;color:var(--t1)}
+.sp-stat-lbl{font-size:9px;color:var(--t3)}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:100}
+.modal-bg.open{display:flex}
+.modal{background:var(--n1);border:0.5px solid var(--bd2);padding:16px;width:340px;display:flex;flex-direction:column;gap:10px;max-height:90vh;overflow-y:auto}
+.modal-title{font-size:13px;font-weight:500;color:var(--t1)}
+.mlbl{font-size:10px;color:var(--t3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px}
+.minput{background:var(--n3);border:0.5px solid var(--bd2);color:var(--t1);font-size:11px;padding:6px 8px;width:100%}
+.minput::placeholder{color:var(--t4)}
+.mrow2{display:flex;gap:8px}
+.mrow2>div{flex:1}
+.mtoggle-row{display:flex;align-items:center;gap:8px;padding:6px 0}
+.mtoggle-lbl{font-size:11px;color:var(--t2);flex:1}
+.toggle{width:32px;height:17px;background:var(--n4);border:0.5px solid var(--bd2);cursor:pointer;position:relative;transition:background .15s;flex-shrink:0}
+.toggle.on{background:var(--vi)}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:11px;height:11px;background:var(--t3);transition:all .15s}
+.toggle.on::after{left:17px;background:#fff}
+.mbtns{display:flex;gap:6px;justify-content:flex-end;margin-top:4px}
+.pts-badge{font-size:9px;padding:1px 5px;background:rgba(124,111,212,.2);color:var(--vl);font-weight:500}
+</style></head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <span class="tb-title">Weekly Chores</span>
+    <div style="margin-left:auto;display:flex;gap:6px">
+      <button class="btn sm pri" onclick="openModal()"><i class="ti ti-plus"></i> Add chore</button>
+    </div>
+  </div>
+  <div class="week-bar">
+    <div class="wnav-btn" id="prevBtn" onclick="shiftWeek(-1)"><i class="ti ti-chevron-left"></i></div>
+    <div class="week-lbl cur" id="weekLbl">Jun 22 – 28 (current)</div>
+    <div class="wnav-btn" id="nextBtn" onclick="shiftWeek(1)"><i class="ti ti-chevron-right"></i></div>
+    <div class="wbar-right" id="wbarRight"></div>
+  </div>
+  <div class="body">
+    <div class="pool">
+      <div class="pool-hdr">
+        <span class="pool-hdr-lbl">Chore pool</span>
+        <span style="font-size:10px;color:var(--t3)" id="poolCount"></span>
+      </div>
+      <div class="pool-list" id="poolList"></div>
+    </div>
+    <div class="activity">
+      <div class="act-tabs" id="actTabs"></div>
+      <div class="act-body" id="actBody"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <div class="modal-title">Add weekly chore</div>
+    <div><div class="mlbl">Name</div><input class="minput" id="mName" placeholder="e.g. Vacuum living room"/></div>
+    <div><div class="mlbl">Instructions (optional)</div><input class="minput" id="mInstr" placeholder="e.g. Move furniture, empty canister"/></div>
+    <div class="mrow2">
+      <div><div class="mlbl">Point value</div><input class="minput" id="mPts" type="number" placeholder="50" min="0"/></div>
+      <div><div class="mlbl">Est. minutes</div><input class="minput" id="mMins" type="number" placeholder="20" min="1"/></div>
+    </div>
+    <div><div class="mlbl">Cooldown (days until can be done again)</div><input class="minput" id="mCool" type="number" placeholder="4" min="1"/></div>
+    <div class="mtoggle-row"><span class="mtoggle-lbl"><i class="ti ti-coin" style="font-size:12px;color:var(--green);vertical-align:-1px"></i> Counts toward allowance</span><div class="toggle on" id="tAllow" onclick="this.classList.toggle('on')"></div></div>
+    <div class="mtoggle-row"><span class="mtoggle-lbl"><i class="ti ti-camera" style="font-size:12px;color:var(--blue);vertical-align:-1px"></i> Photo required on completion</span><div class="toggle" id="tPhoto" onclick="this.classList.toggle('on')"></div></div>
+    <div class="mtoggle-row"><span class="mtoggle-lbl"><i class="ti ti-circle-check" style="font-size:12px;color:var(--amber);vertical-align:-1px"></i> Requires parent approval</span><div class="toggle" id="tAppr" onclick="this.classList.toggle('on')"></div></div>
+    <div class="mbtns">
+      <button class="btn sm" onclick="closeModal()">Cancel</button>
+      <button class="btn sm pri" onclick="addChore()">Add chore</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var weekOffset=0;
+var selChore=null;
+var curStudent='Caleb';
+
+var STUDENTS={
+  Caleb:{color:'#7c6fd4',allowanceTarget:3},
+  Evelyn:{color:'#0f9e7a',allowanceTarget:3},
+  'Dummy 2':{color:'#ba7517',allowanceTarget:2}
+};
+
+var CHORES=[
+  {id:'c1',name:'Vacuum living room',instr:'Move furniture, empty canister',pts:60,mins:25,cooldown:4,allowance:true,photo:false,approvalRequired:false},
+  {id:'c2',name:'Clean bathrooms',instr:'Sink, toilet, mirror, floor',pts:80,mins:35,cooldown:5,allowance:true,photo:true,approvalRequired:true},
+  {id:'c3',name:'Take out trash',instr:'All bins, replace bags',pts:30,mins:10,cooldown:3,allowance:true,photo:false,approvalRequired:false},
+  {id:'c4',name:'Mop kitchen floor',instr:'Sweep first, then mop',pts:50,mins:20,cooldown:5,allowance:true,photo:false,approvalRequired:false},
+  {id:'c5',name:'Wipe down counters',instr:'Kitchen + bathrooms',pts:25,mins:10,cooldown:2,allowance:false,photo:false,approvalRequired:false},
+  {id:'c6',name:'Fold & put away laundry',instr:'Family laundry basket',pts:45,mins:20,cooldown:3,allowance:true,photo:false,approvalRequired:false},
+  {id:'c7',name:'Clean out car',instr:'Trash, vacuum seats, wipe dash',pts:55,mins:30,cooldown:7,allowance:false,photo:true,approvalRequired:true},
+];
+
+// Weekly activity log per week offset
+var ACTIVITY={
+  0:{
+    'c1':{status:'completed',student:'Caleb',claimedAt:'Mon',completedAt:'Mon',pendingApproval:false},
+    'c3':{status:'claimed',student:'Evelyn',claimedAt:'Tue',completedAt:null,pendingApproval:false},
+    'c6':{status:'pending_approval',student:'Caleb',claimedAt:'Wed',completedAt:'Wed',pendingApproval:true},
+    'c2':{status:'available'},
+    'c4':{status:'cooldown',unlocksDay:'Thu'},
+    'c5':{status:'available'},
+    'c7':{status:'available'},
+  },
+  '-1':{
+    'c1':{status:'completed',student:'Caleb',claimedAt:'Mon',completedAt:'Tue',pendingApproval:false},
+    'c2':{status:'completed',student:'Evelyn',claimedAt:'Mon',completedAt:'Wed',pendingApproval:false},
+    'c3':{status:'completed',student:'Caleb',claimedAt:'Tue',completedAt:'Tue',pendingApproval:false},
+    'c4':{status:'completed',student:'Evelyn',claimedAt:'Wed',completedAt:'Thu',pendingApproval:false},
+    'c5':{status:'completed',student:'Caleb',claimedAt:'Mon',completedAt:'Mon',pendingApproval:false},
+    'c6':{status:'completed',student:'Evelyn',claimedAt:'Fri',completedAt:'Fri',pendingApproval:false},
+    'c7':{status:'available'},
+  }
+};
+
+function getActivity(){return ACTIVITY[String(weekOffset)]||{};}
+
+function choreStatus(cid){
+  var a=getActivity();
+  return a[cid]||{status:'available'};
+}
+
+function statusBadge(st){
+  if(st.status==='available')return '<span class="badge b-avail">AVAILABLE</span>';
+  if(st.status==='cooldown')return '<span class="badge b-cool">COOLDOWN · unlocks '+st.unlocksDay+'</span>';
+  if(st.status==='claimed')return '<span class="badge b-claimed">CLAIMED · '+st.student+'</span>';
+  if(st.status==='completed')return '<span class="badge b-done">DONE · '+st.student+'</span>';
+  if(st.status==='pending_approval')return '<span class="badge b-pend">PENDING APPROVAL · '+st.student+'</span>';
+  return '';
+}
+
+function accentColor(st){
+  if(st.status==='available')return 'transparent';
+  if(st.status==='cooldown')return 'var(--amber)';
+  if(st.status==='claimed')return 'var(--blue)';
+  if(st.status==='completed')return 'var(--green)';
+  if(st.status==='pending_approval')return 'var(--red)';
+  return 'transparent';
+}
+
+var WEEK_LABELS={0:'Jun 22–28 (current)','-1':'Jun 15–21','-2':'Jun 8–14','-3':'Jun 1–7',1:'Jun 29–Jul 5'};
+
+function renderWeekBar(){
+  var lbl=document.getElementById('weekLbl');
+  lbl.textContent=WEEK_LABELS[String(weekOffset)]||('Week '+weekOffset);
+  lbl.className='week-lbl'+(weekOffset<0?' past':' cur');
+  document.getElementById('prevBtn').className='wnav-btn'+(weekOffset<=-3?' dis':'');
+  document.getElementById('nextBtn').className='wnav-btn'+(weekOffset>=1?' dis':'');
+  var a=getActivity();
+  var done=Object.values(a).filter(function(x){return x.status==='completed'||x.status==='pending_approval';}).length;
+  var pending=Object.values(a).filter(function(x){return x.status==='pending_approval';}).length;
+  var right='';
+  if(pending>0)right='<span style="color:var(--red)"><i class="ti ti-circle-dot" style="font-size:10px"></i> '+pending+' pending approval</span>';
+  right+=(right?' · ':'')+'<span>'+done+'/'+CHORES.length+' completed this week</span>';
+  document.getElementById('wbarRight').innerHTML=right;
+}
+
+function renderPool(){
+  var a=getActivity();
+  var avail=0,done=0;
+  CHORES.forEach(function(c){var s=choreStatus(c.id);if(s.status==='available')avail++;if(s.status==='completed')done++;});
+  document.getElementById('poolCount').textContent=CHORES.length+' chores · '+avail+' available';
+
+  var h='';
+  CHORES.forEach(function(c){
+    var st=choreStatus(c.id);
+    var sel=selChore===c.id;
+    h+='<div class="chore-row'+(sel?' sel':'')+'" onclick="selectChore(\''+c.id+'\')" style="border-left-color:'+accentColor(st)+'">'
+      +'<div class="cr-main">'
+      +'<div class="cr-name">'+c.name+' <span class="pts-badge">'+c.pts+' pts</span></div>'
+      +'<div class="cr-meta">'
+      +'<span><i class="ti ti-clock"></i>'+c.mins+'m</span>'
+      +'<span><i class="ti ti-refresh"></i>'+c.cooldown+'d cooldown</span>'
+      +'</div>'
+      +'<div class="cr-badges">'+statusBadge(st)
+      +(c.allowance?'<span class="badge b-allow">ALLOWANCE</span>':'')
+      +(c.photo?'<span class="badge b-photo">PHOTO REQ</span>':'')
+      +(c.approvalRequired?'<span class="badge b-appr">APPROVAL REQ</span>':'')
+      +'</div>'
+      +'</div>'
+      +'<div class="cr-acts">'
+      +'<div class="cr-act" title="Edit" onclick="event.stopPropagation();alert(\'Edit: '+c.name+'\')"><i class="ti ti-edit"></i></div>'
+      +'<div class="cr-act" title="Delete" onclick="event.stopPropagation();deleteChore(\''+c.id+'\')"><i class="ti ti-trash"></i></div>'
+      +'</div>'
+      +'</div>';
+  });
+  h+='<div class="add-chore" onclick="openModal()"><i class="ti ti-plus"></i> Add chore to pool</div>';
+  document.getElementById('poolList').innerHTML=h;
+}
+
+function renderTabs(){
+  var h='';
+  Object.keys(STUDENTS).forEach(function(name){
+    var a=getActivity();
+    var mine=Object.values(a).filter(function(x){return x.student===name;});
+    var done=mine.filter(function(x){return x.status==='completed';}).length;
+    var pend=mine.filter(function(x){return x.status==='pending_approval';}).length;
+    var claimed=mine.filter(function(x){return x.status==='claimed';}).length;
+    var sub=done+' done'+(claimed?' · '+claimed+' claimed':'')+(pend?' · '+pend+' pending':'');
+    h+='<div class="act-tab'+(name===curStudent?' act':'')+'" onclick="switchStudent(\''+name+'\')">'
+      +'<span class="act-tab-name">'+name+'</span>'
+      +'<span class="act-tab-sub">'+sub+'</span>'
+      +'</div>';
+  });
+  document.getElementById('actTabs').innerHTML=h;
+}
+
+function renderActivity(){
+  var a=getActivity();
+  var mine=Object.entries(a).filter(function(e){return e[1].student===curStudent;});
+  var tgt=STUDENTS[curStudent].allowanceTarget;
+
+  var doneItems=mine.filter(function(e){return e[1].status==='completed';});
+  var pendItems=mine.filter(function(e){return e[1].status==='pending_approval';});
+  var claimItems=mine.filter(function(e){return e[1].status==='claimed';});
+
+  var total=doneItems.length+pendItems.length;
+  var color=total>=tgt?'var(--green)':'var(--amber)';
+
+  var h='<div class="sp-stat-row">'
+    +'<div class="sp-stat"><div class="sp-stat-val" style="color:'+color+'">'+total+'/'+tgt+'</div><div class="sp-stat-lbl">allowance chores</div></div>'
+    +'<div class="sp-stat"><div class="sp-stat-val">'+doneItems.length+'</div><div class="sp-stat-lbl">completed</div></div>'
+    +'<div class="sp-stat"><div class="sp-stat-val" style="color:'+(claimItems.length>0?'var(--blue)':'var(--t4)')+'">'+claimItems.length+'</div><div class="sp-stat-lbl">in progress</div></div>'
+    +'</div>';
+
+  if(pendItems.length>0){
+    h+='<div class="act-section-lbl">Pending approval</div>';
+    pendItems.forEach(function(e){
+      var cid=e[0],entry=e[1];
+      var chore=CHORES.find(function(c){return c.id===cid;});
+      if(!chore)return;
+      h+='<div class="act-row" style="border-left-color:var(--red)">'
+        +'<div class="ar-info"><div class="ar-name">'+chore.name+'</div>'
+        +'<div class="ar-meta">Claimed '+entry.claimedAt+' · Completed '+entry.completedAt+(chore.photo?' · Photo submitted':'')+'</div>'
+        +'</div>'
+        +'<div class="ar-acts">'
+        +'<div class="ar-btn app" onclick="approveChore(\''+cid+'\')"><i class="ti ti-check"></i> Approve</div>'
+        +'<div class="ar-btn rej" onclick="rejectChore(\''+cid+'\')"><i class="ti ti-x"></i></div>'
+        +'</div></div>';
+    });
+  }
+
+  if(claimItems.length>0){
+    h+='<div class="act-section-lbl">In progress</div>';
+    claimItems.forEach(function(e){
+      var cid=e[0],entry=e[1];
+      var chore=CHORES.find(function(c){return c.id===cid;});
+      if(!chore)return;
+      h+='<div class="act-row" style="border-left-color:var(--blue)">'
+        +'<div class="ar-info"><div class="ar-name">'+chore.name+'</div>'
+        +'<div class="ar-meta">Claimed '+entry.claimedAt+' · '+chore.mins+'m est.</div>'
+        +'</div>'
+        +'<div class="ar-acts"><div class="ar-btn" onclick="alert(\'Unclaim for '+curStudent+'\')">Unclaim</div></div>'
+        +'</div>';
+    });
+  }
+
+  if(doneItems.length>0){
+    h+='<div class="act-section-lbl">Completed this week</div>';
+    doneItems.forEach(function(e){
+      var cid=e[0],entry=e[1];
+      var chore=CHORES.find(function(c){return c.id===cid;});
+      if(!chore)return;
+      h+='<div class="act-row" style="border-left-color:var(--green)">'
+        +'<div class="ar-info"><div class="ar-name">'+chore.name+' <span class="pts-badge">+'+chore.pts+' pts</span></div>'
+        +'<div class="ar-meta">Claimed '+entry.claimedAt+' · Completed '+entry.completedAt+'</div>'
+        +'</div></div>';
+    });
+  }
+
+  if(mine.length===0){
+    h+='<div class="act-empty"><i class="ti ti-list-check" style="font-size:24px;display:block;margin-bottom:8px;color:var(--t4)"></i>No activity this week yet</div>';
+  }
+
+  document.getElementById('actBody').innerHTML=h;
+}
+
+function approveChore(cid){
+  var a=getActivity();
+  if(a[cid])a[cid].status='completed';
+  render();
+}
+function rejectChore(cid){
+  var a=getActivity();
+  if(a[cid]){a[cid].status='available';delete a[cid].student;delete a[cid].claimedAt;delete a[cid].completedAt;a[cid].pendingApproval=false;}
+  render();
+}
+
+function selectChore(id){selChore=id;render();}
+function switchStudent(name){curStudent=name;render();}
+function shiftWeek(d){weekOffset=Math.max(-3,Math.min(1,weekOffset+d));selChore=null;render();}
+function deleteChore(id){CHORES=CHORES.filter(function(c){return c.id!==id;});if(selChore===id)selChore=null;render();}
+
+function openModal(){
+  document.getElementById('mName').value='';
+  document.getElementById('mInstr').value='';
+  document.getElementById('mPts').value='';
+  document.getElementById('mMins').value='';
+  document.getElementById('mCool').value='';
+  document.getElementById('tAllow').className='toggle on';
+  document.getElementById('tPhoto').className='toggle';
+  document.getElementById('tAppr').className='toggle';
+  document.getElementById('modalBg').classList.add('open');
+}
+function closeModal(){document.getElementById('modalBg').classList.remove('open');}
+function addChore(){
+  var name=document.getElementById('mName').value.trim();
+  if(!name)return;
+  CHORES.push({
+    id:'c'+Date.now(),
+    name:name,
+    instr:document.getElementById('mInstr').value.trim(),
+    pts:parseInt(document.getElementById('mPts').value)||30,
+    mins:parseInt(document.getElementById('mMins').value)||15,
+    cooldown:parseInt(document.getElementById('mCool').value)||3,
+    allowance:document.getElementById('tAllow').classList.contains('on'),
+    photo:document.getElementById('tPhoto').classList.contains('on'),
+    approvalRequired:document.getElementById('tAppr').classList.contains('on'),
+  });
+  closeModal();render();
+}
+document.getElementById('modalBg').addEventListener('click',function(e){if(e.target===this)closeModal();});
+
+function render(){renderWeekBar();renderPool();renderTabs();renderActivity();}
+render();
+</script>
+</body></html>

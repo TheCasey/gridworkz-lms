@@ -2,7 +2,11 @@ import { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
-import { DASHBOARD_DEFAULT_FEATURE_ID, dashboardFeaturesById } from './constants/dashboardFeatures';
+import {
+  DASHBOARD_CHORES_CHILD_FEATURE_IDS,
+  DASHBOARD_DEFAULT_FEATURE_ID,
+  dashboardFeaturesById,
+} from './constants/dashboardFeatures';
 import {
   buildDashboardUrl,
   buildPublicUrl,
@@ -18,7 +22,10 @@ const ParentDashboard = lazy(() => import('./pages/ParentDashboard'));
 const Curriculum = lazy(() => import('./pages/Curriculum'));
 const Lockdown = lazy(() => import('./pages/Lockdown'));
 const StudentPortal = lazy(() => import('./pages/StudentPortal'));
+const DashboardChoresRoute = lazy(() => import('./pages/dashboard/ChoresRoute'));
+const DashboardHomeschoolRoute = lazy(() => import('./pages/dashboard/HomeschoolRoute'));
 const DashboardStudentsRoute = lazy(() => import('./pages/dashboard/StudentsRoute'));
+const DashboardWeeklyBlockingRoute = lazy(() => import('./pages/dashboard/WeeklyBlockingRoute'));
 const DashboardReportsRoute = lazy(() => import('./pages/dashboard/ReportsRoute'));
 const DashboardSettingsRoute = lazy(() => import('./pages/dashboard/SettingsRoute'));
 
@@ -168,8 +175,40 @@ function AppRoutes() {
           element={withDashboardSuspense(<DashboardStudentsRoute />)}
         />
         <Route
+          path={dashboardFeaturesById.homeschool.path}
+          element={withDashboardSuspense(<DashboardHomeschoolRoute />)}
+        />
+        <Route
           path={dashboardFeaturesById.curriculum.path}
           element={withDashboardSuspense(<Curriculum />)}
+        />
+        <Route
+          path={dashboardFeaturesById['weekly-blocking'].path}
+          element={withDashboardSuspense(<DashboardWeeklyBlockingRoute />)}
+        />
+        <Route
+          path={dashboardFeaturesById.chores.path}
+          element={withDashboardSuspense(<DashboardChoresRoute />)}
+        />
+        <Route
+          path={dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.DAILY_ROUTINES].path}
+          element={withDashboardSuspense(<DashboardChoresRoute />)}
+        />
+        <Route
+          path={dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.WEEKLY_CHORES].path}
+          element={withDashboardSuspense(<DashboardChoresRoute />)}
+        />
+        <Route
+          path={dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.MONTHLY_CHORES].path}
+          element={withDashboardSuspense(<DashboardChoresRoute />)}
+        />
+        <Route
+          path={dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.ALLOWANCE].path}
+          element={withDashboardSuspense(<DashboardChoresRoute />)}
+        />
+        <Route
+          path={dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.REWARDS].path}
+          element={withDashboardSuspense(<DashboardChoresRoute />)}
         />
         <Route
           path={dashboardFeaturesById.lockdown.path}

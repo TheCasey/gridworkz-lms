@@ -3,18 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Lockdown allowlist</title>
+    <title>Own Path Lockdown allowlist</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="page-shell">
       <section class="panel">
-        <p class="eyebrow">GridWorkz Lockdown</p>
+        <p class="eyebrow">Own Path Lockdown</p>
         <h1>Current allowlist</h1>
         <p class="muted">
           These entries come from the locally cached device policy.
           Website origins and approved YouTube creators stay active even if the next secure sync is temporarily unavailable.
         </p>
+        <p class="caption spacer-top" id="state-copy"></p>
         <p class="last-updated spacer-top" id="updated-at"></p>
 
         <section class="section">
@@ -30,6 +31,14 @@
           <ul class="section-list" id="creator-list"></ul>
           <div class="empty-state" id="creator-empty" hidden>
             No creator entries are currently stored in the local policy.
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>Own Path system resources</h2>
+          <ul class="section-list" id="system-resource-list"></ul>
+          <div class="empty-state" id="system-resource-empty" hidden>
+            No system resources are currently visible.
           </div>
         </section>
       </section>

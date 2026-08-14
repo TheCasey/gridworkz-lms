@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OwnPath — Weekly Blocking</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--n0:#181828;--n1:#1f1f32;--n2:#26263c;--n3:#2e2e48;--n4:#383858;--vi:#7c6fd4;--vl:#b8adff;--vf:rgba(124,111,212,0.14);--bd:rgba(255,255,255,0.08);--bd2:rgba(255,255,255,0.14);--t1:#eeeaf8;--t2:#c4bedc;--t3:#8f8aaa;--t4:#585674;--amber:#f59e0b;--green:#34d399;--red:#f87171;--blue:#60a5fa;}
+html,body{height:100%;background:var(--n0);color:var(--t1);font-family:system-ui,sans-serif}
+.shell{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:190px;background:var(--n0);display:flex;flex-direction:column;flex-shrink:0;border-right:0.5px solid var(--bd)}
+.slogo{padding:14px 16px;border-bottom:0.5px solid var(--bd);display:flex;align-items:center;gap:9px}
+.slogo-icon{width:26px;height:26px;background:var(--vi);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.slogo-text{font-size:12px;font-weight:500;color:var(--t1);letter-spacing:.06em}
+.slogo-sub{font-size:9px;color:var(--t3);margin-top:1px}
+.snav{padding:6px 0;flex:1;overflow-y:auto}
+.nsec-lbl{font-size:10px;font-weight:500;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;padding:9px 16px 5px;display:flex;align-items:center;justify-content:space-between;cursor:pointer}
+.nsec-lbl:hover{color:var(--t2)}
+.nsec-lbl i{font-size:11px;color:var(--t4)}
+.ni{display:flex;align-items:center;gap:8px;padding:7px 16px;font-size:11px;color:var(--t2);cursor:pointer;transition:all .15s;border-left:2px solid transparent}
+.ni:hover{color:var(--t1);background:rgba(255,255,255,.04)}
+.ni.act{color:var(--vl);border-left-color:var(--vi);background:var(--vf)}
+.ni i{font-size:13px;flex-shrink:0}
+.ni-sa{display:flex;align-items:center;gap:8px;padding:7px 16px;font-size:11px;color:var(--t2);cursor:pointer;border-left:2px solid transparent}
+.ni-sa:hover{color:var(--t1);background:rgba(255,255,255,.04)}
+.bsoon{font-size:8px;background:rgba(124,111,212,.22);color:var(--vl);padding:1px 5px;margin-left:auto}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--n1)}
+.topbar{height:50px;background:var(--n0);border-bottom:0.5px solid var(--bd);display:flex;align-items:center;padding:0 16px;gap:8px;flex-shrink:0}
+.tb-title{font-size:14px;font-weight:500;color:var(--t1)}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;font-size:11px;cursor:pointer;border:0.5px solid var(--bd2);background:transparent;color:var(--t2);transition:all .15s}
+.btn:hover{background:var(--n3);color:var(--t1)}
+.btn.pri{background:var(--vi);color:#fff;border-color:var(--vi)}
+.btn.pri:hover{background:#6c60c0}
+.btn.sm{padding:3px 8px;font-size:10px}
+.btn i{font-size:13px}
+.controls{display:flex;align-items:center;gap:0;padding:10px 16px;border-bottom:0.5px solid var(--bd);background:var(--n0);flex-shrink:0}
+.student-tabs{display:flex;gap:0;border-right:0.5px solid var(--bd);padding-right:16px;margin-right:16px}
+.stab{padding:5px 14px;font-size:11px;cursor:pointer;color:var(--t3);border-bottom:2px solid transparent;background:transparent;border-top:none;border-left:none;border-right:none;transition:all .15s;display:flex;flex-direction:column;align-items:flex-start}
+.stab:hover{color:var(--t2)}
+.stab.act{color:var(--vl);border-bottom-color:var(--vi)}
+.stab-name{font-size:11px;font-weight:500}
+.stab-hrs{font-size:9px;color:var(--t4);margin-top:1px}
+.stab.act .stab-hrs{color:var(--t3)}
+.week-nav{display:flex;align-items:center;gap:6px;flex:1}
+.week-nav-btn{width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:0.5px solid var(--bd2);color:var(--t3);transition:all .15s}
+.week-nav-btn:hover{background:var(--n3);color:var(--t1)}
+.week-nav-btn i{font-size:14px}
+.week-chips{display:flex;gap:5px;align-items:center;flex-wrap:nowrap;overflow-x:auto}
+.wchip{padding:4px 10px;font-size:10px;cursor:pointer;border:0.5px solid var(--bd2);color:var(--t3);white-space:nowrap;transition:all .15s;position:relative}
+.wchip:hover{color:var(--t2)}
+.wchip.act{background:var(--vf);color:var(--vl);border-color:rgba(124,111,212,.4)}
+.wchip.default{border-style:dashed;color:var(--vl)}
+.wchip.default.act{background:var(--vf);border-style:dashed}
+.wchip.modified::after{content:'';position:absolute;top:3px;right:3px;width:4px;height:4px;border-radius:50%;background:var(--amber)}
+.body{flex:1;display:flex;overflow:hidden}
+.schedule-area{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.week-banner{display:flex;align-items:center;gap:10px;padding:8px 12px;border-left:3px solid var(--vi);background:var(--vf);font-size:11px;color:var(--vl)}
+.week-banner i{font-size:14px;flex-shrink:0}
+.week-banner.modified{border-left-color:var(--amber);background:rgba(245,158,11,.08);color:var(--amber)}
+.subj-row{background:var(--n2);border-left:3px solid transparent;overflow:hidden}
+.sr-hdr{display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;user-select:none}
+.sr-hdr:hover{background:var(--n3)}
+.sr-dot{width:8px;height:8px;flex-shrink:0}
+.sr-name{font-size:12px;font-weight:500;color:var(--t1);flex:1}
+.sr-meta{font-size:10px;color:var(--t3)}
+.sr-count{font-size:11px;font-weight:500;padding:2px 8px;flex-shrink:0}
+.sr-chev{font-size:12px;color:var(--t4);transition:transform .15s}
+.sr-chev.open{transform:rotate(90deg)}
+.sr-body{border-top:0.5px solid var(--bd);padding:10px 14px;display:none;flex-direction:column;gap:6px}
+.sr-body.open{display:flex}
+.block-pill-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.block-pill{display:flex;align-items:center;gap:5px;padding:4px 8px;border:0.5px solid var(--bd2);background:var(--n3);font-size:10px;color:var(--t2);cursor:pointer;transition:all .15s}
+.block-pill:hover{background:var(--n4)}
+.block-pill-type{font-size:8px;padding:1px 4px;font-weight:500}
+.bp-s{background:rgba(124,111,212,.2);color:var(--vl)}
+.bp-p{background:rgba(245,158,11,.2);color:var(--amber)}
+.bp-pl{background:rgba(52,211,153,.15);color:var(--green)}
+.bp-t{background:rgba(248,113,113,.15);color:var(--red)}
+.qty-inline{display:flex;align-items:center;gap:2px}
+.qi-btn{width:14px;height:14px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--t3);cursor:pointer;background:var(--n4);border:0.5px solid var(--bd2)}
+.qi-btn:hover{color:var(--t1)}
+.qi-val{font-size:10px;font-weight:500;color:var(--t1);min-width:12px;text-align:center}
+.bp-remove{font-size:11px;color:var(--t4);cursor:pointer;margin-left:2px}
+.bp-remove:hover{color:var(--red)}
+.add-block-btn{display:flex;align-items:center;gap:4px;padding:4px 8px;border:0.5px dashed var(--bd2);font-size:10px;color:var(--t4);cursor:pointer;transition:all .15s}
+.add-block-btn:hover{border-color:var(--vi);color:var(--vl)}
+.add-block-btn i{font-size:12px}
+.diff-badge{font-size:8px;padding:1px 5px;margin-left:6px}
+.diff-plus{background:rgba(52,211,153,.15);color:var(--green)}
+.diff-minus{background:rgba(248,113,113,.13);color:var(--red)}
+.summary-panel{width:200px;flex-shrink:0;border-left:0.5px solid var(--bd);background:var(--n0);display:flex;flex-direction:column;overflow-y:auto}
+.sp-hdr{padding:10px 14px;border-bottom:0.5px solid var(--bd);font-size:11px;font-weight:500;color:var(--t2)}
+.sp-body{padding:10px 14px;display:flex;flex-direction:column;gap:12px}
+.sp-stat{display:flex;flex-direction:column;gap:2px}
+.sp-stat-val{font-size:20px;font-weight:500;color:var(--t1)}
+.sp-stat-lbl{font-size:10px;color:var(--t3)}
+.sp-divider{height:0.5px;background:var(--bd)}
+.sp-subj-list{display:flex;flex-direction:column;gap:5px}
+.sp-subj-row{display:flex;align-items:center;gap:6px;font-size:10px}
+.sp-subj-dot{width:6px;height:6px;flex-shrink:0}
+.sp-subj-name{flex:1;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sp-subj-count{color:var(--t2);font-weight:500}
+.sp-subj-diff{font-size:8px;padding:0 4px}
+.sp-actions{padding:10px 14px;border-top:0.5px solid var(--bd);margin-top:auto;display:flex;flex-direction:column;gap:5px}
+.warn-sm{font-size:9px;color:var(--amber);background:rgba(245,158,11,.1);padding:5px 7px;border-left:2px solid var(--amber);line-height:1.4;display:none}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="sidebar">
+    <div class="slogo">
+      <div class="slogo-icon">
+        <svg width="14" height="16" viewBox="0 0 14 16" fill="none">
+          <rect x="3" y="13" width="8" height="2.5" fill="rgba(255,255,255,.92)"/>
+          <rect x="4" y="9.5" width="6" height="2" fill="rgba(255,255,255,.7)"/>
+          <rect x="5" y="6.5" width="4" height="1.8" fill="rgba(255,255,255,.5)"/>
+          <rect x="5.5" y="4" width="3" height="1.5" fill="rgba(255,255,255,.33)"/>
+          <rect x="6" y="1.5" width="2" height="1.5" fill="rgba(255,255,255,.18)"/>
+        </svg>
+      </div>
+      <div><div class="slogo-text">OWN PATH</div><div class="slogo-sub">Parent Portal</div></div>
+    </div>
+    <nav class="snav">
+      <div class="ni-sa"><i class="ti ti-users"></i> Students</div>
+      <div class="nsec-lbl">Homeschool <i class="ti ti-chevron-down"></i></div>
+      <div class="ni" onclick="alert('Curriculum')"><i class="ti ti-book"></i> Curriculum</div>
+      <div class="ni act"><i class="ti ti-calendar-week"></i> Weekly Blocking</div>
+      <div class="ni" onclick="alert('Reports')"><i class="ti ti-chart-bar"></i> Reports</div>
+      <div class="nsec-lbl">Chores <i class="ti ti-chevron-right"></i></div>
+      <div class="nsec-lbl" style="color:var(--t4)">Lockdown <i class="ti ti-chevron-right"></i></div>
+    </nav>
+  </div>
+  <div class="main">
+    <div class="topbar">
+      <span class="tb-title">Weekly Blocking</span>
+      <div style="margin-left:auto;display:flex;gap:6px;">
+        <button class="btn sm" onclick="resetToDefault()"><i class="ti ti-refresh"></i> Reset to default</button>
+        <button class="btn sm pri" onclick="alert('Saved and published!')"><i class="ti ti-device-floppy"></i> Save &amp; publish</button>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="student-tabs" id="studentTabs"></div>
+      <div class="week-nav">
+        <div class="week-nav-btn" onclick="shiftWeeks(-1)"><i class="ti ti-chevron-left"></i></div>
+        <div class="week-chips" id="weekChips"></div>
+        <div class="week-nav-btn" onclick="shiftWeeks(1)"><i class="ti ti-chevron-right"></i></div>
+      </div>
+    </div>
+    <div class="body">
+      <div class="schedule-area" id="scheduleArea"></div>
+      <div class="summary-panel">
+        <div class="sp-hdr">This week</div>
+        <div class="sp-body" id="summaryBody"></div>
+        <div class="sp-actions">
+          <div class="warn-sm" id="warnSm"></div>
+          <button class="btn sm" style="justify-content:center;width:100%" onclick="alert('Copy to another week')"><i class="ti ti-copy"></i> Copy to another week</button>
+          <button class="btn sm" style="justify-content:center;width:100%;color:var(--vl)" onclick="saveAsDefault()"><i class="ti ti-star"></i> Save as default week</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+var BTYPES={s:{label:'STD',cls:'bp-s'},p:{label:'PROJ',cls:'bp-p'},pl:{label:'P.LED',cls:'bp-pl'},t:{label:'TEST',cls:'bp-t'}};
+var STUDENTS={
+  'Caleb':{color:'#7c6fd4',subjects:[
+    {id:'s1',name:'Math 7',color:'#7c6fd4',bpw:5,blen:60,blocks:[{id:'b1',type:'s',name:'Beast Academy problems',pinned:true},{id:'b2',type:'s',name:'Khan Academy review',pinned:true},{id:'b3',type:'p',name:'Fractions unit project',pinned:false},{id:'b4',type:'t',name:'Unit test — Ch. 4',pinned:false},{id:'b5',type:'s',name:'Worksheet set B',pinned:false},{id:'b6',type:'pl',name:'Parent-guided review',pinned:false}]},
+    {id:'s2',name:'Reading 7',color:'#0f9e7a',bpw:5,blen:30,blocks:[{id:'b7',type:'s',name:'Silent reading',pinned:true},{id:'b8',type:'s',name:'Vocabulary worksheet',pinned:true},{id:'b9',type:'pl',name:'Read-aloud session',pinned:false}]},
+    {id:'s3',name:'3D Design',color:'#d85a30',bpw:5,blen:30,blocks:[{id:'b10',type:'s',name:'CG Fast Track lesson',pinned:true},{id:'b11',type:'pl',name:'Parent sculpt review',pinned:false},{id:'b12',type:'p',name:'Low-poly scene project',pinned:true}]},
+    {id:'s4',name:'Spanish',color:'#ba7517',bpw:5,blen:30,blocks:[{id:'b13',type:'s',name:'Duolingo session',pinned:true},{id:'b14',type:'t',name:'Chapter vocab quiz',pinned:false}]},
+    {id:'s5',name:'Chess',color:'#185fa5',bpw:4,blen:15,blocks:[{id:'b15',type:'s',name:'Lichess daily puzzles',pinned:true},{id:'b16',type:'s',name:'Chess.com rapid game',pinned:true}]},
+    {id:'s6',name:'Writing',color:'#993556',bpw:4,blen:30,blocks:[{id:'b17',type:'s',name:'Most Dangerous Writing',pinned:true},{id:'b18',type:'p',name:'Short story draft',pinned:false}]}
+  ]},
+  'Evelyn':{color:'#0f9e7a',subjects:[
+    {id:'e1',name:'Math 5',color:'#7c6fd4',bpw:5,blen:60,blocks:[{id:'eb1',type:'s',name:'Beast Academy problems',pinned:true}]},
+    {id:'e2',name:'Reading 5',color:'#0f9e7a',bpw:5,blen:30,blocks:[{id:'eb2',type:'s',name:'Chapter book reading',pinned:true}]},
+    {id:'e3',name:'Chess',color:'#185fa5',bpw:4,blen:15,blocks:[{id:'eb3',type:'s',name:'ChessKid puzzle set',pinned:true}]},
+    {id:'e4',name:'Piano',color:'#3b8c11',bpw:5,blen:30,blocks:[{id:'eb4',type:'s',name:'Scale practice',pinned:true},{id:'eb5',type:'pl',name:'Lesson with Mom',pinned:true}]},
+    {id:'e5',name:'PE',color:'#993556',bpw:5,blen:30,blocks:[{id:'eb6',type:'s',name:'Trampoline session',pinned:true},{id:'eb7',type:'s',name:'Bike ride',pinned:false}]}
+  ]},
+  'Dummy 2':{color:'#ba7517',subjects:[
+    {id:'d1',name:'Test Course',color:'#7c6fd4',bpw:5,blen:5,blocks:[{id:'db1',type:'s',name:'Test block 1',pinned:true}]},
+    {id:'d2',name:'Writing',color:'#993556',bpw:4,blen:30,blocks:[{id:'db2',type:'s',name:'StoryBird session',pinned:true}]}
+  ]}
+};
+var WEEKS=[{key:'default',label:'Default',isDefault:true},{key:'w-jun15',label:'Jun 15–21'},{key:'w-jun22',label:'Jun 22–28',isCurrent:true},{key:'w-jun29',label:'Jun 29–Jul 5'},{key:'w-jul6',label:'Jul 6–12'},{key:'w-jul13',label:'Jul 13–19'},{key:'w-jul20',label:'Jul 20–26'}];
+var curSt='Caleb',curWeek='w-jun22',weekOffset=0,subjOpen={},assignments={},defaultAssignments={};
+function makeDefaultAssignment(st){var d={};STUDENTS[st].subjects.forEach(function(s){d[s.id]={};s.blocks.slice(0,s.bpw).forEach(function(b,i){d[s.id][b.id]=Math.min(1,s.bpw-i);});});return d;}
+function getAssignment(st,wk){if(!assignments[st])assignments[st]={};if(!assignments[st][wk]){assignments[st][wk]=JSON.parse(JSON.stringify(defaultAssignments[st]));}return assignments[st][wk];}
+function isModified(st,wk){if(wk==='default')return false;return JSON.stringify(defaultAssignments[st])!==JSON.stringify(getAssignment(st,wk));}
+function calcHrs(st,wk){var a=getAssignment(st,wk),total=0;STUDENTS[st].subjects.forEach(function(s){var cnt=0;Object.values(a[s.id]||{}).forEach(function(q){cnt+=q;});total+=cnt*s.blen;});return(total/60).toFixed(1);}
+function calcTotalBlocks(st,wk){var a=getAssignment(st,wk),total=0;STUDENTS[st].subjects.forEach(function(s){Object.values(a[s.id]||{}).forEach(function(q){total+=q;});});return total;}
+Object.keys(STUDENTS).forEach(function(st){defaultAssignments[st]=makeDefaultAssignment(st);});
+function renderStudentTabs(){var h='';Object.keys(STUDENTS).forEach(function(name){h+='<div class="stab'+(name===curSt?' act':'')+'" onclick="switchStudent(\''+name+'\')">'+'<span class="stab-name">'+name+'</span>'+'<span class="stab-hrs">~'+calcHrs(name,'default')+'h default</span>'+'</div>';});document.getElementById('studentTabs').innerHTML=h;}
+function renderWeekChips(){var visible=WEEKS.slice(weekOffset,weekOffset+5),h='';visible.forEach(function(w){var mod=isModified(curSt,w.key);var cls='wchip'+(w.isDefault?' default':'')+(w.key===curWeek?' act':'')+(mod?' modified':'');h+='<div class="'+cls+'" onclick="switchWeek(\''+w.key+'\')">'+(w.isCurrent?'<i class="ti ti-circle-dot" style="font-size:10px;margin-right:3px;color:var(--green)"></i>':'')+w.label+'</div>';});document.getElementById('weekChips').innerHTML=h;}
+function renderSchedule(){var a=getAssignment(curSt,curWeek),def=defaultAssignments[curSt],isDefault=curWeek==='default',modified=isModified(curSt,curWeek),h='';
+if(isDefault){h+='<div class="week-banner"><i class="ti ti-star"></i><span>Editing the <b>default week</b> — all unmodified weeks inherit this schedule.</span></div>';}
+else if(modified){h+='<div class="week-banner modified"><i class="ti ti-edit"></i><span>This week has been customized. <span style="text-decoration:underline;cursor:pointer" onclick="resetToDefault()">Reset to default</span></span></div>';}
+else{h+='<div class="week-banner"><i class="ti ti-check"></i><span>Using default schedule. Edit below to customize this week.</span></div>';}
+STUDENTS[curSt].subjects.forEach(function(s){var sa=a[s.id]||{},da=def[s.id]||{};var assigned=Object.entries(sa).filter(function(e){return e[1]>0;});var totalAssigned=assigned.reduce(function(acc,e){return acc+e[1];},0);var diff=totalAssigned-s.bpw;var countColor=diff>0?'var(--red)':diff===0?'var(--green)':'var(--amber)';var isOpen=subjOpen[s.id];
+h+='<div class="subj-row" style="border-left-color:'+s.color+'">'+'<div class="sr-hdr" onclick="toggleSubj(\''+s.id+'\')">'+'<div class="sr-dot" style="background:'+s.color+'"></div>'+'<span class="sr-name">'+s.name+'</span>'+'<span class="sr-meta">'+s.blen+'m/block</span>'+'<span class="sr-count" style="color:'+countColor+'">'+totalAssigned+'/'+s.bpw+'</span>'+(diff!==0?'<span class="diff-badge '+(diff>0?'diff-plus':'diff-minus')+'">'+(diff>0?'+':'')+diff+'</span>':'')+'<i class="ti ti-chevron-right sr-chev'+(isOpen?' open':'')+'"></i>'+'</div>'+'<div class="sr-body'+(isOpen?' open':'')+'">';
+h+='<div class="block-pill-row">';
+s.blocks.forEach(function(b){var q=sa[b.id]||0;if(q>0){var bt=BTYPES[b.type]||{label:'STD',cls:'bp-s'};h+='<div class="block-pill">'+'<span class="block-pill-type '+bt.cls+'">'+bt.label+'</span>'+b.name+'<div class="qty-inline"><div class="qi-btn" onclick="adjBlock(\''+s.id+'\',\''+b.id+'\',-1)">−</div><span class="qi-val">'+q+'</span><div class="qi-btn" onclick="adjBlock(\''+s.id+'\',\''+b.id+'\',1)">+</div></div>'+'<span class="bp-remove" onclick="adjBlock(\''+s.id+'\',\''+b.id+'\',-('+q+'))"><i class="ti ti-x"></i></span></div>';}});
+h+='</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">';
+s.blocks.filter(function(b){return!(sa[b.id]>0);}).forEach(function(b){var bt=BTYPES[b.type]||{label:'STD',cls:'bp-s'};h+='<div class="add-block-btn" onclick="adjBlock(\''+s.id+'\',\''+b.id+'\',1)"><i class="ti ti-plus"></i><span class="block-pill-type '+bt.cls+'" style="font-size:8px;padding:1px 4px;">'+bt.label+'</span>'+b.name+'</div>';});
+h+='</div></div></div>';});
+document.getElementById('scheduleArea').innerHTML=h;renderSummary();}
+function renderSummary(){var a=getAssignment(curSt,curWeek),totalBlocks=calcTotalBlocks(curSt,curWeek),totalHrs=calcHrs(curSt,curWeek),hasWarning=false;var h='<div class="sp-stat"><div class="sp-stat-val">'+totalBlocks+'</div><div class="sp-stat-lbl">blocks this week</div></div>'+'<div class="sp-stat"><div class="sp-stat-val">~'+totalHrs+'h</div><div class="sp-stat-lbl">estimated study time</div></div>'+'<div class="sp-divider"></div><div class="sp-subj-list">';STUDENTS[curSt].subjects.forEach(function(s){var sa=a[s.id]||{};var cnt=Object.values(sa).reduce(function(acc,q){return acc+q;},0);var diff=cnt-s.bpw;var color=diff>0?'var(--red)':diff===0?'var(--green)':'var(--amber)';if(diff!==0)hasWarning=true;h+='<div class="sp-subj-row"><div class="sp-subj-dot" style="background:'+s.color+'"></div><span class="sp-subj-name">'+s.name+'</span><span class="sp-subj-count" style="color:'+color+'">'+cnt+'</span>'+(diff!==0?'<span class="sp-subj-diff" style="color:'+color+'">'+(diff>0?'+':'')+diff+'</span>':'')+'</div>';});h+='</div>';document.getElementById('summaryBody').innerHTML=h;var w=document.getElementById('warnSm');if(hasWarning){w.style.display='block';w.textContent='Some subjects differ from the default week.';}else{w.style.display='none';}}
+function toggleSubj(sid){subjOpen[sid]=!subjOpen[sid];renderSchedule();}
+function adjBlock(sid,bid,delta){var a=getAssignment(curSt,curWeek);if(!a[sid])a[sid]={};a[sid][bid]=Math.max(0,(a[sid][bid]||0)+delta);renderSchedule();renderWeekChips();}
+function switchStudent(name){curSt=name;subjOpen={};renderStudentTabs();renderWeekChips();renderSchedule();}
+function switchWeek(key){curWeek=key;subjOpen={};renderWeekChips();renderSchedule();}
+function shiftWeeks(d){weekOffset=Math.max(0,Math.min(WEEKS.length-5,weekOffset+d));renderWeekChips();}
+function resetToDefault(){assignments[curSt][curWeek]=JSON.parse(JSON.stringify(defaultAssignments[curSt]));renderSchedule();renderWeekChips();}
+function saveAsDefault(){defaultAssignments[curSt]=JSON.parse(JSON.stringify(getAssignment(curSt,curWeek)));alert('Saved as default week for '+curSt+'!');renderSchedule();}
+renderStudentTabs();renderWeekChips();renderSchedule();
+</script>
+</body>
+</html>

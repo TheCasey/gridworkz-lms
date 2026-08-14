@@ -19,6 +19,7 @@ const Lockdown = () => {
   const lockdownFeature = resolvedDashboardFeaturesById?.lockdown || null;
   const isLockedModule = Boolean(lockdownFeature?.isLocked);
   const settingsPath = `/dashboard/${dashboardFeaturesById.settings.path}`;
+  const launchPositioningLabel = isLockedModule ? 'Coming Soon Tier' : 'Launch Preview';
 
   return (
     <div className="p-8 space-y-6">
@@ -36,18 +37,18 @@ const Lockdown = () => {
               }}
             >
               {isLockedModule ? <Lock className="w-3.5 h-3.5" /> : <Shield className="w-3.5 h-3.5" />}
-              {isLockedModule ? 'Locked Module' : 'Premium Module'}
+              {launchPositioningLabel}
             </div>
             <h3
               className="mt-4 text-[24px] font-display"
               style={{ color: colors.charcoal, lineHeight: 1.05, letterSpacing: '-0.4px' }}
             >
-              Manage student-bound pairing, derived policy state, and off-hours access from one module.
+              Review student-bound pairing, current access, and Lockdown setup from one parent summary shell.
             </h3>
             <p className="mt-3 text-[14px] font-body" style={{ color: 'rgba(41,40,39,0.65)' }}>
-              The trusted Lockdown contract stays centered here: choose the student a device belongs to,
-              review the current published-plan-derived state, and manage approved off-hours resources
-              without falling back to raw prototype policy editing.
+              Choose the student first, scan the current schedule and allowed-right-now state, then open focused pairing,
+              resource, device, and advanced management surfaces without dropping back into a long inline policy console.
+              The route stays live for entitlement-aware setup while the broader Lockdown tier remains positioned as coming soon in the Core-first launch.
             </p>
             {isLockedModule ? (
               <div
@@ -58,7 +59,7 @@ const Lockdown = () => {
                   Locked State
                 </p>
                 <p className="mt-1.5 text-[13px] font-body" style={{ color: colors.charcoal }}>
-                  {lockdownAccess?.upgradeCopy || 'Upgrade to Lockdown to unlock student-bound pairing and Lockdown management.'}
+                  Lockdown stays visible here as the next tier beyond Core, but broad self-serve rollout is still coming soon. This shell keeps the live route visible without presenting it as a broadly launched module.
                 </p>
               </div>
             ) : null}
@@ -72,14 +73,14 @@ const Lockdown = () => {
               Account Summary
             </p>
             <p className="mt-2 text-[14px] font-body" style={{ color: colors.charcoal }}>
-              Settings remains the account-level surface for plan status, usage limits, and premium capability summaries while Lockdown handles student-bound device access.
+              Account Settings remains the account-level surface for plan status, usage limits, and premium capability summaries while Lockdown handles student-bound device access. Eligible households can still use the live route even while the broader tier stays in coming-soon positioning.
             </p>
             <Link
               to={settingsPath}
               className="mt-4 inline-flex items-center gap-2 text-[13px] font-label uppercase tracking-[0.16em]"
               style={{ color: colors.amethyst }}
             >
-              Open Settings
+              Open Account Settings
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>

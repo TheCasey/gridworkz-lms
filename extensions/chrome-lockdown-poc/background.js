@@ -4,16 +4,21 @@ import {
   SYNC_ALARM_NAME,
   SYNC_INTERVAL_MINUTES,
   buildUrlFilterForOrigin,
+  buildTrustedSyncFailureState,
   clearPairingSettings,
   findAllowedYoutubeChannel,
   getPairingSettings,
   getPolicy,
+  getSyncState,
+  getSystemAllowlistOrigins,
   isLegacyPairing,
   isPairingConfigured,
+  normalizeTrustedRecoveryMaterial,
   normalizeDevicePolicyEnvelope,
   normalizePolicy,
   normalizeTrustedEnrollmentMaterial,
   parsePairingCode,
+  parseRecoveryCode,
   setPairingSettings,
   setPolicy,
   setSyncState,
@@ -80,7 +85,11 @@ export function buildRules(policy) {
     return [];
   }
 
-  const allowRules = policy.allowed_origins
+  const allowOrigins = [
+    ...(Array.isArray(policy.allowed_origins) ? policy.allowed_origins : []),
+    ...getSystemAllowlistOrigins(policy.system_resources),
+  ];
+  const allowRules = Array.from(new Set(allowOrigins))
     .map((origin, index) => buildAllowRule(origin, index))
     .filter(Boolean);
 
@@ -91,12 +100,12 @@ async function updateBadge(policy) {
   if (policy.is_enabled) {
     await chrome.action.setBadgeText({ text: 'ON' });
     await chrome.action.setBadgeBackgroundColor({ color: '#714cb6' });
-    await chrome.action.setTitle({ title: 'GridWorkz Lockdown: blocking on' });
+    await chrome.action.setTitle({ title: 'Own Path Lockdown: blocking on' });
     return;
   }
 
   await chrome.action.setBadgeText({ text: '' });
-  await chrome.action.setTitle({ title: 'GridWorkz Lockdown: blocking off' });
+  await chrome.action.setTitle({ title: 'Own Path Lockdown: blocking off' });
 }
 
 export async function applyPolicy(policy) {
@@ -131,57 +140,166 @@ async function readJsonResponse(response) {
 function buildEnrollmentExchangeError(response, payload) {
   const errorCode = payload?.error?.code || '';
   const errorMessage = payload?.error?.message || '';
+  const buildError = (message, code) => {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+  };
 
   if (errorCode === 'enrollment_consumed') {
-    return new Error('This trusted enrollment code was already used. Generate a new code in the parent dashboard.');
+    return buildError(
+      'This trusted enrollment code was already used. Generate a new code in the parent dashboard.',
+      errorCode
+    );
   }
 
   if (errorCode === 'enrollment_expired') {
-    return new Error('This trusted enrollment code expired. Generate a new code in the parent dashboard.');
+    return buildError(
+      'This trusted enrollment code expired. Generate a new code in the parent dashboard.',
+      errorCode
+    );
   }
 
   if (errorCode === 'lockdown_entitlement_inactive') {
-    return new Error('The parent account no longer has active Lockdown browser-extension access.');
+    return buildError(
+      'The parent account no longer has active Lockdown browser-extension access.',
+      errorCode
+    );
   }
 
   if (errorCode === 'enrollment_revoked') {
-    return new Error('This trusted enrollment code was revoked. Generate a new code in the parent dashboard.');
+    return buildError(
+      'This trusted enrollment code was revoked. Generate a new code in the parent dashboard.',
+      errorCode
+    );
   }
 
   if (errorCode === 'invalid_enrollment_token') {
-    return new Error('The trusted enrollment code is invalid. Copy a fresh code from the parent dashboard.');
+    return buildError(
+      'The trusted enrollment code is invalid. Copy a fresh code from the parent dashboard.',
+      errorCode
+    );
   }
 
-  return new Error(errorMessage || `Trusted enrollment exchange failed with HTTP ${response.status}.`);
+  return buildError(
+    errorMessage || `Trusted enrollment exchange failed with HTTP ${response.status}.`,
+    errorCode || 'network_error'
+  );
 }
 
 function buildPolicyReadError(response, payload) {
   const errorCode = payload?.error?.code || '';
   const errorMessage = payload?.error?.message || '';
+  const buildError = (message, code) => {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+  };
 
   if (errorCode === 'invalid_device_credential') {
-    return new Error('The saved device credential is no longer valid. Pair this browser again with a trusted enrollment code.');
+    return buildError(
+      'The saved device credential is no longer valid. Pair this browser again with a trusted enrollment code.',
+      errorCode
+    );
   }
 
   if (errorCode === 'device_inactive') {
-    return new Error('The saved device credential is no longer active. Pair this browser again with a trusted enrollment code.');
+    return buildError(
+      'The saved device credential is no longer active. Pair this browser again with a trusted enrollment code.',
+      errorCode
+    );
+  }
+
+  if (errorCode === 'device_revoked') {
+    return buildError(
+      'The saved device credential was revoked in the parent dashboard. Pair this browser again with a trusted enrollment code.',
+      errorCode
+    );
   }
 
   if (errorCode === 'device_not_found') {
-    return new Error('The saved device record was not found. Pair this browser again with a trusted enrollment code.');
+    return buildError(
+      'The saved device record was not found. Pair this browser again with a trusted enrollment code.',
+      errorCode
+    );
   }
 
   if (errorCode === 'lockdown_entitlement_inactive') {
-    return new Error('The parent account no longer has active Lockdown browser-extension access.');
+    return buildError(
+      'The parent account no longer has active Lockdown browser-extension access.',
+      errorCode
+    );
   }
 
-  return new Error(errorMessage || `Secure policy sync failed with HTTP ${response.status}.`);
+  return buildError(
+    errorMessage || `Secure policy sync failed with HTTP ${response.status}.`,
+    errorCode || 'network_error'
+  );
+}
+
+function buildRecoveryValidationError(response, payload) {
+  const errorCode = payload?.error?.code || '';
+  const errorMessage = payload?.error?.message || '';
+  const buildError = (message, code) => {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+  };
+
+  if (errorCode === 'recovery_consumed') {
+    return buildError(
+      'This parent recovery code was already used. Generate a new code in the parent dashboard.',
+      errorCode
+    );
+  }
+
+  if (errorCode === 'recovery_expired') {
+    return buildError(
+      'This parent recovery code expired. Generate a new code in the parent dashboard.',
+      errorCode
+    );
+  }
+
+  if (errorCode === 'wrong_device' || errorCode === 'wrong_device_binding') {
+    return buildError(
+      'This parent recovery code was issued for a different student or device.',
+      errorCode
+    );
+  }
+
+  if (errorCode === 'invalid_recovery_token' || errorCode === 'recovery_not_found') {
+    return buildError(
+      'The parent recovery code is invalid. Copy a fresh code from the parent dashboard.',
+      errorCode
+    );
+  }
+
+  if (errorCode === 'invalid_device_credential' || errorCode === 'device_not_found') {
+    return buildError(
+      'The saved device credential does not match this recovery code.',
+      errorCode
+    );
+  }
+
+  return buildError(
+    errorMessage || `Parent recovery validation failed with HTTP ${response.status}.`,
+    errorCode || 'network_error'
+  );
 }
 
 function assertTrustedEnrollmentMaterial(enrollmentMaterial) {
   const normalized = normalizeTrustedEnrollmentMaterial(enrollmentMaterial);
   if (!normalized.enrollment_token || !normalized.exchange_url || !normalized.policy_url) {
     throw new Error('Paste a valid trusted enrollment code from the parent dashboard.');
+  }
+
+  return normalized;
+}
+
+function assertTrustedRecoveryMaterial(recoveryMaterial) {
+  const normalized = normalizeTrustedRecoveryMaterial(recoveryMaterial);
+  if (!normalized.recovery_token || !normalized.recovery_url || !normalized.device_id) {
+    throw new Error('Paste a valid parent recovery code from the parent dashboard.');
   }
 
   return normalized;
@@ -201,7 +319,7 @@ async function buildDeviceMetadata(deviceName = '') {
   const trimmedName = typeof deviceName === 'string' ? deviceName.trim() : '';
 
   return {
-    device_name: trimmedName || `GridWorkz ${devicePlatform} browser`,
+    device_name: trimmedName || `Own Path ${devicePlatform} browser`,
     device_platform: devicePlatform,
     extension_version: extensionVersion,
   };
@@ -297,6 +415,47 @@ export async function fetchRemotePolicy(pairing) {
   return normalizeDevicePolicyEnvelope(payload || {});
 }
 
+export async function validateTrustedRecovery(recoveryMaterial, pairing) {
+  const trustedRecovery = assertTrustedRecoveryMaterial(recoveryMaterial);
+  const normalizedPairing = await getPairingSettings();
+  const effectivePairing = isPairingConfigured(pairing) ? pairing : normalizedPairing;
+
+  if (!isPairingConfigured(effectivePairing)) {
+    throw new Error('A trusted device pairing is required before parent recovery can clear it.');
+  }
+
+  if (
+    trustedRecovery.device_id !== effectivePairing.device_id
+    || (trustedRecovery.student_id && trustedRecovery.student_id !== effectivePairing.student_id)
+  ) {
+    throw new Error('This parent recovery code was issued for a different student or device.');
+  }
+
+  const response = await fetch(trustedRecovery.recovery_url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${effectivePairing.device_credential}`,
+    },
+    cache: 'no-store',
+    body: JSON.stringify({
+      recovery_token: trustedRecovery.recovery_token,
+      device_credential: effectivePairing.device_credential,
+    }),
+  });
+
+  const payload = await readJsonResponse(response);
+  if (!response.ok) {
+    throw buildRecoveryValidationError(response, payload);
+  }
+
+  if (payload?.status !== 'recovered' || payload?.device_id !== effectivePairing.device_id) {
+    throw new Error('Parent recovery validation returned an unexpected device response.');
+  }
+
+  return payload;
+}
+
 export async function pairTrustedEnrollment(enrollmentMaterial, deviceName = '') {
   const trustedEnrollment = assertTrustedEnrollmentMaterial(enrollmentMaterial);
 
@@ -354,11 +513,27 @@ async function setUnpairedSyncState() {
   });
 }
 
+async function setRecoveryUnpairedSyncState(pairing) {
+  await setSyncState({
+    status: 'recovery_unpaired',
+    last_attempt_at: new Date().toISOString(),
+    last_error: 'Parent recovery cleared the local device pairing. Cached enforcement stays local until this browser is paired again.',
+    using_cached_policy: true,
+    remote_policy_state: 'stale_cached_policy',
+    binding_status: '',
+    binding_error: '',
+    student_id: pairing?.student_id || '',
+    source_policy_kind: pairing?.source_policy_kind || '',
+    fetched_at: null,
+    device_id: pairing?.device_id || '',
+  });
+}
+
 async function setMigrationRequiredSyncState(pairing) {
   await setSyncState({
     status: 'migration_required',
     last_attempt_at: new Date().toISOString(),
-    last_error: 'Legacy PoC pairing detected. Pair this browser again with a trusted enrollment code.',
+    last_error: 'An older pairing format is saved here. Pair this browser again with a trusted enrollment code.',
     using_cached_policy: true,
     remote_policy_updated_at: null,
     remote_policy_state: '',
@@ -397,22 +572,56 @@ export async function syncRemotePolicy(reason = 'manual') {
     await persistRemotePolicyEnvelope(remotePolicy);
     return { status: 'synced', reason };
   } catch (error) {
-    await applyCachedPolicy();
+    const currentSyncState = await getSyncState();
+    const failureState = buildTrustedSyncFailureState({
+      currentSyncState,
+      errorCode: error?.code || '',
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+
+    if (failureState.using_cached_policy) {
+      await applyCachedPolicy();
+    }
+
     await setSyncState({
-      status: 'error',
-      last_error: error instanceof Error ? error.message : String(error),
-      using_cached_policy: true,
+      last_attempt_at: new Date().toISOString(),
+      ...failureState,
     });
 
     return {
-      status: 'error',
+      status: failureState.status,
       reason,
-      error: error instanceof Error ? error.message : String(error),
+      error: failureState.last_error,
+      using_cached_policy: failureState.using_cached_policy,
     };
   }
 }
 
-export async function clearTrustedPairing() {
+export async function clearTrustedPairing({ recoveryCode = '' } = {}) {
+  const pairing = await getPairingSettings();
+
+  if (isPairingConfigured(pairing)) {
+    const recoveryMaterial = parseRecoveryCode(recoveryCode);
+    if (!recoveryMaterial) {
+      throw new Error('Parent recovery code required before a paired device can clear local pairing.');
+    }
+
+    await validateTrustedRecovery(recoveryMaterial, pairing);
+
+    const cachedPolicy = await getPolicy();
+    if (!cachedPolicy.is_enabled) {
+      await setPolicy({
+        ...cachedPolicy,
+        is_enabled: true,
+      }, { touchUpdatedAt: false });
+    }
+
+    await clearPairingSettings();
+    await setRecoveryUnpairedSyncState(pairing);
+    await applyCachedPolicy();
+    return { status: 'recovery_unpaired' };
+  }
+
   await clearPairingSettings();
   await setUnpairedSyncState();
   return { status: 'unpaired' };
@@ -518,7 +727,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === 'lockdown:clear-pairing') {
-    void clearTrustedPairing()
+    void clearTrustedPairing({ recoveryCode: message.recoveryCode })
       .then(sendResponse)
       .catch((error) => {
         sendResponse({
@@ -562,8 +771,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   void (async () => {
     try {
       const policy = await getPolicy();
+      const syncState = await getSyncState();
       if (!policy.is_enabled) {
-        sendResponse({ status: 'disabled' });
+        sendResponse({ status: 'disabled', policy, syncState });
         return;
       }
 
@@ -575,7 +785,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       const creator = await resolveYoutubePageContext(tabId);
       if (!creator?.channelId) {
-        sendResponse({ status: 'pending', creator });
+        sendResponse({ status: 'pending', creator, policy, syncState });
         return;
       }
 
@@ -584,6 +794,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         status: allowedChannel ? 'allowed' : 'blocked',
         creator,
         allowedChannel,
+        policy,
+        syncState,
       });
     } catch (error) {
       console.error('Failed to resolve YouTube creator access:', error);

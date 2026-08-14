@@ -9,6 +9,9 @@ service cloud.firestore {
     function isOwner(parentId) {
       return isAuth() && request.auth.uid == parentId;
     }
+    function isOwnerResource() {
+      return isAuth() && resource != null && resource.data.parent_id == request.auth.uid;
+    }
     function entitlementDoc(parentId) {
       return exists(/databases/$(database)/documents/accountEntitlements/$(parentId))
         ? get(/databases/$(database)/documents/accountEntitlements/$(parentId)).data
@@ -198,8 +201,80 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /lockdownRecoverySessions/{sessionId} {
+      allow read, write: if false;
+    }
+
     match /lockdownDevices/{deviceId} {
       allow read, write: if false;
+    }
+
+    match /lockdownResourceLibrary/{resourceId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+
+    // Chores, routines, allowance, points, and rewards are served through
+    // trusted callables so public student portal reads cannot enumerate a
+    // household's private chore/reward state.
+    match /choreSettings/{parentId} {
+      allow read: if isOwner(parentId);
+      allow write: if false;
+    }
+
+    match /rewardSettings/{parentId} {
+      allow read: if isOwner(parentId);
+      allow write: if false;
+    }
+
+    match /routineTemplates/{routineTemplateId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+
+    match /routineCompletions/{routineCompletionId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+
+    match /choreDefinitions/{choreDefinitionId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+
+    match /choreClaims/{choreClaimId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+
+    match /choreCompletions/{choreCompletionId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+
+    match /allowancePeriods/{allowancePeriodId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+
+    match /pointLedgerEntries/{pointLedgerEntryId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+
+    match /studentPointWallets/{studentPointWalletId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+
+    match /rewardCatalogItems/{rewardCatalogItemId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+
+    match /rewardRedemptions/{rewardRedemptionId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
     }
 
     // Daily logs remain parent-authenticated until a narrower trusted path exists.

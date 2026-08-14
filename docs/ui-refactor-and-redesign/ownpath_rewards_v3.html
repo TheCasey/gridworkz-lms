@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--n0:#181828;--n1:#1f1f32;--n2:#26263c;--n3:#2e2e48;--n4:#383858;--vi:#7c6fd4;--vl:#b8adff;--vf:rgba(124,111,212,0.14);--bd:rgba(255,255,255,0.08);--bd2:rgba(255,255,255,0.14);--t1:#eeeaf8;--t2:#c4bedc;--t3:#8f8aaa;--t4:#585674;--amber:#f59e0b;--green:#34d399;--red:#f87171;--blue:#60a5fa;}
+body{background:var(--n1);color:var(--t1);font-family:system-ui,sans-serif;margin:0}
+.shell{display:flex;flex-direction:column;height:600px;overflow:hidden;border:0.5px solid var(--bd2)}
+.topbar{height:50px;background:var(--n0);border-bottom:0.5px solid var(--bd);display:flex;align-items:center;padding:0 16px;gap:8px;flex-shrink:0}
+.tb-title{font-size:14px;font-weight:500;color:var(--t1);flex:1}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;font-size:11px;cursor:pointer;border:0.5px solid var(--bd2);background:transparent;color:var(--t2);transition:all .15s}
+.btn:hover{background:var(--n3);color:var(--t1)}
+.btn.pri{background:var(--vi);color:#fff;border-color:var(--vi)}
+.btn.pri:hover{background:#6c60c0}
+.btn.sm{padding:3px 8px;font-size:10px}
+.btn.green{border-color:rgba(52,211,153,.4);color:var(--green);background:rgba(52,211,153,.08)}
+.btn.green:hover{background:rgba(52,211,153,.18)}
+.btn.red{border-color:rgba(248,113,113,.3);color:var(--red);background:rgba(248,113,113,.07)}
+.btn.red:hover{background:rgba(248,113,113,.15)}
+.btn i{font-size:12px}
+/* Top tabs */
+.top-tabs{background:var(--n0);border-bottom:0.5px solid var(--bd);display:flex;padding:0 16px;flex-shrink:0}
+.ttab{padding:8px 14px;font-size:11px;cursor:pointer;color:var(--t3);border-bottom:2px solid transparent;transition:all .15s;display:flex;align-items:center;gap:5px}
+.ttab:hover{color:var(--t2)}
+.ttab.act{color:var(--vl);border-bottom-color:var(--vi)}
+.ttab i{font-size:13px}
+.ttab-badge{font-size:8px;padding:1px 5px;background:var(--red);color:#fff;font-weight:500;margin-left:2px}
+/* Shared body */
+.tab-body{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.scroll-body{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+/* Store */
+.sec-hdr{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.sec-lbl{font-size:9px;color:var(--t4);letter-spacing:.08em;text-transform:uppercase;flex:1}
+.reward-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:1px;background:var(--bd)}
+.reward-card{background:var(--n2);padding:10px 11px;display:flex;flex-direction:column;gap:4px;border-left:3px solid transparent;position:relative}
+.reward-card.builtin{border-left-color:var(--vi)}
+.reward-card.builtin.disabled{border-left-color:var(--t4);opacity:.5}
+.reward-card.custom{border-left-color:var(--amber)}
+.rc-actions{position:absolute;top:6px;right:6px;display:flex;gap:1px;opacity:0;transition:opacity .15s}
+.reward-card:hover .rc-actions{opacity:1}
+.rc-act{width:20px;height:20px;display:flex;align-items:center;justify-content:center;color:var(--t4);cursor:pointer;transition:all .15s;background:var(--n3)}
+.rc-act:hover{color:var(--t1);background:var(--n4)}
+.rc-act.danger:hover{color:var(--red)}
+.rc-act i{font-size:11px}
+.rc-icon{font-size:19px;margin-bottom:1px}
+.rc-name{font-size:11px;font-weight:500;color:var(--t1);padding-right:44px;line-height:1.3}
+.rc-desc{font-size:10px;color:var(--t3);line-height:1.4}
+.rc-price-row{display:flex;align-items:center;gap:5px;margin-top:4px}
+.rc-pts-input{width:52px;background:var(--n3);border:0.5px solid var(--bd2);color:var(--vl);font-size:11px;font-weight:500;padding:3px 5px;text-align:right}
+.rc-pts-input:focus{outline:none;border-color:var(--vi)}
+.rc-pts-lbl{font-size:9px;color:var(--t4)}
+.rc-badges{display:flex;gap:3px;flex-wrap:wrap;margin-top:3px}
+.badge{font-size:8px;padding:2px 5px;font-weight:500;white-space:nowrap}
+.b-stock{background:rgba(96,165,250,.1);color:var(--blue)}
+.b-appr{background:rgba(245,158,11,.12);color:var(--amber)}
+.b-auto{background:rgba(52,211,153,.1);color:var(--green)}
+.b-disabled{background:var(--n4);color:var(--t4)}
+.rc-toggle-row{display:flex;align-items:center;gap:6px;margin-top:5px;padding-top:5px;border-top:0.5px solid var(--bd)}
+.rc-toggle-lbl{font-size:9px;color:var(--t4);flex:1}
+.toggle{width:28px;height:15px;background:var(--n4);border:0.5px solid var(--bd2);cursor:pointer;position:relative;transition:background .15s;flex-shrink:0}
+.toggle.on{background:var(--vi)}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:9px;height:9px;background:var(--t3);transition:all .15s}
+.toggle.on::after{left:15px;background:#fff}
+.add-card{background:var(--n2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer;border:0.5px dashed var(--bd2);min-height:100px;transition:all .15s;color:var(--t4)}
+.add-card:hover{border-color:var(--vi);color:var(--vl);background:var(--n3)}
+.add-card i{font-size:18px}
+.add-card span{font-size:10px}
+/* Students tab — split layout */
+.students-body{flex:1;display:flex;overflow:hidden}
+.stu-list{width:180px;flex-shrink:0;border-right:0.5px solid var(--bd);overflow-y:auto;background:var(--n0)}
+.stu-list-row{display:flex;align-items:center;gap:9px;padding:10px 12px;cursor:pointer;border-left:3px solid transparent;border-bottom:0.5px solid var(--bd);transition:background .15s}
+.stu-list-row:hover{background:var(--n2)}
+.stu-list-row.sel{background:var(--n2)}
+.slr-dot{width:7px;height:7px;flex-shrink:0}
+.slr-info{flex:1;min-width:0}
+.slr-name{font-size:11px;font-weight:500;color:var(--t1)}
+.slr-bal{font-size:10px;color:var(--vl);display:flex;align-items:center;gap:3px;margin-top:1px}
+.slr-pend{font-size:8px;background:var(--red);color:#fff;padding:1px 4px;margin-left:3px}
+.stu-detail{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.sd-topbar{display:flex;align-items:center;gap:8px;padding:9px 13px;border-bottom:0.5px solid var(--bd);background:var(--n0);flex-shrink:0}
+.sd-name{font-size:12px;font-weight:500;color:var(--t1);flex:1}
+.sd-bal-big{font-size:18px;font-weight:500;color:var(--vl)}
+.sd-bal-lbl{font-size:9px;color:var(--t4)}
+.sd-scroll{flex:1;overflow-y:auto;padding:11px 13px;display:flex;flex-direction:column;gap:9px}
+.sec-lbl2{font-size:9px;color:var(--t4);letter-spacing:.08em;text-transform:uppercase}
+/* Ledger */
+.ledger-entry{display:flex;align-items:center;gap:9px;padding:7px 10px;background:var(--n2);border-left:3px solid transparent;font-size:11px}
+.le-icon{font-size:13px;flex-shrink:0}
+.le-info{flex:1;min-width:0}
+.le-name{font-size:11px;color:var(--t2)}
+.le-date{font-size:9px;color:var(--t4);margin-top:1px}
+.le-pts{font-weight:500;flex-shrink:0;min-width:48px;text-align:right}
+.le-pts.pos{color:var(--green)}
+.le-pts.neg{color:var(--red)}
+/* Redemptions pending */
+.redemp-row{background:var(--n2);border-left:3px solid var(--amber);padding:8px 10px;display:flex;align-items:flex-start;gap:8px}
+.redemp-row.done{border-left-color:var(--green);opacity:.7}
+.rr-info{flex:1;min-width:0}
+.rr-name{font-size:11px;font-weight:500;color:var(--t1)}
+.rr-meta{font-size:10px;color:var(--t3);margin-top:1px}
+.rr-acts{display:flex;gap:3px;flex-shrink:0}
+/* adj row */
+.adj-row{display:flex;gap:6px;align-items:center;padding:9px 10px;background:var(--n2);border:0.5px solid var(--bd)}
+.adj-input{flex:1;background:var(--n3);border:0.5px solid var(--bd2);color:var(--t1);font-size:11px;padding:5px 8px}
+.adj-input::placeholder{color:var(--t4)}
+/* Point settings */
+.ps-table{background:var(--n2);border:0.5px solid var(--bd)}
+.ps-row{display:flex;align-items:center;gap:10px;padding:8px 11px;border-bottom:0.5px solid var(--bd);font-size:11px}
+.ps-row:last-child{border-bottom:none}
+.ps-label{flex:1;color:var(--t2)}
+.ps-sub{font-size:9px;color:var(--t4);margin-top:1px}
+.ps-input{width:62px;background:var(--n3);border:0.5px solid var(--bd2);color:var(--t1);font-size:11px;padding:4px 7px;text-align:right}
+.ps-input:focus{outline:none;border-color:var(--vi)}
+.ps-unit{font-size:10px;color:var(--t3);flex-shrink:0}
+.ps-formula{font-size:10px;color:var(--t3);background:var(--n3);padding:8px 11px;border-left:3px solid var(--vi);line-height:1.6}
+/* Modal */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:100}
+.modal-bg.open{display:flex}
+.modal{background:var(--n1);border:0.5px solid var(--bd2);padding:16px;width:300px;display:flex;flex-direction:column;gap:10px}
+.modal-title{font-size:13px;font-weight:500;color:var(--t1)}
+.mlbl{font-size:10px;color:var(--t3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px}
+.minput{background:var(--n3);border:0.5px solid var(--bd2);color:var(--t1);font-size:11px;padding:6px 8px;width:100%}
+.minput::placeholder{color:var(--t4)}
+.mrow2{display:flex;gap:8px}
+.mrow2>div{flex:1}
+.mtoggle-row{display:flex;align-items:center;gap:8px;padding:4px 0}
+.mtoggle-lbl{font-size:11px;color:var(--t2);flex:1}
+.mbtns{display:flex;gap:6px;justify-content:flex-end;margin-top:4px}
+</style></head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <span class="tb-title">Rewards</span>
+    <div style="margin-left:auto;display:flex;gap:6px" id="topActions"></div>
+  </div>
+  <div class="top-tabs" id="topTabs"></div>
+  <div class="tab-body" id="tabBody"></div>
+</div>
+
+<!-- Add reward modal -->
+<div class="modal-bg" id="rewardModal">
+  <div class="modal">
+    <div class="modal-title">Add reward</div>
+    <div><div class="mlbl">Name</div><input class="minput" id="rName" placeholder="e.g. Extra screen time"/></div>
+    <div><div class="mlbl">Description</div><input class="minput" id="rDesc" placeholder="e.g. 30 extra minutes"/></div>
+    <div class="mrow2">
+      <div><div class="mlbl">Point cost</div><input class="minput" id="rPts" type="number" placeholder="100"/></div>
+      <div><div class="mlbl">Stock (blank = ∞)</div><input class="minput" id="rStock" type="number" placeholder="∞"/></div>
+    </div>
+    <div class="mtoggle-row"><span class="mtoggle-lbl">Auto-approve on redemption</span><div class="toggle on" id="rAuto" onclick="this.classList.toggle('on')"></div></div>
+    <div class="mbtns">
+      <button class="btn sm" onclick="closeModal('rewardModal')">Cancel</button>
+      <button class="btn sm pri" onclick="addReward()">Add reward</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manual adjustment modal -->
+<div class="modal-bg" id="adjModal">
+  <div class="modal">
+    <div class="modal-title" id="adjTitle">Manual point adjustment</div>
+    <div style="font-size:10px;color:var(--t3)">Use a negative number to deduct points.</div>
+    <div><div class="mlbl">Points</div><input class="minput" id="adjPts" type="number" placeholder="e.g. 50 or -25"/></div>
+    <div><div class="mlbl">Reason</div><input class="minput" id="adjReason" placeholder="e.g. Bonus for great attitude"/></div>
+    <div class="mbtns">
+      <button class="btn sm" onclick="closeModal('adjModal')">Cancel</button>
+      <button class="btn sm pri" onclick="saveAdj()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var curTab='store', curStu='Caleb';
+
+var STUDENTS={
+  Caleb:{color:'#7c6fd4',balance:320,lifetime:1240,
+    ledger:[
+      {label:'Weekly chore: Vacuum living room',date:'Jun 24',pts:50,icon:'ti-list-check'},
+      {label:'School block: Beast Academy',date:'Jun 24',pts:30,icon:'ti-book'},
+      {label:'Full routine day',date:'Jun 23',pts:20,icon:'ti-sun'},
+      {label:'Weekly chore: Take out trash',date:'Jun 22',pts:50,icon:'ti-list-check'},
+      {label:'Streak bonus: 7-day routine',date:'Jun 22',pts:50,icon:'ti-flame'},
+      {label:'School block: Khan Academy',date:'Jun 21',pts:30,icon:'ti-book'},
+      {label:'Full routine day',date:'Jun 21',pts:20,icon:'ti-sun'},
+      {label:'Parent adjustment: Bonus for helping with dinner',date:'Jun 20',pts:25,icon:'ti-plus-minus'},
+      {label:'Redemption: Extra screen time',date:'Jun 19',pts:-75,icon:'ti-shopping-bag'},
+    ],
+    redemptions:[
+      {id:'r1',name:'Extra screen time',pts:75,status:'pending',date:'Jun 24'},
+      {id:'r2',name:'Twilight Theme',pts:200,status:'approved',date:'Jun 18'},
+    ]
+  },
+  Evelyn:{color:'#0f9e7a',balance:85,lifetime:640,
+    ledger:[
+      {label:'Weekly chore: Practice piano',date:'Jun 25',pts:50,icon:'ti-list-check'},
+      {label:'Full routine day',date:'Jun 25',pts:20,icon:'ti-sun'},
+      {label:'School block: Math 5',date:'Jun 24',pts:30,icon:'ti-book'},
+      {label:'Full routine day',date:'Jun 24',pts:20,icon:'ti-sun'},
+      {label:'Redemption: Sunrise Theme',date:'Jun 18',pts:-200,icon:'ti-shopping-bag'},
+    ],
+    redemptions:[
+      {id:'r4',name:'Sunrise Theme',pts:200,status:'pending',date:'Jun 25'},
+    ]
+  },
+  'Dummy 2':{color:'#ba7517',balance:510,lifetime:510,
+    ledger:[
+      {label:'Weekly chore: Wipe counters',date:'Jun 23',pts:25,icon:'ti-list-check'},
+      {label:'Full routine day',date:'Jun 22',pts:20,icon:'ti-sun'},
+    ],
+    redemptions:[]
+  }
+};
+
+var BUILTIN_REWARDS=[
+  {id:'bi1',icon:'🌅',name:'Sunrise Theme',desc:'Warm orange & gold accent theme',pts:200,category:'theme',enabled:true},
+  {id:'bi2',icon:'🌙',name:'Twilight Theme',desc:'Deep purple & indigo accent theme',pts:200,category:'theme',enabled:true},
+  {id:'bi3',icon:'🐉',name:'Dragon Avatar',desc:'Animated dragon profile badge',pts:150,category:'avatar',enabled:true},
+  {id:'bi4',icon:'⭐',name:'Gold Star Badge',desc:'Permanent achievement badge',pts:100,category:'badge',enabled:true},
+  {id:'bi5',icon:'🌊',name:'Ocean Theme',desc:'Cool blue & teal accent theme',pts:200,category:'theme',enabled:false},
+];
+var CUSTOM_REWARDS=[
+  {id:'c1',icon:'🎮',name:'Extra screen time',desc:'30 extra minutes of screen time',pts:75,stock:null,autoApprove:false},
+  {id:'c2',icon:'🍕',name:'Choose dinner',desc:'Pick the family dinner for one night',pts:120,stock:2,autoApprove:false},
+  {id:'c3',icon:'🎬',name:'Movie night pick',desc:'Choose the family movie',pts:100,stock:null,autoApprove:true},
+];
+var POINT_SETTINGS={weeklyChore:50,monthlyChore:80,schoolBlock:30,routineDay:20,routineDayEnabled:true,streakBonus7:50,streakBonus30:200};
+
+function totalPending(){
+  return Object.keys(STUDENTS).reduce(function(a,st){
+    return a+(STUDENTS[st].redemptions||[]).filter(function(r){return r.status==='pending';}).length;
+  },0);
+}
+
+function renderTopTabs(){
+  var pend=totalPending();
+  var tabs=[
+    {id:'store',icon:'ti-shopping-bag',label:'Reward Store'},
+    {id:'students',icon:'ti-users',label:'Students & Points',badge:pend},
+    {id:'settings',icon:'ti-adjustments',label:'Point Settings'},
+  ];
+  var acts='';
+  if(curTab==='store') acts='<button class="btn sm pri" onclick="openModal(\'rewardModal\')"><i class="ti ti-plus"></i> Add reward</button>';
+  document.getElementById('topActions').innerHTML=acts;
+  var h='';
+  tabs.forEach(function(t){
+    h+='<div class="ttab'+(curTab===t.id?' act':'')+'" onclick="switchTab(\''+t.id+'\')">'
+      +'<i class="ti '+t.icon+'"></i>'+t.label
+      +(t.badge?'<span class="ttab-badge">'+t.badge+'</span>':'')+'</div>';
+  });
+  document.getElementById('topTabs').innerHTML=h;
+}
+
+function renderStore(){
+  var h='<div class="scroll-body">'
+    +'<div class="sec-hdr"><span class="sec-lbl">Built-in rewards</span><span style="font-size:9px;color:var(--t4)">Hover to edit price or toggle</span></div>'
+    +'<div class="reward-grid">';
+  BUILTIN_REWARDS.forEach(function(r){
+    h+='<div class="reward-card builtin'+(r.enabled?'':' disabled')+'">'
+      +'<div class="rc-actions"><div class="rc-act" title="Edit" onclick="alert(\'Edit: '+r.name+'\')"><i class="ti ti-edit"></i></div></div>'
+      +'<div class="rc-icon">'+r.icon+'</div>'
+      +'<div class="rc-name">'+r.name+'</div>'
+      +'<div class="rc-desc">'+r.desc+'</div>'
+      +'<div class="rc-price-row"><input class="rc-pts-input" type="number" value="'+r.pts+'" onchange="BUILTIN_REWARDS.find(function(x){return x.id===\''+r.id+'\'}).pts=+this.value" onclick="event.stopPropagation()"/><span class="rc-pts-lbl">pts</span></div>'
+      +'<div class="rc-badges">'+(r.enabled?'':'<span class="badge b-disabled">DISABLED</span>')+'</div>'
+      +'<div class="rc-toggle-row"><span class="rc-toggle-lbl">'+(r.enabled?'Enabled':'Disabled')+'</span>'
+      +'<div class="toggle'+(r.enabled?' on':'')+'" onclick="BUILTIN_REWARDS.find(function(x){return x.id===\''+r.id+'\'}).enabled=!BUILTIN_REWARDS.find(function(x){return x.id===\''+r.id+'\'}).enabled;renderTab()"></div>'
+      +'</div></div>';
+  });
+  h+='</div>'
+    +'<div class="sec-hdr"><span class="sec-lbl">Parent-created rewards</span></div>'
+    +'<div class="reward-grid">';
+  CUSTOM_REWARDS.forEach(function(r){
+    h+='<div class="reward-card custom">'
+      +'<div class="rc-actions">'
+      +'<div class="rc-act" onclick="alert(\'Edit: '+r.name+'\')"><i class="ti ti-edit"></i></div>'
+      +'<div class="rc-act danger" onclick="CUSTOM_REWARDS=CUSTOM_REWARDS.filter(function(x){return x.id!==\''+r.id+'\'});renderTab()"><i class="ti ti-trash"></i></div>'
+      +'</div>'
+      +'<div class="rc-icon">'+r.icon+'</div>'
+      +'<div class="rc-name">'+r.name+'</div>'
+      +'<div class="rc-desc">'+r.desc+'</div>'
+      +'<div class="rc-price-row"><input class="rc-pts-input" style="color:var(--amber)" type="number" value="'+r.pts+'" onchange="CUSTOM_REWARDS.find(function(x){return x.id===\''+r.id+'\'}).pts=+this.value" onclick="event.stopPropagation()"/><span class="rc-pts-lbl">pts</span></div>'
+      +'<div class="rc-badges">'
+      +(r.stock!==null?'<span class="badge b-stock">'+r.stock+' left</span>':'')
+      +(r.autoApprove?'<span class="badge b-auto">auto-approve</span>':'<span class="badge b-appr">approval req</span>')
+      +'</div></div>';
+  });
+  h+='<div class="add-card" onclick="openModal(\'rewardModal\')"><i class="ti ti-plus"></i><span>Add reward</span></div>'
+    +'</div></div>';
+  document.getElementById('tabBody').innerHTML=h;
+}
+
+function renderStudents(){
+  var stuNames=Object.keys(STUDENTS);
+  var h='<div class="students-body">'
+    // left list
+    +'<div class="stu-list">';
+  stuNames.forEach(function(name){
+    var s=STUDENTS[name];
+    var pend=(s.redemptions||[]).filter(function(r){return r.status==='pending';}).length;
+    h+='<div class="stu-list-row'+(name===curStu?' sel':'')+'" style="border-left-color:'+(name===curStu?s.color:'transparent')+'" onclick="curStu=\''+name+'\';renderTab()">'
+      +'<div class="slr-dot" style="background:'+s.color+'"></div>'
+      +'<div class="slr-info">'
+      +'<div class="slr-name">'+name+(pend>0?'<span class="slr-pend">'+pend+'</span>':'')+'</div>'
+      +'<div class="slr-bal"><i class="ti ti-star-filled" style="font-size:9px"></i>'+s.balance+' pts</div>'
+      +'</div></div>';
+  });
+  h+='</div>'
+    // right detail
+    +'<div class="stu-detail">';
+  var s=STUDENTS[curStu];
+  var pending=(s.redemptions||[]).filter(function(r){return r.status==='pending';});
+  var approved=(s.redemptions||[]).filter(function(r){return r.status==='approved';});
+  h+='<div class="sd-topbar">'
+    +'<div style="display:flex;align-items:center;gap:7px;flex:1"><div style="width:8px;height:8px;background:'+s.color+'"></div><span class="sd-name">'+curStu+'</span></div>'
+    +'<div style="text-align:right"><div class="sd-bal-big">★ '+s.balance+'</div><div class="sd-bal-lbl">'+s.lifetime+' lifetime pts</div></div>'
+    +'<button class="btn sm" style="margin-left:10px" onclick="openAdj()"><i class="ti ti-plus-minus"></i> Adjust</button>'
+    +'</div>'
+    +'<div class="sd-scroll">';
+
+  if(pending.length>0){
+    h+='<div class="sec-lbl2" style="color:var(--amber)">Pending approval ('+pending.length+')</div>';
+    pending.forEach(function(r){
+      h+='<div class="redemp-row">'
+        +'<div class="rr-info"><div class="rr-name">'+r.name+'</div><div class="rr-meta">Requested '+r.date+' · <span style="color:var(--vl)">★ '+r.pts+' pts</span></div></div>'
+        +'<div class="rr-acts">'
+        +'<button class="btn sm green" onclick="approveRedemption(\''+r.id+'\')"><i class="ti ti-check"></i> Approve</button>'
+        +'<button class="btn sm red" onclick="rejectRedemption(\''+r.id+'\')"><i class="ti ti-x"></i></button>'
+        +'</div></div>';
+    });
+  }
+
+  h+='<div class="sec-lbl2">Point history</div>';
+  s.ledger.forEach(function(e){
+    var isPos=e.pts>0;
+    h+='<div class="ledger-entry" style="border-left-color:'+(isPos?'var(--green)':'var(--red)')+'">'
+      +'<i class="ti '+e.icon+' le-icon" style="color:'+(isPos?'var(--green)':'var(--red)')+'"></i>'
+      +'<div class="le-info"><div class="le-name">'+e.label+'</div><div class="le-date">'+e.date+'</div></div>'
+      +'<div class="le-pts '+(isPos?'pos':'neg')+'">'+(isPos?'+':'')+e.pts+'</div>'
+      +'</div>';
+  });
+
+  if(approved.length>0){
+    h+='<div class="sec-lbl2">Past redemptions</div>';
+    approved.forEach(function(r){
+      h+='<div class="redemp-row done">'
+        +'<div class="rr-info"><div class="rr-name">'+r.name+'</div><div class="rr-meta">'+r.date+' · ★ '+r.pts+' pts</div></div>'
+        +'<span style="font-size:8px;padding:2px 6px;background:rgba(52,211,153,.13);color:var(--green)">FULFILLED</span>'
+        +'</div>';
+    });
+  }
+
+  h+='</div></div></div>';
+  document.getElementById('tabBody').innerHTML=h;
+}
+
+function renderPointSettings(){
+  var ps=POINT_SETTINGS;
+  var h='<div class="scroll-body">'
+    +'<div class="sec-hdr"><span class="sec-lbl">Points earned per action</span></div>'
+    +'<div class="ps-table">'
+    +'<div class="ps-row"><div class="ps-label">Weekly chore<div class="ps-sub">Standard pool chore completed</div></div><input class="ps-input" type="number" value="'+ps.weeklyChore+'" onchange="POINT_SETTINGS.weeklyChore=+this.value;updateFormula()"/><span class="ps-unit">pts</span></div>'
+    +'<div class="ps-row"><div class="ps-label">Monthly chore<div class="ps-sub">Standard pool chore completed</div></div><input class="ps-input" type="number" value="'+ps.monthlyChore+'" onchange="POINT_SETTINGS.monthlyChore=+this.value;updateFormula()"/><span class="ps-unit">pts</span></div>'
+    +'<div class="ps-row"><div class="ps-label">School block<div class="ps-sub">Curriculum assignment completed</div></div><input class="ps-input" type="number" value="'+ps.schoolBlock+'" onchange="POINT_SETTINGS.schoolBlock=+this.value;updateFormula()"/><span class="ps-unit">pts</span></div>'
+    +'<div class="ps-row"><div class="ps-label">Full routine day<div class="ps-sub">All routines completed for the day</div></div>'
+    +'<div style="display:flex;align-items:center;gap:7px;flex:1"><input class="ps-input" type="number" value="'+ps.routineDay+'" onchange="POINT_SETTINGS.routineDay=+this.value;updateFormula()" style="'+(ps.routineDayEnabled?'':'opacity:.35')+'"/>'
+    +'<div class="toggle'+(ps.routineDayEnabled?' on':'')+'" onclick="POINT_SETTINGS.routineDayEnabled=!POINT_SETTINGS.routineDayEnabled;renderTab()"></div></div>'
+    +'<span class="ps-unit">pts</span></div>'
+    +'</div>'
+    +'<div class="sec-hdr"><span class="sec-lbl">Streak bonuses</span></div>'
+    +'<div class="ps-table">'
+    +'<div class="ps-row"><div class="ps-label">7-day routine streak<div class="ps-sub">7 consecutive full routine days</div></div><input class="ps-input" type="number" value="'+ps.streakBonus7+'" onchange="POINT_SETTINGS.streakBonus7=+this.value"/><span class="ps-unit">pts</span></div>'
+    +'<div class="ps-row"><div class="ps-label">30-day routine streak<div class="ps-sub">30 consecutive full routine days</div></div><input class="ps-input" type="number" value="'+ps.streakBonus30+'" onchange="POINT_SETTINGS.streakBonus30=+this.value"/><span class="ps-unit">pts</span></div>'
+    +'</div>'
+    +'<div class="sec-hdr"><span class="sec-lbl">Suggested baseline</span></div>'
+    +'<div class="ps-formula" id="psFormula"></div>'
+    +'</div>';
+  document.getElementById('tabBody').innerHTML=h;
+  updateFormula();
+}
+
+function updateFormula(){
+  var ps=POINT_SETTINGS,el=document.getElementById('psFormula');
+  if(!el)return;
+  var est=(ps.weeklyChore*3)+(ps.schoolBlock*5*6)+(ps.routineDayEnabled?ps.routineDay*5:0);
+  el.innerHTML='At current settings, an active student doing <b style="color:var(--t2)">3 weekly chores</b>, <b style="color:var(--t2)">5 school blocks/day</b>'+(ps.routineDayEnabled?', and <b style="color:var(--t2)">full routines daily</b>':'')+' earns roughly <b style="color:var(--vl)">'+est+' pts/week</b>.';
+}
+
+function switchTab(tab){curTab=tab;renderAll();}
+
+function approveRedemption(id){
+  var r=findRedemption(id);
+  if(r){r.status='approved';}
+  renderAll();
+}
+function rejectRedemption(id){
+  var r=findRedemption(id);
+  if(r){r.status='rejected';STUDENTS[curStu].balance+=r.pts;}
+  renderAll();
+}
+function findRedemption(id){
+  var found=null;
+  Object.keys(STUDENTS).forEach(function(st){(STUDENTS[st].redemptions||[]).forEach(function(r){if(r.id===id)found=r;});});
+  return found;
+}
+function addReward(){
+  var name=document.getElementById('rName').value.trim();
+  if(!name)return;
+  CUSTOM_REWARDS.push({id:'c'+Date.now(),icon:'🎁',name:name,desc:document.getElementById('rDesc').value.trim(),pts:parseInt(document.getElementById('rPts').value)||50,stock:document.getElementById('rStock').value?parseInt(document.getElementById('rStock').value):null,autoApprove:document.getElementById('rAuto').classList.contains('on')});
+  closeModal('rewardModal');renderTab();
+}
+function openAdj(){
+  document.getElementById('adjTitle').textContent='Adjust points — '+curStu;
+  document.getElementById('adjPts').value='';document.getElementById('adjReason').value='';
+  openModal('adjModal');
+}
+function saveAdj(){
+  var pts=parseInt(document.getElementById('adjPts').value);
+  var reason=document.getElementById('adjReason').value.trim()||'Parent adjustment';
+  if(!isNaN(pts)){
+    STUDENTS[curStu].balance=Math.max(0,STUDENTS[curStu].balance+pts);
+    if(pts>0)STUDENTS[curStu].lifetime+=pts;
+    STUDENTS[curStu].ledger.unshift({label:reason,date:'Jun 26',pts:pts,icon:'ti-plus-minus'});
+  }
+  closeModal('adjModal');renderAll();
+}
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+document.querySelectorAll('.modal-bg').forEach(function(m){m.addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');});});
+function renderTab(){if(curTab==='store')renderStore();else if(curTab==='students')renderStudents();else renderPointSettings();}
+function renderAll(){renderTopTabs();renderTab();}
+renderAll();
+</script>
+</body></html>

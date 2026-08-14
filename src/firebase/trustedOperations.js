@@ -35,6 +35,86 @@ const issueLockdownEnrollmentCallable = httpsCallable(
   functions,
   TrustedFunctionNames.ISSUE_LOCKDOWN_ENROLLMENT
 );
+const issueLockdownRecoveryCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.ISSUE_LOCKDOWN_RECOVERY
+);
+const listLockdownDevicesCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.LIST_LOCKDOWN_DEVICES
+);
+const revokeLockdownDeviceCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.REVOKE_LOCKDOWN_DEVICE
+);
+const upsertLockdownResourceLibraryEntryCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.UPSERT_LOCKDOWN_RESOURCE_LIBRARY_ENTRY
+);
+const deleteLockdownResourceLibraryEntryCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.DELETE_LOCKDOWN_RESOURCE_LIBRARY_ENTRY
+);
+const upsertChoreSettingsCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.UPSERT_CHORE_SETTINGS
+);
+const upsertRoutineTemplateCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.UPSERT_ROUTINE_TEMPLATE
+);
+const upsertChoreDefinitionCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.UPSERT_CHORE_DEFINITION
+);
+const syncAllowanceLedgerCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.SYNC_ALLOWANCE_LEDGER
+);
+const upsertRewardSettingsCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.UPSERT_REWARD_SETTINGS
+);
+const adjustStudentPointsCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.ADJUST_STUDENT_POINTS
+);
+const upsertRewardCatalogItemCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.UPSERT_REWARD_CATALOG_ITEM
+);
+const requestRewardRedemptionCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.REQUEST_REWARD_REDEMPTION
+);
+const cancelRewardRedemptionCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.CANCEL_REWARD_REDEMPTION
+);
+const reviewRewardRedemptionCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.REVIEW_REWARD_REDEMPTION
+);
+const readStudentChoreStateCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.READ_STUDENT_CHORE_STATE
+);
+const claimChoreCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.CLAIM_CHORE
+);
+const completeChoreCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.COMPLETE_CHORE
+);
+const completeRoutineCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.COMPLETE_ROUTINE
+);
+const reviewChoreCompletionCallable = httpsCallable(
+  functions,
+  TrustedFunctionNames.REVIEW_CHORE_COMPLETION
+);
 
 export const createTrustedStudent = async (payload) => {
   const result = await createStudentCallable(payload);
@@ -78,5 +158,105 @@ export const clearTrustedEntitlementOverride = async (payload = {}) => {
 
 export const issueTrustedLockdownEnrollment = async (payload = {}) => {
   const result = await issueLockdownEnrollmentCallable(payload);
+  return result.data;
+};
+
+export const issueTrustedLockdownRecovery = async (payload = {}) => {
+  const result = await issueLockdownRecoveryCallable(payload);
+  return result.data;
+};
+
+export const listTrustedLockdownDevices = async (payload = {}) => {
+  const result = await listLockdownDevicesCallable(payload);
+  return result.data;
+};
+
+export const revokeTrustedLockdownDevice = async (payload = {}) => {
+  const result = await revokeLockdownDeviceCallable(payload);
+  return result.data;
+};
+
+export const upsertTrustedLockdownResourceLibraryEntry = async (payload = {}) => {
+  const result = await upsertLockdownResourceLibraryEntryCallable(payload);
+  return result.data;
+};
+
+export const deleteTrustedLockdownResourceLibraryEntry = async (payload = {}) => {
+  const result = await deleteLockdownResourceLibraryEntryCallable(payload);
+  return result.data;
+};
+
+export const upsertTrustedChoreSettings = async (payload = {}) => {
+  const result = await upsertChoreSettingsCallable(payload);
+  return result.data;
+};
+
+export const upsertTrustedRoutineTemplate = async (payload = {}) => {
+  const result = await upsertRoutineTemplateCallable(payload);
+  return result.data;
+};
+
+export const upsertTrustedChoreDefinition = async (payload = {}) => {
+  const result = await upsertChoreDefinitionCallable(payload);
+  return result.data;
+};
+
+export const syncTrustedAllowanceLedger = async (payload = {}) => {
+  const result = await syncAllowanceLedgerCallable(payload);
+  return result.data;
+};
+
+export const upsertTrustedRewardSettings = async (payload = {}) => {
+  const result = await upsertRewardSettingsCallable(payload);
+  return result.data;
+};
+
+export const adjustTrustedStudentPoints = async (payload = {}) => {
+  const result = await adjustStudentPointsCallable(payload);
+  return result.data;
+};
+
+export const upsertTrustedRewardCatalogItem = async (payload = {}) => {
+  const result = await upsertRewardCatalogItemCallable(payload);
+  return result.data;
+};
+
+export const requestTrustedRewardRedemption = async (payload = {}) => {
+  const result = await requestRewardRedemptionCallable(payload);
+  return result.data;
+};
+
+export const cancelTrustedRewardRedemption = async (payload = {}) => {
+  const result = await cancelRewardRedemptionCallable(payload);
+  return result.data;
+};
+
+export const reviewTrustedRewardRedemption = async (payload = {}) => {
+  const result = await reviewRewardRedemptionCallable(payload);
+  return result.data;
+};
+
+export const readTrustedStudentChoreState = async (payload = {}) => {
+  const result = await readStudentChoreStateCallable(payload);
+  return result.data;
+};
+
+export const claimTrustedChore = async (payload = {}) => {
+  const result = await claimChoreCallable(payload);
+  return result.data;
+};
+
+export const completeTrustedChore = async (payload = {}) => {
+  const result = await completeChoreCallable(payload);
+  return result.data;
+};
+
+export const completeTrustedRoutine = async (payload = {}) => {
+  const result = await completeRoutineCallable(payload);
+  return result.data;
+};
+
+export const reviewTrustedChoreCompletion = async (payload = {}) => {
+  const result = await reviewChoreCompletionCallable(payload);
   return result.data;
 };

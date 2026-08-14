@@ -32,6 +32,8 @@ For the narrower prototype sequence, see the [archived Lockdown PoC workflow](..
 
 Current-state behavior now lives in [../architecture.md](../architecture.md), [../features/parent-dashboard.md](../features/parent-dashboard.md), and [../features/student-portal.md](../features/student-portal.md). This spec stays in `docs/specs/` because kiosk mode and broader post-launch hardening are still future work.
 
+The production-facing behavior contract is now tracked separately in [lockdown-production-behavior-contract.md](lockdown-production-behavior-contract.md). Use that contract for parent promises, state behavior, launch scope, open decisions, and current implementation gaps.
+
 ## Relevant Repository Files
 
 Existing repo files that are likely to be involved in this work:
@@ -161,6 +163,7 @@ The launched browser-extension contract is:
 1. Follow-on scope only:
    - Kiosk mode is not part of the launched browser-extension runtime.
    - Reuse the same entitlement rail and trusted policy contract where it makes sense, but keep implementation and rollout planning separate from the browser-extension closeout.
+   - Include a future embedded student work launcher that can show published subjects or weekly blocks, let the student choose the active block, start or resume the work context, and show currently allowed resources from the same derived policy contract.
 
 ### Web Portal
 
@@ -184,7 +187,8 @@ The launched browser-extension contract is:
 2. Retire compatibility-only `lockdownPolicies/{parentId}` usage when legacy support is no longer needed.
 3. Continue broader security hardening for the public student portal, submissions, timer sessions, and related Firestore rules.
 4. Adapt Lockdown inputs as the weekly-plan and project model evolves.
-5. Decide whether future student-dashboard embedding or richer remote-control flows add enough value to justify added complexity.
+5. Plan the embedded subject or weekly-block viewer for kiosk mode and possibly a smaller extension popup/sidebar without creating a second curriculum source.
+6. Decide whether broader remote-control flows add enough value to justify added complexity.
 
 ## Product And Technical Questions
 

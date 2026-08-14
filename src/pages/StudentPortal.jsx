@@ -16,9 +16,16 @@ import {
 import useStudentAccessPolicy, { StudentAccessPolicyReasonCodes } from '../hooks/useStudentAccessPolicy';
 import useStudentPortalWeeklyPlan from '../hooks/useStudentPortalWeeklyPlan';
 import {
-  buildPublishedWeeklyPlanPortalSubjects,
-  buildPublishedWeeklyPlanPortalWorkItems,
-} from '../utils/weeklyPlanUtils';
+  getLockdownStateGuidance,
+  getRequestAccessGuidance,
+} from '../../extensions/chrome-lockdown-poc/guidance.js';
+import {
+  buildPublishedWeeklyPlanWorkLauncherContract,
+  buildWorkLauncherTimerSessionPayload,
+} from '../utils/workLauncherUtils';
+import useStudentChores from '../hooks/useStudentChores';
+import StudentChoresWorkspace from '../components/student/StudentChoresWorkspace';
+import StudentRewardStore from '../components/StudentRewardStore';
 
 const ALARM_SOUNDS = [
   { file: 'alarm-clock.mp3', label: 'Alarm Clock' },
@@ -83,6 +90,7 @@ const StudentPortal = () => {
   const alarmPrimedRef = useRef(false);
   const [pinAttempts, setPinAttempts] = useState(0);
   const [pinLockoutUntil, setPinLockoutUntil] = useState(null);
+  const [activeWorkspace, setActiveWorkspace] = useState('school');
   const oldSubjectUnsubRef = useRef(null);
   const completionNotifiedRef = useRef({});
   const previousTimersRef = useRef({});
@@ -102,16 +110,31 @@ const StudentPortal = () => {
     student,
     enabled: Boolean(student?.id && student?.parent_id),
   });
-  const hasPublishedWeeklyPlan = Boolean(publishedWeeklyPlan);
-  const publishedWorkItems = useMemo(() => buildPublishedWeeklyPlanPortalWorkItems({
+  const activeTimerSessions = useMemo(() => (
+    Object.entries(activeTimers).map(([subjectId, timer]) => ({
+      id: `${subjectId}_${timer?.blockIndex ?? 0}`,
+      subject_id: subjectId,
+      block_index: timer?.blockIndex ?? 0,
+      is_running: Boolean(timer?.isRunning),
+      status: timer?.isRunning ? 'active' : 'paused',
+      saved_at: timer?.savedAt ?? Date.now(),
+      updated_at: timer?.updatedAt ?? null,
+    })).filter((timerSession) => Boolean(timerSession.subject_id))
+  ), [activeTimers]);
+  const workLauncherContract = useMemo(() => buildPublishedWeeklyPlanWorkLauncherContract({
+    studentRecord: student,
     weeklyPlan: publishedWeeklyPlan,
     subjectsById: rawSubjectMap,
-  }), [publishedWeeklyPlan, rawSubjectMap]);
-  const portalSubjects = useMemo(() => (
-    hasPublishedWeeklyPlan
-      ? buildPublishedWeeklyPlanPortalSubjects(publishedWorkItems)
-      : subjects
-  ), [hasPublishedWeeklyPlan, publishedWorkItems, subjects]);
+    timerSessions: activeTimerSessions,
+    completedBlocks,
+    entitlementActive: true,
+    referenceDate: new Date(),
+  }), [activeTimerSessions, completedBlocks, publishedWeeklyPlan, rawSubjectMap, student]);
+  const hasPublishedWeeklyPlan = workLauncherContract.has_published_weekly_plan;
+  const publishedWorkItems = workLauncherContract.blocks;
+  const portalSubjects = workLauncherContract.bridge_subjects.length > 0
+    ? workLauncherContract.bridge_subjects
+    : subjects;
   const subjectMap = useMemo(
     () => Object.fromEntries(portalSubjects.map(subject => [subject.id, subject])),
     [portalSubjects]
@@ -123,8 +146,46 @@ const StudentPortal = () => {
     activeTimers,
     submissionLocksRef,
   });
+  const currentPolicyPreview = workLauncherContract.policy_preview;
+  const currentWorkGuidance = useMemo(() => {
+    const baseGuidance = getLockdownStateGuidance({
+      stateKey: currentPolicyPreview?.policy_state_metadata?.state,
+      policy: currentPolicyPreview?.policy,
+      syncState: {},
+    });
+
+    if (baseGuidance.stateKey === 'active_block') {
+      return {
+        ...baseGuidance,
+        label: 'Active block',
+        title: 'Current work is ready',
+        copy: 'You have an active block ready in the portal. Start or continue here and use the approved resources below.',
+        next_step: 'Open the current block or return to the subject list.',
+      };
+    }
+
+    return baseGuidance;
+  }, [currentPolicyPreview]);
+  const currentAllowedResources = workLauncherContract.allowed_resources;
+  const requestAccessGuidance = useMemo(() => getRequestAccessGuidance(), []);
   const getSoundUrl = (file) => `${import.meta.env.BASE_URL}sounds/${file}`;
   const portalLoading = loading || (Boolean(student?.id && student?.parent_id) && publishedWeeklyPlanLoading);
+  const studentChores = useStudentChores({
+    student,
+    slug,
+    pin,
+    isAuthenticated,
+    enabled: Boolean(student?.id),
+  });
+
+  useEffect(() => {
+    if (activeWorkspace === 'chores' && !studentChores.canShowTab) {
+      setActiveWorkspace('school');
+    }
+    if (activeWorkspace === 'rewards' && !studentChores.canShowRewardTab) {
+      setActiveWorkspace('school');
+    }
+  }, [activeWorkspace, studentChores.canShowRewardTab, studentChores.canShowTab]);
 
   const ensureAlarmAudio = () => {
     if (!alarmAudioRef.current) {
@@ -411,27 +472,51 @@ const StudentPortal = () => {
     alarmStopTimerRef.current = setTimeout(stopAlarm, 20_000);
   };
 
-  const buildTimerSessionPayload = (subject, timer, includeCreatedAt = false) => {
-    const payload = {
-      student_id: student.id,
-      parent_id: student.parent_id,
-      subject_id: subject.id,
-      block_index: timer.blockIndex,
-      start_time: timer.startTime,
-      duration_ms: timer.durationMs,
-      duration_minutes: timer.durationMinutes,
-      target_end_time: timer.targetEndTime,
-      initial_duration_ms: timer.initialDurationMs,
-      remaining_time: timer.remainingTime ?? getRemainingTime(timer.targetEndTime),
-      is_running: timer.isRunning,
-      paused_at: timer.pausedAt ?? null,
-      resumed_at: timer.resumedAt ?? null,
-      completed_at: timer.remainingTime === 0 ? (timer.completedAt ?? Date.now()) : null,
-      saved_at: Date.now(),
-      updated_at: serverTimestamp(),
-    };
+  const getLauncherWorkItemForSubject = (subject, blockIndex) => {
+    if (hasPublishedWeeklyPlan) {
+      return publishedWorkItems.find((workItem) => (
+        workItem?.legacySubjectId === subject?.id
+        && workItem?.compatibilityBlockIndex === blockIndex
+      )) || null;
+    }
 
-    if (includeCreatedAt) payload.created_at = serverTimestamp();
+    return {
+      id: `${subject?.id || 'subject'}_block_${blockIndex}`,
+      title: subject?.portal_display_title || subject?.title || 'Untitled Block',
+      legacySubjectId: subject?.id || '',
+      legacySubjectTitle: subject?.title || '',
+      compatibilityBlockIndex: blockIndex,
+      plannedDurationMinutes: subject?.block_length || 30,
+      requireTimer: Boolean(subject?.require_timer),
+      requireInput: subject?.require_input !== false,
+      resources: Array.isArray(subject?.resources) ? subject.resources : [],
+      customFields: Array.isArray(subject?.custom_fields) ? subject.custom_fields : [],
+      instruction: subject?.block_objectives?.[blockIndex]?.instruction || null,
+      color: subject?.color || '',
+      compatibilitySubject: subject,
+      source_kind: 'legacy_subject_bridge',
+    };
+  };
+
+  const buildTimerSessionPayload = (subject, timer, includeCreatedAt = false) => {
+    const launcherWorkItem = getLauncherWorkItemForSubject(subject, timer.blockIndex);
+    const payload = buildWorkLauncherTimerSessionPayload({
+      studentRecord: student,
+      workItem: launcherWorkItem || {
+        id: `${subject?.id || 'subject'}_block_${timer.blockIndex}`,
+        legacySubjectId: subject?.id || '',
+        legacySubjectTitle: subject?.title || '',
+        compatibilityBlockIndex: timer.blockIndex,
+        compatibilitySubject: subject,
+      },
+      timer,
+    }) || {};
+
+    payload.remaining_time = timer.remainingTime ?? getRemainingTime(timer.targetEndTime);
+    payload.updated_at = serverTimestamp();
+    if (includeCreatedAt) {
+      payload.created_at = serverTimestamp();
+    }
 
     return payload;
   };
@@ -585,6 +670,12 @@ const StudentPortal = () => {
 
   const handleCustomFieldResponse = (fieldId, value) => setCustomFieldResponses(prev => ({ ...prev, [fieldId]: value }));
   const resetCustomFieldResponses = () => setCustomFieldResponses({});
+  const handleSignOut = () => {
+    setIsAuthenticated(false);
+    setPin('');
+    setActiveWorkspace('school');
+    setError('');
+  };
 
   const closeSubmissionModal = () => {
     clearSubmissionLock(selectedSubject?.id, selectedBlockIndex);
@@ -594,6 +685,12 @@ const StudentPortal = () => {
     setSelectedResources([]);
     resetCustomFieldResponses();
   };
+
+  useEffect(() => {
+    if (activeWorkspace !== 'school' && selectedSubject) {
+      closeSubmissionModal();
+    }
+  }, [activeWorkspace, selectedSubject]);
 
   const getBlockObjective = (subject, blockIndex) => {
     if (!subject || blockIndex === null || blockIndex === undefined) return null;
@@ -823,8 +920,8 @@ const StudentPortal = () => {
           )}
           <form onSubmit={handlePinSubmit}>
             <input
-              type="password" maxLength="4" pattern="[0-9]{4}" required
-              value={pin} onChange={(e) => setPin(e.target.value)} placeholder="••••"
+              type="password" maxLength="6" pattern="[0-9]{4,6}" required
+              value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="••••"
               style={{ width: '100%', padding: '12px', backgroundColor: '#fff', border: `1px solid ${C.parchment}`, borderRadius: '8px', fontSize: '24px', color: C.charcoal, textAlign: 'center', outline: 'none', boxSizing: 'border-box', letterSpacing: '0.3em', marginBottom: '16px', fontFamily: FONT }}
               onFocus={e => e.target.style.borderColor = C.charcoal}
               onBlur={e => e.target.style.borderColor = C.parchment}
@@ -867,7 +964,7 @@ const StudentPortal = () => {
                   ))}
                 </select>
               </div>
-              <button onClick={() => setIsAuthenticated(false)}
+              <button onClick={handleSignOut}
                 style={{ fontSize: 13, color: C.amethyst, fontWeight: 460, textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', fontFamily: FONT }}>
                 Sign Out
               </button>
@@ -877,6 +974,92 @@ const StudentPortal = () => {
       </header>
 
       <main className="max-w-6xl mx-auto py-8 px-6">
+        <div className="flex items-center gap-2 mb-7" data-testid="student-portal-workspaces">
+          <button
+            type="button"
+            onClick={() => setActiveWorkspace('school')}
+            className="px-3 py-2 rounded-lg text-[13px] transition-colors"
+            style={{
+              backgroundColor: activeWorkspace === 'school' ? C.charcoal : C.cream,
+              color: activeWorkspace === 'school' ? '#fff' : C.charcoal,
+              fontWeight: 700,
+              fontFamily: FONT,
+            }}
+          >
+            School
+          </button>
+          {studentChores.canShowTab && (
+            <button
+              type="button"
+              onClick={() => setActiveWorkspace('chores')}
+              className="px-3 py-2 rounded-lg text-[13px] transition-colors"
+              data-testid="student-portal-chores-tab"
+              style={{
+                backgroundColor: activeWorkspace === 'chores' ? C.charcoal : C.cream,
+                color: activeWorkspace === 'chores' ? '#fff' : C.charcoal,
+                fontWeight: 700,
+                fontFamily: FONT,
+              }}
+            >
+              Chores
+            </button>
+          )}
+          {studentChores.canShowRewardTab && (
+            <button
+              type="button"
+              onClick={() => setActiveWorkspace('rewards')}
+              className="px-3 py-2 rounded-lg text-[13px] transition-colors"
+              data-testid="student-portal-rewards-tab"
+              style={{
+                backgroundColor: activeWorkspace === 'rewards' ? C.charcoal : C.cream,
+                color: activeWorkspace === 'rewards' ? '#fff' : C.charcoal,
+                fontWeight: 700,
+                fontFamily: FONT,
+              }}
+            >
+              Rewards
+            </button>
+          )}
+        </div>
+
+        {activeWorkspace === 'chores' ? (
+          <StudentChoresWorkspace
+            workspace={studentChores.workspace}
+            loading={studentChores.loading}
+            error={studentChores.error}
+            onClaimChore={studentChores.claimChore}
+            onCompleteChore={studentChores.completeChore}
+            onCompleteRoutine={studentChores.completeRoutine}
+            claimingIds={studentChores.claimingIds}
+            completingClaimIds={studentChores.completingClaimIds}
+            completingRoutineIds={studentChores.completingRoutineIds}
+            colors={{
+              charcoal: C.charcoal,
+              amethyst: C.amethyst,
+              cream: C.cream,
+              parchment: C.parchment,
+              lavender: C.lavender,
+            }}
+          />
+        ) : activeWorkspace === 'rewards' ? (
+          <StudentRewardStore
+            store={studentChores.rewardStore}
+            loading={studentChores.loading}
+            error={studentChores.error}
+            onRedeem={studentChores.requestRewardRedemption}
+            onCancelRedemption={studentChores.cancelRewardRedemption}
+            requestingRewardIds={studentChores.requestingRewardIds}
+            cancelingRewardIds={studentChores.cancelingRewardIds}
+            colors={{
+              charcoal: C.charcoal,
+              amethyst: C.amethyst,
+              cream: C.cream,
+              parchment: C.parchment,
+              lavender: C.lavender,
+            }}
+          />
+        ) : (
+          <>
         {/* Weekly Progress */}
         {totalBlocks > 0 && (
           <div className="rounded-2xl p-6 mb-7 bg-white" style={{ border: `1px solid ${C.parchment}` }}>
@@ -902,6 +1085,87 @@ const StudentPortal = () => {
           </div>
         )}
 
+        <div className="rounded-2xl p-6 mb-7 bg-white" style={{ border: `1px solid ${C.parchment}` }}>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-wider mb-1.5" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>
+                Current work
+              </p>
+              <h2 style={{ fontSize: 18, fontWeight: 540, color: C.charcoal, lineHeight: 1.15 }}>
+                {currentWorkGuidance.title}
+              </h2>
+            </div>
+            <span className="flex-shrink-0 text-[11px] px-2.5 py-1 rounded-full" style={{ backgroundColor: `${C.lavender}26`, color: C.amethyst, fontWeight: 700 }}>
+              {currentWorkGuidance.label}
+            </span>
+          </div>
+          <p className="mt-3" style={{ fontSize: 14, color: 'rgba(41,40,39,0.72)', fontWeight: 460, lineHeight: 1.5 }}>
+            {currentWorkGuidance.copy}
+          </p>
+          <p className="mt-2" style={{ fontSize: 12, color: 'rgba(41,40,39,0.5)', fontWeight: 460, lineHeight: 1.45 }}>
+            {currentWorkGuidance.next_step}
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-[11px] px-2 py-1 rounded-full" style={{ backgroundColor: `${C.lavender}26`, color: C.amethyst, fontWeight: 700 }}>
+              {workLauncherContract.source_kind === 'published_weekly_plan' ? 'Published plan' : 'Legacy bridge'}
+            </span>
+            {workLauncherContract.active_work_session && (
+              <span className="text-[11px] px-2 py-1 rounded-full" style={{ backgroundColor: `${C.cream}cc`, color: C.charcoal, fontWeight: 700 }}>
+                Active block
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+            <div className="rounded-xl p-3" style={{ backgroundColor: '#faf9f8', border: `1px solid ${C.parchment}` }}>
+              <p className="text-[11px] uppercase tracking-wider mb-2" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Allowed websites</p>
+              {currentAllowedResources.allowedOrigins.length > 0 ? (
+                <ul className="space-y-1">
+                  {currentAllowedResources.allowedOrigins.slice(0, 4).map((origin) => (
+                    <li key={origin} className="text-[12px]" style={{ color: C.charcoal, fontWeight: 460 }}>{origin}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-[12px]" style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>No website origins are currently surfaced.</p>
+              )}
+            </div>
+
+            <div className="rounded-xl p-3" style={{ backgroundColor: '#faf9f8', border: `1px solid ${C.parchment}` }}>
+              <p className="text-[11px] uppercase tracking-wider mb-2" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Approved creators</p>
+              {currentAllowedResources.allowedCreators.length > 0 ? (
+                <ul className="space-y-1">
+                  {currentAllowedResources.allowedCreators.slice(0, 4).map((creator) => (
+                    <li key={creator.channel_id} className="text-[12px]" style={{ color: C.charcoal, fontWeight: 460 }}>
+                      {creator.title || creator.channel_id}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-[12px]" style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>No approved creators are currently surfaced.</p>
+              )}
+            </div>
+
+            <div className="rounded-xl p-3" style={{ backgroundColor: '#faf9f8', border: `1px solid ${C.parchment}` }}>
+              <p className="text-[11px] uppercase tracking-wider mb-2" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 700 }}>Own Path resources</p>
+              {currentAllowedResources.allowedSystemResources.length > 0 ? (
+                <ul className="space-y-1">
+                  {currentAllowedResources.allowedSystemResources.slice(0, 4).map((resource, index) => (
+                    <li key={`${resource.name || resource.origin || resource.url || index}`} className="text-[12px]" style={{ color: C.charcoal, fontWeight: 460 }}>
+                      {resource.name || resource.origin || resource.url || resource.page}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-[12px]" style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>No system resources are currently surfaced.</p>
+              )}
+            </div>
+          </div>
+
+          <p className="mt-4 text-[12px]" style={{ color: 'rgba(41,40,39,0.58)', fontWeight: 460, lineHeight: 1.45 }}>
+            {requestAccessGuidance.copy}
+          </p>
+        </div>
+
         {!portalAccess.canViewSubjects.allowed || (hasPublishedWeeklyPlan ? publishedWorkItems.length === 0 : subjects.length === 0) ? (
           <div className="text-center py-16">
             <BookOpen className="w-10 h-10 mx-auto mb-4" style={{ color: 'rgba(41,40,39,0.2)' }} />
@@ -924,32 +1188,40 @@ const StudentPortal = () => {
               {publishedWorkItems.map((workItem, index) => {
                 const subject = workItem.compatibilitySubject;
                 const timer = activeTimers[subject.id];
-                const blockCompleted = isBlockCompleted(subject, workItem.compatibilityBlockIndex);
+                const launchState = workItem.launch_state || {};
+                const blockCompleted = Boolean(launchState.completed || isBlockCompleted(subject, workItem.compatibilityBlockIndex));
+                const blockUnavailable = Boolean(launchState.unavailable);
                 const workItemPolicy = getWorkItemPolicy(workItem);
                 const timerCompletionPolicy = timer && timer.blockIndex === workItem.compatibilityBlockIndex
                   ? getWorkItemPolicy(workItem, { blockIndex: timer.blockIndex })
                   : null;
-                const blockLocked = !blockCompleted && !workItemPolicy.subjectAvailability.allowed;
+                const blockLocked = !blockCompleted && (blockUnavailable || !workItemPolicy.subjectAvailability.allowed);
                 const timerMatchesBlock = timer && timer.blockIndex === workItem.compatibilityBlockIndex;
                 const timerOnOtherBlock = timer && timer.blockIndex !== workItem.compatibilityBlockIndex;
                 const statusLabel = blockCompleted
                   ? 'Complete'
+                  : blockUnavailable
+                    ? 'Unavailable'
+                  : launchState.can_resume
+                    ? 'Timer paused'
                   : timerMatchesBlock && timer.remainingTime === 0
                     ? 'Ready to submit'
                     : timerMatchesBlock && timer.isRunning
                       ? 'Timer active'
-                      : timerMatchesBlock
+                    : timerMatchesBlock
                         ? 'Timer paused'
                         : timerOnOtherBlock
                           ? `Timer on Block ${timer.blockIndex + 1}`
                           : 'Ready';
                 const statusColor = blockCompleted
                   ? C.amethyst
+                  : blockUnavailable
+                    ? 'rgba(41,40,39,0.35)'
                   : timerMatchesBlock
                     ? C.charcoal
-                    : blockLocked
-                      ? 'rgba(41,40,39,0.35)'
-                      : 'rgba(41,40,39,0.7)';
+                  : blockLocked
+                    ? 'rgba(41,40,39,0.35)'
+                    : 'rgba(41,40,39,0.7)';
 
                 return (
                   <div key={workItem.id} className="rounded-2xl p-6 bg-white"
@@ -1033,7 +1305,9 @@ const StudentPortal = () => {
 
                     {blockLocked && (
                       <p className="text-[12px] mb-4" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>
-                        {workItemPolicy.subjectAvailability.blockedReason?.message || 'This block is unavailable right now.'}
+                        {launchState.blocked_reason === 'completed'
+                          ? 'This block is already complete.'
+                          : workItemPolicy.subjectAvailability.blockedReason?.message || 'This block is unavailable right now.'}
                       </p>
                     )}
 
@@ -1069,10 +1343,10 @@ const StudentPortal = () => {
                                 handleWorkItemSelect(workItem);
                                 startTimer(subject, workItem.compatibilityBlockIndex);
                               }}
-                              disabled={timerOnOtherBlock || !workItemPolicy.canStartTimer.allowed}
+                              disabled={timerOnOtherBlock || !launchState.can_start}
                               className="flex-1 px-3 py-2 rounded-lg text-[13px] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                               style={{ backgroundColor: C.cream, color: C.charcoal, fontWeight: 700, fontFamily: FONT }}
-                              onMouseEnter={e => { if (!timerOnOtherBlock && workItemPolicy.canStartTimer.allowed) e.currentTarget.style.backgroundColor = C.parchment; }}
+                              onMouseEnter={e => { if (!timerOnOtherBlock && launchState.can_start) e.currentTarget.style.backgroundColor = C.parchment; }}
                               onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
                               Start Timer
                             </button>
@@ -1103,9 +1377,10 @@ const StudentPortal = () => {
                               </button>
                             ) : (
                               <button onClick={() => resumeTimer(subject)}
+                                disabled={!launchState.can_resume}
                                 className="flex-1 px-3 py-2 rounded-lg text-[13px] transition-colors"
                                 style={{ backgroundColor: C.charcoal, color: '#fff', fontWeight: 700, fontFamily: FONT }}
-                                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
+                                onMouseEnter={e => { if (launchState.can_resume) e.currentTarget.style.backgroundColor = '#3a3937'; }}
                                 onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}>
                                 Resume
                               </button>
@@ -1407,10 +1682,12 @@ const StudentPortal = () => {
             </div>
           )
         )}
+          </>
+        )}
       </main>
 
       {/* Summary Submission Modal */}
-      {selectedSubject && (
+      {activeWorkspace === 'school' && selectedSubject && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl w-full max-w-md mx-4" style={{ border: `1px solid ${C.parchment}` }}>
             <div className="flex items-center justify-between p-6" style={{ borderBottom: `1px solid ${C.parchment}` }}>

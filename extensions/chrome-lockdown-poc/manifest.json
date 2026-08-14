@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "GridWorkz Lockdown",
-  "version": "0.3.0",
-  "description": "Trusted device pairing, secure policy sync, and cached enforcement for GridWorkz Lockdown.",
+  "name": "Own Path Lockdown",
+  "version": "1.0.0",
+  "description": "Trusted device pairing, secure policy sync, and cached enforcement for Own Path Lockdown.",
   "permissions": [
     "storage",
     "alarms",
@@ -20,7 +20,7 @@
   },
   "options_page": "options.html",
   "action": {
-    "default_title": "GridWorkz Lockdown",
+    "default_title": "Own Path Lockdown",
     "default_popup": "popup.html"
   },
   "content_scripts": [

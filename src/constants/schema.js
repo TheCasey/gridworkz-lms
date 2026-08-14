@@ -26,12 +26,12 @@ export const StudentSchema = {
   parent_id: "string", // Reference to parent's uid
   name: "string", // Student display name
   slug: "string", // Unique URL slug for student portal access
-  access_pin: "string", // Optional 4-digit PIN for sibling protection
+  access_pin: "string", // Optional 4-6 digit PIN for sibling protection
   week_reset_day: "number", // Public copy of school weekly rollover day
   week_reset_hour: "number", // Public copy of school weekly rollover hour
   week_reset_minute: "number", // Public copy of school weekly rollover minute
   timezone: "string", // IANA timezone for weekly rollover
-  lockdown_schedule: "object", // Optional student-bound lockdown schedule and off-hours resource windows
+  lockdown_schedule: "object", // Optional student-bound lockdown schedule plus legacy off-hours resource windows used as migration input
   is_active: "boolean", // Whether student account is active
   created_at: "timestamp", // Student profile creation
   updated_at: "timestamp" // Last update timestamp
@@ -45,6 +45,29 @@ export const ResourceSchema = {
   youtube_channel_id: "string", // Optional stable YouTube channel id when the resource should allow a creator instead of a full origin
   youtube_channel_title: "string", // Optional creator title snapshot paired with youtube_channel_id
   youtube_channel_handle: "string", // Optional creator handle snapshot paired with youtube_channel_id
+};
+
+// Phase 1 contract only: this defines the parent-owned off-block resource assignment shape
+// without choosing the final Firestore persistence path. Helpers may also accept equivalent
+// nested `assignment` input during migration.
+export const LockdownResourceAssignmentSchema = {
+  assign_to_all_students: "boolean", // True when the resource applies to every student under the parent
+  student_ids: "array", // Explicit student assignment list when assign_to_all_students is false
+};
+
+// Phase 1 contract only: household off-block resource-library entry used by Lockdown policy
+// helpers. Final storage location and CRUD ownership are deferred to a later phase.
+export const LockdownResourceLibraryEntrySchema = {
+  id: "string", // Stable local or document identifier for the parent-managed resource entry
+  name: "string", // Parent-facing label for the approved resource
+  url: "string", // Website URL, origin, YouTube channel URL, handle URL, watch URL, or channel id input
+  lockdown_origin: "string", // Optional exact origin override when the saved website should resolve without a path
+  youtube_channel_id: "string", // Stable YouTube creator channel id when known
+  youtube_channel_title: "string", // Optional creator title snapshot paired with youtube_channel_id
+  youtube_channel_handle: "string", // Optional creator handle snapshot paired with youtube_channel_id
+  assign_to_all_students: "boolean", // Whether this off-block resource applies to every student
+  student_ids: "array", // Explicit student ids when the resource is limited to selected students
+  is_active: "boolean", // Whether the resource is still eligible for derived policy behavior
 };
 
 export const LockdownResourceWindowSchema = {
@@ -61,7 +84,7 @@ export const LockdownScheduleSchema = {
   school_days: "array", // Day indexes 0-6 that count as school days
   school_day_start_time: "string", // HH:MM local school-day start
   school_day_end_time: "string", // HH:MM local school-day end
-  off_hours_resource_windows: "array", // Array of LockdownResourceWindowSchema entries
+  off_hours_resource_windows: "array", // Legacy migration input: array of LockdownResourceWindowSchema entries
 };
 
 // Subject custom field schema (subject-level or block-level prompt)
@@ -362,8 +385,63 @@ export const LockdownPolicySchema = {
   is_enabled: "boolean", // Whether blocking is currently enabled
   allowed_origins: "array", // Origin-level allowlist entries such as https://www.khanacademy.org
   allowed_youtube_channels: "array", // Approved creators stored by stable channel_id
+  system_resources: "array", // Own Path system pages, endpoints, and decision-state resources kept separate from learning allowlists
   created_at: "timestamp",
   updated_at: "timestamp"
+};
+
+// Lockdown policy state metadata schema (shared production vocabulary for previews, launchers, and future kiosk mode)
+export const LockdownPolicyStateMetadataSchema = {
+  state: "string", // Canonical production state: active_block, no_active_session, no_published_plan, no_active_work, off_hours_open, off_hours_closed, entitlement_inactive, device_revoked, unpaired, or stale_cached_policy
+  policy_state: "string", // Contract alias for the canonical production state
+  legacy_policy_state: "string", // Compatibility copy of the older enforcement state when still needed
+  school_time_state: "string", // school_time or off_hours
+  off_hours_window_state: "string", // open or closed for off-hours normalization
+  entitlement_state: "string", // active or inactive
+  device_state: "string", // active, revoked, or unpaired
+  cache_state: "string", // fresh or stale
+  active_work_state: "string", // active_block, no_active_session, no_published_plan, or no_active_work
+  active_work_session: "object", // LockdownActiveWorkSessionSchema when active work is known; null when no active session exists
+  weekly_plan_exists: "boolean", // Whether a published weekly plan is present in the current policy context
+  published_weekly_plan_exists: "boolean", // Alias retained for function/client parity and source-policy metadata
+  weekly_plan_id: "string", // Published weekly plan backing the current state, when present
+  weekly_plan_status: "string", // Current weekly plan status snapshot, such as draft or published
+};
+
+// Lockdown active work session schema (shared contract for timer, task-complete, project, and worksheet launchers)
+export const LockdownActiveWorkSessionSchema = {
+  id: "string", // Stable active-work session id when the session is persisted or derived from a timer
+  kind: "string", // timer, task_complete, project, or worksheet
+  status: "string", // active, paused, completed, archived, or empty when not yet started
+  source_kind: "string", // Source marker such as published_weekly_plan_derived_policy_v1
+  parent_id: "string", // Parent uid that owns the policy context
+  student_id: "string", // Student bound to the active work session
+  subject_id: "string", // Legacy subject compatibility reference
+  subject_title: "string", // Compatibility title snapshot for legacy subject-based work
+  assignment_id: "string", // Assignment id when the work session is sourced from a persisted assignment
+  weekly_plan_id: "string", // Published weekly plan backing the active work session
+  block_id: "string", // Weekly-plan block id when available
+  block_index: "number", // Legacy block index compatibility field when timers still key off legacy subjects
+  block_title: "string", // Student-facing block title snapshot
+  legacy_subject_id: "string", // Legacy subject id compatibility reference
+  legacy_subject_title: "string", // Legacy subject title compatibility snapshot
+  legacy_block_index: "number", // Legacy block index compatibility reference
+  project_id: "string", // Future project-work identifier
+  project_title: "string", // Future project-work title snapshot
+  project_work_id: "string", // Future project-work session/run identifier
+  worksheet_id: "string", // Future worksheet identifier
+  worksheet_title: "string", // Future worksheet title snapshot
+  worksheet_work_id: "string", // Future worksheet response/session identifier
+  timer_session_id: "string", // Timer session id when the active work session is timer-backed
+  started_at: "timestamp", // Session start timestamp or client time snapshot
+  updated_at: "timestamp", // Last session update timestamp
+  completed_at: "timestamp", // Completion timestamp when the session finishes
+  target_end_time: "number", // Client epoch millis for timer-backed sessions
+  duration_ms: "number", // Client duration in milliseconds for timer-backed sessions
+  remaining_time: "number", // Cached remaining timer duration in milliseconds
+  is_running: "boolean", // Whether a timer-backed session is currently running
+  resource_ids: "array", // Optional resource identifiers attached to future launcher-owned sessions
+  metadata: "object", // Extra normalized metadata that should survive future session shapes
 };
 
 // Lockdown enrollment session schema (server-owned production pairing ticket)
@@ -378,6 +456,21 @@ export const LockdownEnrollmentSessionSchema = {
   expires_at: "timestamp", // Short-lived enrollment expiration
   consumed_device_id: "string", // Device document id once the ticket is exchanged
   consumed_at: "timestamp", // When the one-time ticket was exchanged
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
+// Lockdown recovery session schema (server-owned parent-authorized local unpair ticket)
+export const LockdownRecoverySessionSchema = {
+  id: "string", // Random trusted document id minted by Cloud Functions
+  parent_id: "string", // Parent uid that requested the recovery material
+  student_id: "string", // Student binding expected on the paired device
+  device_id: "string", // Device record that may clear its local pairing
+  token_hash: "string", // Server-stored hash of the one-time recovery token
+  status: "string", // pending, consumed, expired, or revoked
+  expires_at: "timestamp", // Short-lived recovery expiration
+  consumed_device_id: "string", // Device document id once the ticket is accepted
+  consumed_at: "timestamp", // When the one-time ticket was accepted
   created_at: "timestamp",
   updated_at: "timestamp"
 };
@@ -403,6 +496,23 @@ export const LockdownDeviceSchema = {
   updated_at: "timestamp"
 };
 
+// Lockdown household resource-library record schema (parent-owned, callable-written)
+export const TrustedLockdownResourceLibraryRecordSchema = {
+  id: "string", // Stable document id for one household resource-library entry
+  parent_id: "string", // Parent uid that owns the saved resource record
+  name: "string", // Parent-facing label for the approved website or YouTube creator
+  url: "string", // Normalized origin or YouTube channel URL stored after trusted validation
+  lockdown_origin: "string", // Exact origin used for website allowlist derivation when applicable
+  youtube_channel_id: "string", // Stable creator channel id when the entry targets a YouTube creator
+  youtube_channel_title: "string", // Optional creator title snapshot
+  youtube_channel_handle: "string", // Optional creator handle snapshot
+  assign_to_all_students: "boolean", // Whether every active student under the parent receives the resource
+  student_ids: "array", // Explicit active student assignments when assign_to_all_students is false
+  is_active: "boolean", // Whether the entry should participate in derived policy behavior
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
 // Support operator schema (server-owned operator allowlist)
 export const SupportOperatorSchema = {
   uid: "string", // Firebase Auth UID; document id should match this uid
@@ -416,6 +526,9 @@ export const SupportOperatorSchema = {
 // Account Entitlement nested schemas (server-owned billing and plan state)
 export const AccountEntitlementFeatureOverridesSchema = {
   can_use_projects: "boolean", // Optional override for the planned projects feature
+  can_use_daily_routines: "boolean", // Optional override for grouped daily routine access; included on Free by default
+  can_use_chores: "boolean", // Optional override for paid chore pools, allowance tracking, and achievements
+  can_use_rewards: "boolean", // Optional override for paid points, reward-store behavior, redemptions, and cosmetics
   can_use_lockdown_extension: "boolean", // Optional override for browser extension access
   can_use_lockdown_kiosk: "boolean" // Optional override for kiosk mode access
 };
@@ -474,6 +587,280 @@ export const EntitlementAuditLogSchema = {
   created_at: "timestamp" // Server-owned audit event creation time
 };
 
+// Future chores, routines, allowance, points, and rewards vocabulary
+export const ChoreFrequencyPools = Object.freeze({
+  WEEKLY: "weekly",
+  MONTHLY: "monthly",
+});
+
+export const ChoreFrequencyPoolValues = Object.values(ChoreFrequencyPools);
+
+export const ChoreClaimStatuses = Object.freeze({
+  CLAIMED: "claimed",
+  COMPLETED: "completed",
+  RELEASED: "released",
+  EXPIRED: "expired",
+  CANCELED: "canceled",
+});
+
+export const ChoreClaimStatusValues = Object.values(ChoreClaimStatuses);
+
+export const ChoreCompletionStatuses = Object.freeze({
+  COMPLETED: "completed",
+  APPROVED: "approved",
+  REJECTED: "rejected",
+  RETURNED: "returned",
+});
+
+export const ChoreCompletionStatusValues = Object.values(ChoreCompletionStatuses);
+
+export const AllowancePeriodCadences = Object.freeze({
+  WEEKLY: "weekly",
+  BIWEEKLY: "biweekly",
+  MONTHLY: "monthly",
+});
+
+export const AllowancePeriodCadenceValues = Object.values(AllowancePeriodCadences);
+
+export const AllowanceCompletionPolicies = Object.freeze({
+  ALL_OR_NOTHING: "all_or_nothing",
+  PRORATED: "prorated",
+});
+
+export const AllowanceCompletionPolicyValues = Object.values(AllowanceCompletionPolicies);
+
+export const PointSourceTypes = Object.freeze({
+  SCHOOL_BLOCK: "school_block",
+  CHORE_COMPLETION: "chore_completion",
+  ROUTINE_COMPLETION: "routine_completion",
+  ADJUSTMENT: "adjustment",
+  REWARD_REDEMPTION_RESERVATION: "reward_redemption_reservation",
+  REWARD_REDEMPTION_REFUND: "reward_redemption_refund",
+  REWARD_BUILT_IN_UNLOCK: "reward_built_in_unlock",
+});
+
+export const PointSourceTypeValues = Object.values(PointSourceTypes);
+
+export const RewardCatalogItemTypes = Object.freeze({
+  BUILT_IN: "built_in",
+  PARENT_CREATED: "parent_created",
+});
+
+export const RewardCatalogItemTypeValues = Object.values(RewardCatalogItemTypes);
+
+export const RewardRedemptionStatuses = Object.freeze({
+  REQUESTED: "requested",
+  APPROVED: "approved",
+  FULFILLED: "fulfilled",
+  REJECTED: "rejected",
+  CANCELED: "canceled",
+});
+
+export const RewardRedemptionStatusValues = Object.values(RewardRedemptionStatuses);
+
+export const RoutineChecklistItemSchema = {
+  id: "string", // Stable local checklist item identifier
+  label: "string", // Student-facing checklist label
+};
+
+export const RoutineTemplateSchema = {
+  id: "string", // Auto-generated document ID
+  parent_id: "string", // Reference to parent's uid
+  title: "string", // Parent-facing routine title such as Morning Routine
+  student_ids: "array", // Explicit student assignment list; empty means no student assignment yet
+  checklist_items: "array", // Array of RoutineChecklistItemSchema items
+  counts_toward_allowance: "boolean", // Whether completion can contribute to allowance later
+  counts_toward_points: "boolean", // Whether completion can contribute to points later
+  is_active: "boolean", // Whether the template is active
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
+export const RoutineCompletionSchema = {
+  id: "string", // Deterministic document ID such as `${routine_template_id}_${student_id}_${date_key}`
+  parent_id: "string", // Reference to parent's uid
+  student_id: "string", // Student completing the routine
+  routine_template_id: "string", // Reference to the routine template
+  date_key: "string", // Local YYYY-MM-DD key for the student's routine day
+  completed_item_ids: "array", // Checklist state snapshot stored under one routine completion record
+  completed_at: "timestamp", // When the student finished the routine for the day
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
+export const ChoreQuotaSchema = {
+  required_routine_days: "number", // Required routine-completion days within the target period
+  required_weekly_chore_blocks: "number", // Required weekly chore blocks
+  required_monthly_chore_blocks: "number", // Required monthly chore blocks
+};
+
+export const ChoreAllowancePolicySchema = {
+  period_type: "string", // weekly | biweekly | monthly
+  allowance_amount: "number", // Base allowance amount for the period
+  completion_policy: "string", // all_or_nothing | prorated
+  include_routines: "boolean", // Whether eligible routine days count toward allowance
+};
+
+export const ChoreSettingsSchema = {
+  parent_id: "string", // Parent uid and document owner; document id should match this uid
+  claim_expiration_hours: "number", // Parent-configured claim window before a chore can be reclaimed
+  timezone: "string", // IANA timezone used for routine-day keys and availability windows
+  week_reset_day: "number", // Weekly rollover day for chore pools
+  week_reset_hour: "number", // Weekly rollover hour for chore pools
+  week_reset_minute: "number", // Weekly rollover minute for chore pools
+  quotas: "object", // Map of studentId -> ChoreQuotaSchema
+  allowance_policy: "object", // ChoreAllowancePolicySchema snapshot for future allowance calculations
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
+export const ChoreDefinitionSchema = {
+  id: "string", // Auto-generated document ID
+  parent_id: "string", // Reference to parent's uid
+  title: "string", // Student-facing chore title
+  frequency_pool: "string", // weekly | monthly
+  eligible_student_ids: "array", // Explicit eligible student ids when not open to all siblings
+  all_students_eligible: "boolean", // Whether every student under the parent may claim the chore
+  instructions: "string", // Student-facing instructions
+  definition_of_done: "string", // Parent-authored definition of done
+  proof_requirement: "string", // Optional proof note for later workflows
+  effort_label: "string", // Difficulty or effort label snapshot
+  minimum_cooldown_days: "number", // Minimum cooldown applied on top of the pool boundary
+  requires_parent_approval: "boolean", // Whether a later completion needs parent review
+  is_active: "boolean", // Whether the chore is active in the available pool
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
+export const ChoreClaimSchema = {
+  id: "string", // Auto-generated document ID
+  parent_id: "string", // Reference to parent's uid
+  student_id: "string", // Student holding the claim
+  chore_definition_id: "string", // Reference to the chore definition
+  status: "string", // claimed | completed | released | expired | canceled
+  claim_expiration_hours: "number", // Snapshot of the claim window used for expiration
+  claimed_at: "timestamp", // When the claim began
+  expires_at: "timestamp", // Absolute claim expiration time
+  released_at: "timestamp", // When the claim was released back to the pool
+  completed_at: "timestamp", // When the claim rolled into a completion flow
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
+export const ChoreCompletionSchema = {
+  id: "string", // Auto-generated document ID
+  parent_id: "string", // Reference to parent's uid
+  student_id: "string", // Student who completed the chore
+  chore_definition_id: "string", // Reference to the chore definition
+  claim_id: "string", // Linked claim id when the completion flowed from a claim
+  status: "string", // completed | approved | rejected | returned
+  completed_at: "timestamp", // When the student marked the chore complete
+  approved_at: "timestamp", // When a parent approved the completion
+  reviewed_at: "timestamp", // Last parent review timestamp
+  proof_note: "string", // Optional student proof text
+  proof_attachments: "array", // Future evidence attachment metadata ids or snapshots
+  quota_blocks: "number", // Snapshot of how many quota blocks this completion contributes; MVP uses 1
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
+export const AllowancePeriodSchema = {
+  id: "string", // Deterministic or generated period document ID
+  parent_id: "string", // Reference to parent's uid
+  student_id: "string", // Student whose allowance period is being tracked
+  period_type: "string", // weekly | biweekly | monthly
+  period_key: "string", // Stable key for the allowance period
+  period_start: "timestamp", // Start of the allowance period
+  period_end: "timestamp", // End of the allowance period
+  required_counts: "object", // Required routine/chore counts snapshot for the period
+  completed_counts: "object", // Completed routine/chore counts snapshot for the period
+  calculated_earned_amount: "number", // Calculated earned amount before adjustments
+  parent_adjustment_amount: "number", // Parent-entered adjustment amount
+  paid_amount: "number", // Paid amount snapshot
+  paid_status: "string", // unpaid | partially_paid | paid
+  paid_at: "timestamp", // When the parent marked the period paid
+  policy_snapshot: "object", // Allowance policy snapshot used for calculation
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
+export const RewardSettingsSchema = {
+  parent_id: "string", // Parent uid and document owner; document id should match this uid
+  school_block_points: "number", // Configured points per school block
+  chore_block_points: "number", // Configured points per chore block
+  routine_day_points: "number", // Configured points per routine day
+  routine_points_enabled: "boolean", // Whether routine completions award points
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
+export const PointLedgerEntrySchema = {
+  id: "string", // Auto-generated document ID
+  parent_id: "string", // Reference to parent's uid
+  student_id: "string", // Student receiving the point entry
+  wallet_id: "string", // Reference to the student wallet record
+  source_type: "string", // school_block | chore_completion | routine_completion | adjustment
+  source_id: "string", // Source event identifier for idempotency and attribution
+  delta_points: "number", // Positive or negative point adjustment
+  balance_after: "number", // Optional post-entry wallet balance snapshot
+  description: "string", // Parent-facing explanation or reward attribution note
+  metadata: "object", // Future source attribution payload
+  created_at: "timestamp"
+};
+
+export const StudentPointWalletSchema = {
+  id: "string", // Deterministic document ID such as the student id
+  parent_id: "string", // Reference to parent's uid
+  student_id: "string", // Wallet owner
+  total_points: "number", // Current available point balance
+  lifetime_points: "number", // Lifetime points earned before redemptions
+  updated_at: "timestamp"
+};
+
+export const RewardCatalogItemSchema = {
+  id: "string", // Auto-generated document ID
+  parent_id: "string", // Reference to parent's uid
+  type: "string", // built_in | parent_created
+  title: "string", // Student-facing reward title
+  description: "string", // Student-facing reward description
+  point_cost: "number", // Cost in shared student points
+  stock_quantity: "number", // Parent-managed stock quantity
+  available_quantity: "number", // Remaining quantity available for redemption
+  eligible_student_ids: "array", // Empty means available to any student under the parent
+  redemption_requires_approval: "boolean", // Whether redemption should wait for parent approval
+  fulfillment_terms: "string", // Parent-authored fulfillment note or placeholder unlock description
+  built_in_key: "string", // Stable built-in reward identifier when type is built_in
+  unlock_type: "string", // avatar | badge | profile_theme for built-in placeholder unlocks
+  unlock_key: "string", // Stable placeholder unlock value within unlock_type
+  is_active: "boolean", // Whether the reward is visible in the catalog
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
+export const RewardRedemptionSchema = {
+  id: "string", // Auto-generated document ID
+  parent_id: "string", // Reference to parent's uid
+  student_id: "string", // Student requesting the reward
+  reward_catalog_item_id: "string", // Linked reward catalog item id
+  status: "string", // requested | approved | fulfilled | rejected | canceled
+  reward_type_snapshot: "string", // built_in | parent_created snapshot preserved for history
+  title_snapshot: "string", // Reward title snapshot preserved for history
+  point_cost_snapshot: "number", // Reward cost snapshot preserved for history
+  stock_quantity_snapshot: "number", // Reward stock snapshot preserved for history
+  available_quantity_snapshot: "number", // Available stock snapshot preserved at request time
+  fulfillment_terms_snapshot: "string", // Parent-authored fulfillment snapshot for history
+  built_in_key_snapshot: "string", // Stable built-in reward snapshot when applicable
+  unlock_type_snapshot: "string", // avatar | badge | profile_theme when applicable
+  unlock_key_snapshot: "string", // Stable unlock value when applicable
+  requested_at: "timestamp", // When the student requested the reward
+  approved_at: "timestamp", // When a parent approved the reward
+  fulfilled_at: "timestamp", // When a parent marked the reward fulfilled
+  rejected_at: "timestamp", // When a parent rejected the reward
+  canceled_at: "timestamp", // When the request was canceled
+  created_at: "timestamp",
+  updated_at: "timestamp"
+};
+
 // Export collection names for Firestore
 export const Collections = {
   PARENTS: "parents",
@@ -486,12 +873,26 @@ export const Collections = {
   DAILY_LOGS: "dailyLogs",
   SUBMISSIONS: "submissions",
   TIMER_SESSIONS: "timerSessions",
+  CHORE_SETTINGS: "choreSettings",
+  ROUTINE_TEMPLATES: "routineTemplates",
+  CHORE_DEFINITIONS: "choreDefinitions",
+  ROUTINE_COMPLETIONS: "routineCompletions",
+  CHORE_CLAIMS: "choreClaims",
+  CHORE_COMPLETIONS: "choreCompletions",
+  ALLOWANCE_PERIODS: "allowancePeriods",
+  REWARD_SETTINGS: "rewardSettings",
+  POINT_LEDGER_ENTRIES: "pointLedgerEntries",
+  STUDENT_POINT_WALLETS: "studentPointWallets",
+  REWARD_CATALOG_ITEMS: "rewardCatalogItems",
+  REWARD_REDEMPTIONS: "rewardRedemptions",
   ACCOUNT_ENTITLEMENTS: "accountEntitlements",
   ENTITLEMENT_AUDIT_LOGS: "entitlementAuditLogs",
   SUPPORT_OPERATORS: "supportOperators",
   LOCKDOWN_POLICIES: "lockdownPolicies",
   LOCKDOWN_ENROLLMENT_SESSIONS: "lockdownEnrollmentSessions",
-  LOCKDOWN_DEVICES: "lockdownDevices"
+  LOCKDOWN_RECOVERY_SESSIONS: "lockdownRecoverySessions",
+  LOCKDOWN_DEVICES: "lockdownDevices",
+  LOCKDOWN_RESOURCE_LIBRARY: "lockdownResourceLibrary"
 };
 
 export const TrustedFunctionNames = {
@@ -506,7 +907,28 @@ export const TrustedFunctionNames = {
   BILLING_WEBHOOK: "billingWebhook",
   ISSUE_LOCKDOWN_ENROLLMENT: "issueLockdownEnrollment",
   EXCHANGE_LOCKDOWN_ENROLLMENT: "lockdownExchangeEnrollment",
-  READ_LOCKDOWN_DEVICE_POLICY: "readLockdownDevicePolicy"
+  ISSUE_LOCKDOWN_RECOVERY: "issueLockdownRecovery",
+  RECOVER_LOCKDOWN_DEVICE_PAIRING: "lockdownRecoverDevicePairing",
+  LIST_LOCKDOWN_DEVICES: "listLockdownDevices",
+  REVOKE_LOCKDOWN_DEVICE: "revokeLockdownDevice",
+  UPSERT_LOCKDOWN_RESOURCE_LIBRARY_ENTRY: "upsertLockdownResourceLibraryEntry",
+  DELETE_LOCKDOWN_RESOURCE_LIBRARY_ENTRY: "deleteLockdownResourceLibraryEntry",
+  READ_LOCKDOWN_DEVICE_POLICY: "readLockdownDevicePolicy",
+  UPSERT_CHORE_SETTINGS: "upsertChoreSettings",
+  UPSERT_ROUTINE_TEMPLATE: "upsertRoutineTemplate",
+  UPSERT_CHORE_DEFINITION: "upsertChoreDefinition",
+  SYNC_ALLOWANCE_LEDGER: "syncAllowanceLedger",
+  UPSERT_REWARD_SETTINGS: "upsertRewardSettings",
+  ADJUST_STUDENT_POINTS: "adjustStudentPoints",
+  UPSERT_REWARD_CATALOG_ITEM: "upsertRewardCatalogItem",
+  REQUEST_REWARD_REDEMPTION: "requestRewardRedemption",
+  CANCEL_REWARD_REDEMPTION: "cancelRewardRedemption",
+  REVIEW_REWARD_REDEMPTION: "reviewRewardRedemption",
+  READ_STUDENT_CHORE_STATE: "readStudentChoreState",
+  CLAIM_CHORE: "claimChore",
+  COMPLETE_CHORE: "completeChore",
+  COMPLETE_ROUTINE: "completeRoutine",
+  REVIEW_CHORE_COMPLETION: "reviewChoreCompletion"
 };
 
 // Submission Schema (for individual block completions)

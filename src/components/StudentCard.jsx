@@ -2,16 +2,21 @@ import { useState } from 'react';
 import { Copy, Check, Trash2, Eye } from 'lucide-react';
 import { buildPublicUrl } from '../utils/appHosts';
 
-const StudentCard = ({ student, onDelete, onViewProgress }) => {
+const StudentCard = ({
+  student,
+  onDelete,
+  onViewChoresProgress,
+  onViewSchoolProgress,
+}) => {
   const [copied, setCopied] = useState(false);
 
-  const handleCopyMagicLink = async () => {
+  const handleCopyPortalLink = async () => {
     const publicStudentPath = buildPublicUrl(`/student/${student.slug}`);
-    const magicLink = publicStudentPath.startsWith('/')
+    const portalLink = publicStudentPath.startsWith('/')
       ? `${window.location.origin}${publicStudentPath}`
       : publicStudentPath;
     try {
-      await navigator.clipboard.writeText(magicLink);
+      await navigator.clipboard.writeText(portalLink);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -20,27 +25,27 @@ const StudentCard = ({ student, onDelete, onViewProgress }) => {
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-parchment p-6 hover:shadow-sm transition-shadow">
+    <div className="op-surface p-5 transition-colors hover:bg-[#292942]">
       <div className="flex items-start justify-between mb-5">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-[#f0eaff] rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-amethyst-link font-display text-[17px]">
+          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center border border-[rgba(203,183,251,0.28)] bg-[#202034]">
+            <span className="font-display text-[17px] text-[#cbb7fb]">
               {student.name.charAt(0).toUpperCase()}
             </span>
           </div>
           <div>
-            <h3 className="text-[16px] font-display text-charcoal-ink" style={{ lineHeight: 1.2 }}>
+            <h3 className="text-[18px] font-display text-white" style={{ lineHeight: 1.05 }}>
               {student.name}
             </h3>
             {student.access_pin && (
-              <p className="text-[12px] text-charcoal-ink/40 font-body mt-0.5">PIN protected</p>
+              <p className="op-subtle mt-1 text-[12px] font-body">PIN protected</p>
             )}
           </div>
         </div>
         {onDelete && (
           <button
             onClick={() => onDelete(student.id)}
-            className="p-1.5 text-charcoal-ink/30 hover:text-red-500 transition-colors"
+            className="op-icon-button h-8 w-8 hover:text-red-400"
             title="Delete student"
           >
             <Trash2 className="w-4 h-4" />
@@ -49,37 +54,46 @@ const StudentCard = ({ student, onDelete, onViewProgress }) => {
       </div>
 
       <div className="mb-4">
-        <p className="text-[11px] font-label uppercase tracking-wider text-charcoal-ink/40 mb-1">Portal URL</p>
-        <span className="text-[12px] font-mono text-charcoal-ink/50 bg-warm-cream px-2 py-1 rounded">
+        <p className="op-eyebrow mb-2">Portal URL</p>
+        <span className="block truncate border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)] px-3 py-2 font-mono text-[12px] text-[rgba(238,234,248,0.58)]">
           /student/{student.slug}
         </span>
       </div>
 
       <div className="space-y-2.5">
         <button
-          onClick={handleCopyMagicLink}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
-          style={{ backgroundColor: '#e9e5dd', color: '#292827' }}
-          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#ddd7cf'}
-          onMouseLeave={e => e.currentTarget.style.backgroundColor = '#e9e5dd'}
+          onClick={handleCopyPortalLink}
+          className="op-button w-full"
         >
           {copied ? (
             <><Check className="w-4 h-4" />Copied!</>
           ) : (
-            <><Copy className="w-4 h-4" />Copy Magic Link</>
+            <><Copy className="w-4 h-4" />Copy Portal Link</>
           )}
         </button>
 
-        <button
-          onClick={() => onViewProgress?.(student)}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
-          style={{ backgroundColor: '#292827', color: '#ffffff' }}
-          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
-          onMouseLeave={e => e.currentTarget.style.backgroundColor = '#292827'}
-        >
-          <Eye className="w-4 h-4" />
-          View Progress
-        </button>
+        <div className="border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)] p-3">
+          <p className="op-eyebrow mb-2">
+            Progress Views
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              onClick={() => onViewSchoolProgress?.(student)}
+              className="op-button"
+            >
+              <Eye className="w-4 h-4" />
+              School Progress
+            </button>
+
+            <button
+              onClick={() => onViewChoresProgress?.(student)}
+              className="op-button op-button-secondary"
+            >
+              <Eye className="w-4 h-4" />
+              Chores Progress
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

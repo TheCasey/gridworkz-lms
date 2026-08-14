@@ -24,6 +24,166 @@
 }
 
 @layer components {
+  .op-page {
+    min-height: 100%;
+    background: #1f1f32;
+    color: rgba(248, 247, 255, 0.94);
+  }
+
+  .op-shell {
+    padding: 24px;
+  }
+
+  @media (min-width: 1024px) {
+    .op-shell {
+      padding: 28px 32px;
+    }
+  }
+
+  .op-eyebrow {
+    color: rgba(203, 183, 251, 0.66);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .op-title {
+    color: rgba(250, 249, 255, 0.96);
+    font-size: clamp(26px, 3vw, 42px);
+    font-weight: 540;
+    letter-spacing: 0;
+    line-height: 0.96;
+  }
+
+  .op-subtle {
+    color: rgba(238, 234, 248, 0.56);
+  }
+
+  .op-panel {
+    background: #27273e;
+    border: 1px solid rgba(203, 183, 251, 0.16);
+    border-left: 3px solid rgba(203, 183, 251, 0.78);
+    border-radius: 0;
+  }
+
+  .op-panel-muted {
+    background: #24243a;
+    border: 1px solid rgba(203, 183, 251, 0.12);
+    border-radius: 0;
+  }
+
+  .op-surface {
+    background: #202034;
+    border: 1px solid rgba(203, 183, 251, 0.12);
+    border-radius: 0;
+  }
+
+  .op-stat {
+    background: #25253b;
+    border: 1px solid rgba(203, 183, 251, 0.14);
+    border-left: 3px solid rgba(203, 183, 251, 0.72);
+    border-radius: 0;
+  }
+
+  .op-button {
+    align-items: center;
+    background: rgba(203, 183, 251, 0.94);
+    border: 1px solid rgba(203, 183, 251, 0.94);
+    border-radius: 0;
+    color: #1f1f32;
+    display: inline-flex;
+    font-size: 13px;
+    font-weight: 740;
+    gap: 8px;
+    justify-content: center;
+    line-height: 1;
+    min-height: 38px;
+    padding: 0 14px;
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, opacity 160ms ease;
+  }
+
+  .op-button:hover {
+    background: #e0d5ff;
+    border-color: #e0d5ff;
+  }
+
+  .op-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .op-button-secondary {
+    background: transparent;
+    border-color: rgba(238, 234, 248, 0.22);
+    color: rgba(238, 234, 248, 0.86);
+  }
+
+  .op-button-secondary:hover {
+    background: rgba(238, 234, 248, 0.08);
+    border-color: rgba(238, 234, 248, 0.34);
+    color: rgba(250, 249, 255, 0.96);
+  }
+
+  .op-icon-button {
+    align-items: center;
+    background: transparent;
+    border: 1px solid rgba(238, 234, 248, 0.16);
+    border-radius: 0;
+    color: rgba(238, 234, 248, 0.72);
+    display: inline-flex;
+    height: 36px;
+    justify-content: center;
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+    width: 36px;
+  }
+
+  .op-icon-button:hover {
+    background: rgba(238, 234, 248, 0.08);
+    border-color: rgba(238, 234, 248, 0.3);
+    color: rgba(250, 249, 255, 0.96);
+  }
+
+  .op-pill {
+    align-items: center;
+    background: rgba(238, 234, 248, 0.06);
+    border: 1px solid rgba(238, 234, 248, 0.12);
+    border-radius: 0;
+    color: rgba(238, 234, 248, 0.72);
+    display: inline-flex;
+    font-size: 11px;
+    font-weight: 700;
+    gap: 6px;
+    letter-spacing: 0.12em;
+    line-height: 1;
+    min-height: 28px;
+    padding: 0 9px;
+    text-transform: uppercase;
+  }
+
+  .op-input {
+    background: #202034;
+    border: 1px solid rgba(238, 234, 248, 0.18);
+    border-radius: 0;
+    color: rgba(250, 249, 255, 0.94);
+    font-size: 15px;
+    outline: none;
+    padding: 11px 12px;
+    transition: border-color 160ms ease, background-color 160ms ease;
+    width: 100%;
+  }
+
+  .op-input::placeholder {
+    color: rgba(238, 234, 248, 0.32);
+  }
+
+  .op-input:focus {
+    background: #23233a;
+    border-color: rgba(203, 183, 251, 0.78);
+  }
+
   .btn-primary {
     @apply bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500;
   }

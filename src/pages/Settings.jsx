@@ -10,35 +10,30 @@ import { formatWeekRange } from '../utils/weekUtils';
 
 const C = {
   lavender: '#cbb7fb',
-  charcoal: '#292827',
-  amethyst: '#714cb6',
-  cream: '#e9e5dd',
-  parchment: '#dcd7d3',
-  lavenderTint: '#f0eaff',
 };
 
-const inputClassName = 'w-full px-3 py-2.5 rounded-lg bg-white text-[14px] focus:outline-none';
+const inputClassName = 'op-input text-[14px] font-body';
 
 const statusToneStyles = {
   accent: {
-    backgroundColor: 'rgba(203,183,251,0.2)',
-    color: C.amethyst,
-    borderColor: 'rgba(203,183,251,0.5)',
+    backgroundColor: 'rgba(203,183,251,0.14)',
+    color: C.lavender,
+    borderColor: 'rgba(203,183,251,0.38)',
   },
   warning: {
-    backgroundColor: 'rgba(233,229,221,0.85)',
-    color: C.charcoal,
-    borderColor: 'rgba(220,215,211,0.95)',
+    backgroundColor: 'rgba(245,158,11,0.12)',
+    color: '#fbbf24',
+    borderColor: 'rgba(245,158,11,0.32)',
   },
   muted: {
-    backgroundColor: 'rgba(220,215,211,0.45)',
-    color: 'rgba(41,40,39,0.6)',
-    borderColor: 'rgba(220,215,211,0.8)',
+    backgroundColor: 'rgba(238,234,248,0.06)',
+    color: 'rgba(238,234,248,0.62)',
+    borderColor: 'rgba(238,234,248,0.14)',
   },
   neutral: {
-    backgroundColor: 'rgba(240,234,255,0.65)',
-    color: C.charcoal,
-    borderColor: 'rgba(203,183,251,0.45)',
+    backgroundColor: 'rgba(52,211,153,0.1)',
+    color: '#6ee7b7',
+    borderColor: 'rgba(52,211,153,0.28)',
   },
 };
 
@@ -58,10 +53,10 @@ const formatEntitlementDate = (value) => {
 };
 
 const UsageSummaryCard = ({ title, value, detail }) => (
-  <div className="rounded-2xl p-4 bg-white" style={{ border: `1px solid ${C.parchment}` }}>
-    <p className="text-[11px] uppercase tracking-wider font-label mb-2 text-charcoal-ink/40">{title}</p>
-    <p className="text-[22px] font-display text-charcoal-ink" style={{ lineHeight: 1 }}>{value}</p>
-    <p className="mt-2 text-[13px] font-body text-charcoal-ink/55">{detail}</p>
+  <div className="op-stat p-4">
+    <p className="op-eyebrow mb-3">{title}</p>
+    <p className="text-[28px] font-display text-[rgba(250,249,255,0.96)]" style={{ lineHeight: 1 }}>{value}</p>
+    <p className="op-subtle mt-3 text-[12px] font-body leading-5">{detail}</p>
   </div>
 );
 
@@ -70,32 +65,31 @@ const FeatureAccessCard = ({ feature }) => {
 
   return (
     <div
-      className="rounded-2xl p-4"
+      className="op-surface p-4"
       style={{
-        backgroundColor: isLocked ? `${C.lavenderTint}70` : '#ffffff',
-        border: `1px solid ${isLocked ? 'rgba(203,183,251,0.65)' : C.parchment}`,
+        borderLeft: `3px solid ${isLocked ? 'rgba(245,158,11,0.76)' : 'rgba(52,211,153,0.72)'}`,
       }}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] uppercase tracking-wider font-label" style={{ color: isLocked ? C.amethyst : 'rgba(41,40,39,0.45)' }}>
+          <p className="op-eyebrow">
             Premium Access
           </p>
-          <h4 className="mt-1 text-[16px] font-display text-charcoal-ink">{feature.title}</h4>
+          <h4 className="mt-2 text-[15px] font-display text-[rgba(250,249,255,0.94)]">{feature.title}</h4>
         </div>
         <span
-          className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] uppercase tracking-wider font-label border"
-          style={isLocked ? statusToneStyles.accent : statusToneStyles.neutral}
+          className="inline-flex min-h-[26px] shrink-0 items-center border px-2.5 text-[10px] uppercase tracking-[0.12em] font-label"
+          style={isLocked ? statusToneStyles.warning : statusToneStyles.neutral}
         >
           {feature.statusLabel}
         </span>
       </div>
-      <p className="mt-3 text-[13px] font-body text-charcoal-ink/70">{feature.description}</p>
+      <p className="op-subtle mt-3 text-[13px] font-body leading-5">{feature.description}</p>
       {feature.availabilityNote ? (
-        <p className="mt-2 text-[12px] font-body text-charcoal-ink/45">{feature.availabilityNote}</p>
+        <p className="mt-2 text-[12px] font-body text-[rgba(238,234,248,0.42)]">{feature.availabilityNote}</p>
       ) : null}
       {isLocked && feature.upgradeCopy ? (
-        <p className="mt-3 text-[12px] font-body" style={{ color: C.amethyst }}>
+        <p className="mt-3 text-[12px] font-body text-[#fbbf24]">
           {feature.upgradeCopy}
         </p>
       ) : null}
@@ -176,230 +170,254 @@ const Settings = ({ settings, onSave, saving, entitlementSummary }) => {
   };
 
   return (
-    <div className="p-8 space-y-6">
-      <div>
-        <h2 className="text-[26px] font-display text-charcoal-ink" style={{ lineHeight: 1.1, letterSpacing: '-0.5px' }}>Settings</h2>
-        <p className="text-[14px] text-charcoal-ink/50 font-body mt-1">Review your plan, usage, and account settings in one place.</p>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="bg-white rounded-[28px] p-6 md:p-7" style={{ border: `1px solid ${C.parchment}` }}>
-          <div className="flex items-center gap-2 mb-5">
-            <Sparkles className="w-4 h-4" style={{ color: C.amethyst }} />
-            <h3 className="text-[17px] font-display text-charcoal-ink">Plan & Access</h3>
+    <div className="op-page">
+      <div className="op-shell space-y-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="op-eyebrow">Settings</p>
+            <h1 className="op-title mt-3">Account and school controls</h1>
+            <p className="op-subtle mt-4 max-w-2xl text-[14px] font-body leading-6">
+              Review plan visibility, household limits, school-year metadata, and the weekly reset schedule used by reports and student work.
+            </p>
           </div>
-
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
-            <div
-              className="rounded-[24px] p-5"
-              style={{ backgroundColor: `${C.lavenderTint}85`, border: '1px solid rgba(203,183,251,0.6)' }}
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center rounded-full px-3 py-1 text-[11px] uppercase tracking-wider font-label border" style={statusTone}>
-                  {entitlementSummary?.subscriptionStatusMeta?.label || 'No Billing State'}
-                </span>
-                <span className="inline-flex items-center rounded-full px-3 py-1 text-[11px] uppercase tracking-wider font-label border" style={statusToneStyles.muted}>
-                  {planSourceLabel}
-                </span>
-              </div>
-
-              <div className="mt-4 flex items-end justify-between gap-4">
-                <div>
-                  <p className="text-[11px] uppercase tracking-wider font-label mb-1" style={{ color: C.amethyst }}>
-                    Current Plan
-                  </p>
-                  <h4 className="text-[28px] font-display text-charcoal-ink" style={{ lineHeight: 1 }}>
-                    {entitlementSummary?.plan?.displayName || 'Free'}
-                  </h4>
-                  <p className="mt-2 text-[14px] font-body text-charcoal-ink/65">
-                    {entitlementSummary?.plan?.priceLabel || '$0'} • {entitlementSummary?.subscriptionStatusMeta?.description || 'No provider-backed billing state is connected yet.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-white px-4 py-3" style={{ border: `1px solid ${C.parchment}` }}>
-                  <p className="text-[11px] uppercase tracking-wider font-label text-charcoal-ink/40">Trial Ends</p>
-                  <p className="mt-1 text-[14px] font-body text-charcoal-ink">{trialEndsLabel || 'Not set'}</p>
-                </div>
-                <div className="rounded-2xl bg-white px-4 py-3" style={{ border: `1px solid ${C.parchment}` }}>
-                  <p className="text-[11px] uppercase tracking-wider font-label text-charcoal-ink/40">Period Ends</p>
-                  <p className="mt-1 text-[14px] font-body text-charcoal-ink">{currentPeriodEndLabel || 'Not set'}</p>
-                </div>
-              </div>
-
-              {entitlementSummary?.isMissingEntitlementDoc ? (
-                <div className="mt-5 rounded-2xl px-4 py-3" style={{ backgroundColor: '#ffffff', border: `1px solid ${C.parchment}` }}>
-                  <p className="text-[12px] uppercase tracking-wider font-label" style={{ color: C.amethyst }}>Visibility Note</p>
-                  <p className="mt-1.5 text-[13px] font-body text-charcoal-ink/70">
-                    This account is currently rendering the free-plan fallback because no server-owned entitlement record is available yet.
-                  </p>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-              {usageCards.map(card => (
-                <UsageSummaryCard
-                  key={card.title}
-                  title={card.title}
-                  value={card.value}
-                  detail={card.detail}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Shield className="w-4 h-4" style={{ color: C.amethyst }} />
-              <p className="text-[12px] uppercase tracking-wider font-label" style={{ color: C.amethyst }}>Premium Capability States</p>
-            </div>
-            <div className="grid gap-3 xl:grid-cols-3">
-              {featureAccessList.map(feature => (
-                <FeatureAccessCard key={feature.key} feature={feature} />
-              ))}
-            </div>
-          </div>
-
-          {lockedFeatures.length > 0 ? (
-            <div className="mt-5 rounded-2xl px-4 py-3" style={{ backgroundColor: C.cream, border: `1px solid ${C.parchment}` }}>
-              <p className="text-[12px] uppercase tracking-wider font-label text-charcoal-ink/40">Upgrade Needed</p>
-              <p className="mt-1.5 text-[13px] font-body text-charcoal-ink/70">
-                {lockedFeatures.map(feature => feature.shortTitle).join(', ')} remain locked on the {entitlementSummary?.plan?.displayName || 'Free'} plan. Upgrade messaging stays explicit here so future premium surfaces do not disappear without explanation.
-              </p>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="bg-white rounded-2xl p-6" style={{ border: `1px solid ${C.parchment}` }}>
-          <div className="flex items-center gap-2 mb-4">
-            <GraduationCap className="w-4 h-4" style={{ color: C.amethyst }} />
-            <h3 className="text-[17px] font-display text-charcoal-ink">School Year</h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="md:col-span-3">
-              <label className="block text-[11px] uppercase tracking-wider font-label mb-1.5 text-charcoal-ink/40">School Name</label>
-              <input
-                value={formData.school_name || ''}
-                onChange={event => handleChange('school_name', event.target.value)}
-                placeholder="Casey Academy"
-                className={inputClassName}
-                style={{ border: `1px solid ${C.parchment}` }}
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] uppercase tracking-wider font-label mb-1.5 text-charcoal-ink/40">Start Date</label>
-              <input
-                type="date"
-                value={formData.school_year_start || ''}
-                onChange={event => handleChange('school_year_start', event.target.value)}
-                className={inputClassName}
-                style={{ border: `1px solid ${C.parchment}` }}
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] uppercase tracking-wider font-label mb-1.5 text-charcoal-ink/40">End Date</label>
-              <input
-                type="date"
-                value={formData.school_year_end || ''}
-                onChange={event => handleChange('school_year_end', event.target.value)}
-                className={inputClassName}
-                style={{ border: `1px solid ${C.parchment}` }}
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] uppercase tracking-wider font-label mb-1.5 text-charcoal-ink/40">Timezone</label>
-              <input
-                value={formData.timezone || ''}
-                onChange={event => handleChange('timezone', event.target.value)}
-                placeholder="America/Chicago"
-                className={inputClassName}
-                style={{ border: `1px solid ${C.parchment}` }}
-              />
-            </div>
-          </div>
-
-          <div className="mt-5 rounded-2xl p-4" style={{ backgroundColor: `${C.lavenderTint}70`, border: `1px solid rgba(203,183,251,0.55)` }}>
-            <div className="flex items-center gap-2 mb-3">
-              <CalendarDays className="w-4 h-4" style={{ color: C.amethyst }} />
-              <p className="text-[12px] uppercase tracking-wider font-label" style={{ color: C.amethyst }}>Quarter Calendar</p>
-            </div>
-
-            {quarters.length === 0 ? (
-              <p className="text-[13px] font-body text-charcoal-ink/45">
-                Add a valid school-year start and end date to generate quarter ranges automatically.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {quarters.map(quarter => (
-                  <div key={quarter.label} className="rounded-xl p-4 bg-white" style={{ border: `1px solid ${C.parchment}` }}>
-                    <p className="text-[11px] uppercase tracking-wider font-label mb-1" style={{ color: C.amethyst }}>{quarter.label}</p>
-                    <p className="text-[14px] font-display text-charcoal-ink">{formatWeekRange(quarter.start, quarter.end)}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="op-pill w-fit">
+            {formatResetSchedule(formData)}
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6" style={{ border: `1px solid ${C.parchment}` }}>
-          <div className="flex items-center gap-2 mb-4">
-            <Clock3 className="w-4 h-4" style={{ color: C.amethyst }} />
-            <h3 className="text-[17px] font-display text-charcoal-ink">Weekly Reset</h3>
-          </div>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <section className="op-panel p-5 md:p-6">
+            <div className="mb-5 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-lavender-glow" />
+              <div>
+                <p className="op-eyebrow">Plan and Access</p>
+                <h2 className="mt-2 text-[20px] font-display text-[rgba(250,249,255,0.96)]">Subscription state</h2>
+              </div>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[11px] uppercase tracking-wider font-label mb-1.5 text-charcoal-ink/40">Reset Day</label>
-              <select
-                value={formData.week_reset_day}
-                onChange={event => handleChange('week_reset_day', event.target.value)}
-                className={inputClassName}
-                style={{ border: `1px solid ${C.parchment}` }}
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+              <div
+                className="op-surface p-5"
+                style={{ borderLeft: '3px solid rgba(203,183,251,0.78)' }}
               >
-                {RESET_DAY_OPTIONS.map(option => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex min-h-[28px] items-center border px-3 text-[11px] uppercase tracking-[0.12em] font-label" style={statusTone}>
+                    {entitlementSummary?.subscriptionStatusMeta?.label || 'No Billing State'}
+                  </span>
+                  <span className="inline-flex min-h-[28px] items-center border px-3 text-[11px] uppercase tracking-[0.12em] font-label" style={statusToneStyles.muted}>
+                    {planSourceLabel}
+                  </span>
+                </div>
+
+                <div className="mt-6 flex items-end justify-between gap-4">
+                  <div>
+                    <p className="op-eyebrow mb-2">
+                      Current Plan
+                    </p>
+                    <h3 className="text-[34px] font-display text-[rgba(250,249,255,0.96)]" style={{ lineHeight: 1 }}>
+                      {entitlementSummary?.plan?.displayName || 'Free'}
+                    </h3>
+                    <p className="op-subtle mt-3 text-[14px] font-body leading-6">
+                      {entitlementSummary?.plan?.priceLabel || '$0'} | {entitlementSummary?.subscriptionStatusMeta?.description || 'No provider-backed billing state is connected yet.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="op-panel-muted px-4 py-3">
+                    <p className="op-eyebrow">Trial Ends</p>
+                    <p className="mt-2 text-[14px] font-body text-[rgba(250,249,255,0.9)]">{trialEndsLabel || 'Not set'}</p>
+                  </div>
+                  <div className="op-panel-muted px-4 py-3">
+                    <p className="op-eyebrow">Period Ends</p>
+                    <p className="mt-2 text-[14px] font-body text-[rgba(250,249,255,0.9)]">{currentPeriodEndLabel || 'Not set'}</p>
+                  </div>
+                </div>
+
+                {entitlementSummary?.isMissingEntitlementDoc ? (
+                  <div className="op-panel-muted mt-5 px-4 py-3" style={{ borderLeft: '3px solid rgba(245,158,11,0.74)' }}>
+                    <p className="op-eyebrow text-[#fbbf24]">Visibility Note</p>
+                    <p className="op-subtle mt-2 text-[13px] font-body leading-5">
+                      This account is currently rendering the free-plan fallback because no server-owned entitlement record is available yet.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                {usageCards.map(card => (
+                  <UsageSummaryCard
+                    key={card.title}
+                    title={card.title}
+                    value={card.value}
+                    detail={card.detail}
+                  />
                 ))}
-              </select>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-[11px] uppercase tracking-wider font-label mb-1.5 text-charcoal-ink/40">Reset Time</label>
-              <input
-                type="time"
-                value={formData.reset_time}
-                onChange={event => handleChange('reset_time', event.target.value)}
-                className={inputClassName}
-                style={{ border: `1px solid ${C.parchment}` }}
-              />
+            <div className="mt-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Shield className="h-4 w-4 text-lavender-glow" />
+                <p className="op-eyebrow">Premium Capability States</p>
+              </div>
+              <div className="grid gap-3 xl:grid-cols-3">
+                {featureAccessList.map(feature => (
+                  <FeatureAccessCard key={feature.key} feature={feature} />
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className="mt-5 rounded-xl px-4 py-3" style={{ backgroundColor: C.cream }}>
-            <p className="text-[11px] uppercase tracking-wider font-label mb-1 text-charcoal-ink/40">Current Schedule</p>
-            <p className="text-[14px] font-body text-charcoal-ink">{formatResetSchedule(formData)}</p>
+            {lockedFeatures.length > 0 ? (
+              <div className="op-panel-muted mt-5 px-4 py-3" style={{ borderLeft: '3px solid rgba(245,158,11,0.74)' }}>
+                <p className="op-eyebrow text-[#fbbf24]">Upgrade Needed</p>
+                <p className="op-subtle mt-2 text-[13px] font-body leading-5">
+                  {lockedFeatures.map(feature => feature.shortTitle).join(', ')} remain locked on the {entitlementSummary?.plan?.displayName || 'Free'} plan. Upgrade messaging stays explicit here so future premium surfaces do not disappear without explanation.
+                </p>
+              </div>
+            ) : null}
+          </section>
+
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
+          <section className="op-panel p-5 md:p-6">
+            <div className="mb-5 flex items-center gap-2">
+              <GraduationCap className="h-4 w-4 text-lavender-glow" />
+              <div>
+                <p className="op-eyebrow">School Year</p>
+                <h2 className="mt-2 text-[20px] font-display text-[rgba(250,249,255,0.96)]">Calendar metadata</h2>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="md:col-span-3">
+                <label className="op-eyebrow mb-1.5 block">School Name</label>
+                <input
+                  value={formData.school_name || ''}
+                  onChange={event => handleChange('school_name', event.target.value)}
+                  placeholder="Casey Academy"
+                  className={inputClassName}
+                />
+              </div>
+
+              <div>
+                <label className="op-eyebrow mb-1.5 block">Start Date</label>
+                <input
+                  type="date"
+                  value={formData.school_year_start || ''}
+                  onChange={event => handleChange('school_year_start', event.target.value)}
+                  className={inputClassName}
+                />
+              </div>
+
+              <div>
+                <label className="op-eyebrow mb-1.5 block">End Date</label>
+                <input
+                  type="date"
+                  value={formData.school_year_end || ''}
+                  onChange={event => handleChange('school_year_end', event.target.value)}
+                  className={inputClassName}
+                />
+              </div>
+
+              <div>
+                <label className="op-eyebrow mb-1.5 block">Timezone</label>
+                <input
+                  value={formData.timezone || ''}
+                  onChange={event => handleChange('timezone', event.target.value)}
+                  placeholder="America/Chicago"
+                  className={inputClassName}
+                />
+              </div>
+            </div>
+
+            <div className="op-panel-muted mt-5 p-4" style={{ borderLeft: '3px solid rgba(203,183,251,0.72)' }}>
+              <div className="mb-3 flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-lavender-glow" />
+                <p className="op-eyebrow">Quarter Calendar</p>
+              </div>
+
+              {quarters.length === 0 ? (
+                <p className="op-subtle text-[13px] font-body leading-5">
+                  Add a valid school-year start and end date to generate quarter ranges automatically.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {quarters.map(quarter => (
+                    <div key={quarter.label} className="op-surface p-4">
+                      <p className="op-eyebrow mb-2">{quarter.label}</p>
+                      <p className="text-[14px] font-display text-[rgba(250,249,255,0.92)]">{formatWeekRange(quarter.start, quarter.end)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+
+          <div className="space-y-6">
+            <section className="op-panel p-5 md:p-6">
+              <div className="mb-5 flex items-center gap-2">
+                <Clock3 className="h-4 w-4 text-lavender-glow" />
+                <div>
+                  <p className="op-eyebrow">Weekly Reset</p>
+                  <h2 className="mt-2 text-[20px] font-display text-[rgba(250,249,255,0.96)]">Rollover timing</h2>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="op-eyebrow mb-1.5 block">Reset Day</label>
+                  <select
+                    value={formData.week_reset_day}
+                    onChange={event => handleChange('week_reset_day', event.target.value)}
+                    className={inputClassName}
+                  >
+                    {RESET_DAY_OPTIONS.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="op-eyebrow mb-1.5 block">Reset Time</label>
+                  <input
+                    type="time"
+                    value={formData.reset_time}
+                    onChange={event => handleChange('reset_time', event.target.value)}
+                    className={inputClassName}
+                  />
+                </div>
+              </div>
+
+              <div className="op-panel-muted mt-5 px-4 py-3" style={{ borderLeft: '3px solid rgba(203,183,251,0.72)' }}>
+                <p className="op-eyebrow mb-2">Current Schedule</p>
+                <p className="text-[14px] font-body text-[rgba(250,249,255,0.9)]">{formatResetSchedule(formData)}</p>
+              </div>
+            </section>
+
+            <section className="op-panel-muted p-5">
+              <p className="op-eyebrow">Save Behavior</p>
+              <p className="op-subtle mt-3 text-[13px] font-body leading-5">
+                Saving updates the parent profile and propagates reset timing to existing students so reports, weekly plans, and portal timing stay aligned.
+              </p>
+            </section>
           </div>
         </div>
 
-        <div className="flex justify-end">
+        <div className="op-panel-muted flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="op-subtle text-[13px] font-body leading-5">
+            Settings changes take effect for new report windows immediately after save.
+          </p>
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ backgroundColor: C.charcoal, color: '#fff', fontSize: 14, fontWeight: 700 }}
-            onMouseEnter={event => { if (!saving) event.currentTarget.style.backgroundColor = '#3a3937'; }}
-            onMouseLeave={event => event.currentTarget.style.backgroundColor = C.charcoal}
+            className="op-button w-full disabled:cursor-not-allowed sm:w-auto"
           >
             <Save className="w-4 h-4" />
             {saving ? 'Saving...' : 'Save Settings'}
           </button>
         </div>
       </form>
+      </div>
     </div>
   );
 };

@@ -148,6 +148,7 @@ Completion notes, 2026-05-22:
 ## Remaining Follow-Up
 
 - Complete tester/manual QA in a seeded or disposable parent account for create, save, reopen, archive, and delete. Do not use the current live parent data for destructive checks unless the fixture is explicitly safe.
+- `scripts/seed-private-beta-smoke-fixtures.mjs` seeds a `Disposable Curriculum QA - Delete Me` subject for that destructive-flow pass when run against emulator or staging.
 - Recheck 375px and 430px screenshots in an authenticated viewport harness if available. The developer pass includes code/layout review for those widths and desktop authenticated smoke; authenticated mobile screenshot tooling was not available in this pass.
 - Keep persisted curriculum templates, assignment architecture, Firestore rules, student portal behavior, and report behavior out of this cleanup unless a separate plan owns that work.
 

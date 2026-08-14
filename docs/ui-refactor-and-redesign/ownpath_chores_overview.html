@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OwnPath — Chores Overview</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --n0:#181828;--n1:#1f1f32;--n2:#26263c;--n3:#2e2e48;--n4:#383858;
+  --vi:#7c6fd4;--vl:#b8adff;--vf:rgba(124,111,212,0.14);
+  --bd:rgba(255,255,255,0.08);--bd2:rgba(255,255,255,0.14);
+  --t1:#eeeaf8;--t2:#c4bedc;--t3:#8f8aaa;--t4:#585674;
+  --amber:#f59e0b;--green:#34d399;--red:#f87171;--blue:#60a5fa;--rose:#f472b6;
+}
+html,body{height:100%;background:var(--n0);color:var(--t1);font-family:system-ui,sans-serif}
+*{letter-spacing:0}
+.shell{display:flex;flex-direction:column;height:600px;overflow:hidden;background:var(--n1);border:0.5px solid var(--bd2)}
+.topbar{height:50px;background:var(--n0);border-bottom:0.5px solid var(--bd);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0}
+.tb-title{font-size:14px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:8px}
+.tb-sub{font-size:10px;color:var(--t3);margin-left:6px}
+.tb-actions{margin-left:auto;display:flex;gap:6px;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;font-size:11px;cursor:pointer;border:0.5px solid var(--bd2);background:transparent;color:var(--t2);transition:all .15s;white-space:nowrap}
+.btn:hover{background:var(--n3);color:var(--t1)}
+.btn.pri{background:var(--vi);color:#fff;border-color:var(--vi)}
+.btn.pri:hover{background:#6c60c0}
+.btn.sm{padding:3px 8px;font-size:10px}
+.btn i{font-size:13px}
+.notice{margin-left:8px;font-size:10px;color:var(--t3);padding:4px 8px;background:rgba(255,255,255,.03);border-left:2px solid var(--vi);min-width:132px;max-width:238px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.subbar{background:var(--n0);border-bottom:0.5px solid var(--bd);display:flex;align-items:center;padding:0 16px;gap:10px;min-height:38px;flex-shrink:0}
+.chips{display:flex;gap:4px;flex-wrap:wrap}
+.chip{font-size:10px;padding:4px 8px;border:0.5px solid var(--bd2);background:transparent;color:var(--t3);cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
+.chip:hover{background:var(--n3);color:var(--t2)}
+.chip.act{border-color:var(--vi);background:var(--vf);color:var(--vl)}
+.chip .mini{font-size:8px;padding:1px 4px;background:rgba(255,255,255,.06);color:var(--t3)}
+.body{flex:1;overflow:hidden;display:flex;flex-direction:column;padding:12px 14px;gap:10px}
+.stats-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--bd);flex-shrink:0}
+.stat-card{background:var(--n2);padding:11px 12px 10px;min-height:74px;border-left:3px solid transparent;cursor:pointer;transition:background .15s}
+.stat-card:hover{background:var(--n3)}
+.stat-lbl{font-size:9px;color:var(--t4);letter-spacing:.09em;text-transform:uppercase}
+.stat-val{font-size:19px;font-weight:500;color:var(--t1);margin-top:7px;line-height:1.05}
+.stat-sub{font-size:10px;color:var(--t3);margin-top:4px;line-height:1.25}
+.actions-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--bd);flex-shrink:0}
+.nav-card{background:var(--n2);padding:12px 13px 11px;min-height:74px;cursor:pointer;border-left:3px solid transparent;transition:background .15s;display:flex;flex-direction:column;gap:7px}
+.nav-card:hover{background:var(--n3)}
+.nav-top{display:flex;align-items:center;gap:8px}
+.nav-ico{width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:var(--n3);flex-shrink:0}
+.nav-ico i{font-size:13px;color:var(--vl)}
+.nav-name{font-size:12px;font-weight:500;color:var(--t1);flex:1;min-width:0}
+.nav-sub{font-size:10px;color:var(--t3);line-height:1.3}
+.nav-foot{display:flex;align-items:center;gap:6px;margin-top:auto;font-size:9px;color:var(--t4)}
+.nav-foot .arrow{margin-left:auto;color:var(--vl)}
+.main-grid{flex:1;display:grid;grid-template-columns:1.1fr .95fr;gap:10px;min-height:0}
+.panel{background:var(--n2);display:flex;flex-direction:column;min-height:0;border-left:3px solid transparent}
+.panel-hdr{height:38px;background:var(--n0);border-bottom:0.5px solid var(--bd);display:flex;align-items:center;padding:0 12px;gap:8px;flex-shrink:0}
+.panel-title{font-size:12px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:7px;min-width:0}
+.panel-title i{font-size:13px;color:var(--vl)}
+.panel-meta{margin-left:auto;font-size:10px;color:var(--t3)}
+.panel-body{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.students{gap:1px;background:var(--bd);overflow:hidden}
+.student-row{background:var(--n1);padding:11px 12px 10px;border-left:3px solid transparent;cursor:pointer;transition:background .15s;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start}
+.student-row:hover{background:var(--n2)}
+.student-row.sel{background:var(--n2);border-left-color:var(--vi)}
+.student-main{min-width:0}
+.student-top{display:flex;align-items:center;gap:7px;min-width:0}
+.sdot{width:7px;height:7px;flex-shrink:0}
+.sname{font-size:12px;font-weight:500;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sbadge{font-size:8px;padding:1px 5px;background:rgba(255,255,255,.06);color:var(--t3);flex-shrink:0}
+.smeta{display:flex;gap:10px;flex-wrap:wrap;margin-top:5px}
+.smeta span{font-size:10px;color:var(--t3);display:inline-flex;align-items:center;gap:3px}
+.smeta i{font-size:11px}
+.sline{height:3px;background:var(--n4);margin-top:8px;overflow:hidden}
+.sfill{height:3px}
+.sflags{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}
+.flag{font-size:8px;padding:2px 5px;white-space:nowrap}
+.flag.green{background:rgba(52,211,153,.14);color:var(--green)}
+.flag.amber{background:rgba(245,158,11,.14);color:var(--amber)}
+.flag.blue{background:rgba(96,165,250,.14);color:var(--blue)}
+.flag.rose{background:rgba(244,114,182,.14);color:var(--rose)}
+.student-side{display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right;min-width:82px}
+.student-score{font-size:19px;font-weight:500;color:var(--t1);line-height:1}
+.student-note{font-size:10px;color:var(--t3);line-height:1.2}
+.student-chip{font-size:8px;padding:1px 4px;background:var(--vf);color:var(--vl)}
+.focus{gap:1px;background:var(--bd);overflow:hidden}
+.focus-top{background:var(--n1);padding:12px 12px 10px;border-left:3px solid var(--vi)}
+.focus-name{font-size:13px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:7px;min-width:0}
+.focus-name span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.focus-sub{font-size:10px;color:var(--t3);margin-top:4px;line-height:1.35}
+.focus-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--bd);margin-top:10px}
+.focus-mini{background:var(--n2);padding:9px 10px 8px;min-height:58px}
+.focus-mini .k{font-size:9px;color:var(--t4);letter-spacing:.08em;text-transform:uppercase}
+.focus-mini .v{font-size:16px;font-weight:500;color:var(--t1);margin-top:5px}
+.focus-mini .s{font-size:10px;color:var(--t3);margin-top:2px}
+.focus-body{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.focus-strip{display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--n0);border-bottom:0.5px solid var(--bd);flex-shrink:0}
+.focus-strip .tag{font-size:9px;padding:2px 6px;background:rgba(255,255,255,.05);color:var(--t3)}
+.focus-strip .tag.act{background:var(--vf);color:var(--vl)}
+.activity{flex:1;overflow-y:auto;background:var(--n1);display:flex;flex-direction:column}
+.activity-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start;padding:10px 12px;border-bottom:0.5px solid var(--bd);border-left:3px solid transparent;cursor:pointer;transition:background .15s}
+.activity-row:hover{background:var(--n2)}
+.activity-row.sel{background:var(--n2)}
+.activity-row.review{border-left-color:var(--amber)}
+.activity-row.done{border-left-color:var(--green)}
+.activity-row.money{border-left-color:var(--blue)}
+.activity-row.reward{border-left-color:var(--rose)}
+.aicon{width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:var(--n3);flex-shrink:0}
+.aicon i{font-size:13px;color:var(--vl)}
+.ainfo{min-width:0}
+.aname{font-size:11px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.albl{font-size:8px;padding:1px 4px;background:rgba(255,255,255,.05);color:var(--t3)}
+.adetail{font-size:10px;color:var(--t3);margin-top:2px;line-height:1.35}
+.ameta{font-size:9px;color:var(--t4);margin-top:4px}
+.aright{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.actbtn{font-size:9px;padding:2px 7px;border:0.5px solid var(--bd2);background:transparent;color:var(--t3);cursor:pointer;transition:all .15s;white-space:nowrap}
+.actbtn:hover{background:var(--n3);color:var(--t1)}
+.actbtn.pri{border-color:rgba(124,111,212,.35);color:var(--vl);background:rgba(124,111,212,.1)}
+.actbtn.pri:hover{background:rgba(124,111,212,.18)}
+.focus-footer{padding:9px 12px;border-top:0.5px solid var(--bd);display:flex;align-items:center;gap:6px;flex-shrink:0;background:var(--n0)}
+.foot-note{font-size:10px;color:var(--t3);line-height:1.35;flex:1}
+.pill{font-size:9px;padding:2px 6px;white-space:nowrap}
+.pill.amber{background:rgba(245,158,11,.14);color:var(--amber)}
+.pill.green{background:rgba(52,211,153,.14);color:var(--green)}
+.pill.blue{background:rgba(96,165,250,.14);color:var(--blue)}
+.pill.rose{background:rgba(244,114,182,.14);color:var(--rose)}
+@media (max-width: 1020px){
+  .shell{height:auto;min-height:600px}
+  .stats-grid,.actions-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .main-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <div class="tb-title">
+      <i class="ti ti-bucket"></i>
+      Chores
+      <span class="tb-sub">Overview</span>
+    </div>
+    <div class="tb-actions">
+      <button class="btn sm" onclick="nav('Add chore')"><i class="ti ti-plus"></i> Add chore</button>
+      <button class="btn sm" onclick="nav('Allowance')"><i class="ti ti-coin"></i> View allowance</button>
+      <button class="btn sm pri" onclick="nav('Rewards')"><i class="ti ti-trophy"></i> Rewards</button>
+    </div>
+    <div class="notice" id="notice">Household chore status at a glance</div>
+  </div>
+
+  <div class="subbar">
+    <div class="chips" id="studentChips"></div>
+    <div style="width:1px;height:16px;background:var(--bd);margin:0 2px 0 4px"></div>
+    <div class="chips" id="filterChips"></div>
+  </div>
+
+  <div class="body">
+    <div class="stats-grid" id="statsGrid"></div>
+    <div class="actions-grid" id="actionsGrid"></div>
+
+    <div class="main-grid">
+      <section class="panel students" id="studentsPanel">
+        <div class="panel-hdr">
+          <div class="panel-title"><i class="ti ti-users"></i> Student snapshot</div>
+          <div class="panel-meta" id="studentMeta">Household totals</div>
+        </div>
+        <div class="panel-body" id="studentsBody"></div>
+      </section>
+
+      <section class="panel focus" id="focusPanel">
+        <div class="panel-hdr">
+          <div class="panel-title"><i class="ti ti-list-details"></i> Focused student</div>
+          <div class="panel-meta">Live summary</div>
+        </div>
+        <div class="focus-body">
+          <div class="focus-top" id="focusTop"></div>
+          <div class="focus-strip" id="focusStrip"></div>
+          <div class="activity" id="activityFeed"></div>
+          <div class="focus-footer">
+            <div class="foot-note" id="footerNote"></div>
+            <span class="pill amber" id="pendingPill"></span>
+            <span class="pill rose" id="redemptionPill"></span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+var STUDENTS=[
+  {id:'Caleb',color:'#7c6fd4',grade:'Grade 7',routineDone:4,routineTotal:6,weeklyClaimed:2,weeklyTotal:4,monthlyClaimed:1,monthlyTotal:3,allowanceDue:10.50,allowancePaid:4.00,pendingApprovals:1,pendingRedemptions:1,balance:320},
+  {id:'Evelyn',color:'#0f9e7a',grade:'Grade 5',routineDone:3,routineTotal:6,weeklyClaimed:3,weeklyTotal:4,monthlyClaimed:2,monthlyTotal:3,allowanceDue:9.00,allowancePaid:9.00,pendingApprovals:1,pendingRedemptions:0,balance:85},
+  {id:'Dummy 2',color:'#ba7517',grade:'Grade 3',routineDone:4,routineTotal:5,weeklyClaimed:1,weeklyTotal:4,monthlyClaimed:1,monthlyTotal:3,allowanceDue:9.00,allowancePaid:0.00,pendingApprovals:0,pendingRedemptions:1,balance:510}
+];
+
+var NAV=[
+  {name:'Daily Routines',icon:'ti-sun',sub:'Per-student morning, afternoon, evening routines',label:'Open routines',color:'#ba7517',href:'Daily Routines'},
+  {name:'Weekly Chores',icon:'ti-list-check',sub:'Shared household pool with claims and cooldowns',label:'Open weekly pool',color:'#0f9e7a',href:'Weekly Chores'},
+  {name:'Monthly Chores',icon:'ti-calendar-month',sub:'Shared monthly pool with quota and availability',label:'Open monthly pool',color:'#185fa5',href:'Monthly Chores'},
+  {name:'Allowance',icon:'ti-coin',sub:'Routine, weekly, and monthly completion payouts',label:'Open ledger',color:'#3b8c11',href:'Allowance'},
+  {name:'Rewards',icon:'ti-trophy',sub:'Points, redemptions, and reward stock',label:'Open rewards',color:'#993556',href:'Rewards'}
+];
+
+var ACTIVITY=[
+  {id:'a1',type:'done',focus:'Caleb',category:'routine',title:'Morning routine completed',detail:'Made bed, brushed teeth, fed the dogs, and got dressed.',meta:'Today · 8:10 AM',icon:'ti-check'},
+  {id:'a2',type:'done',focus:'Evelyn',category:'chore',title:'Weekly chore claimed',detail:'Vacuum living room claimed from the shared weekly pool.',meta:'Today · 9:05 AM',icon:'ti-list-check'},
+  {id:'a3',type:'review',focus:'Caleb',category:'approval',title:'Monthly chore waiting approval',detail:'Bathroom deep clean submitted with a photo. Parent approval still needed.',meta:'Today · 11:30 AM',icon:'ti-circle-dashed'},
+  {id:'a4',type:'money',focus:'Household',category:'money',title:'Allowance owed updated',detail:'Weekly plus monthly completion pushed Caleb to $10.50 owed for this period.',meta:'Today · 12:10 PM',icon:'ti-coin'},
+  {id:'a5',type:'reward',focus:'Evelyn',category:'reward',title:'Redemption requested',detail:'Evelyn requested Extra screen time from the reward store.',meta:'Today · 1:20 PM',icon:'ti-gift'},
+  {id:'a6',type:'review',focus:'Household',category:'approval',title:'Pending approval queue',detail:'1 chore approval and 1 reward redemption are waiting in the queue.',meta:'Today · 2:05 PM',icon:'ti-alert-triangle'},
+  {id:'a7',type:'done',focus:'Dummy 2',category:'routine',title:'Routine day earned',detail:'Evening routine hit the full completion target.',meta:'Yesterday · 7:40 PM',icon:'ti-sun-low'},
+  {id:'a8',type:'money',focus:'Evelyn',category:'money',title:'Allowance paid out marked',detail:'Previous period marked as paid outside the app.',meta:'Yesterday · 4:10 PM',icon:'ti-cash'},
+  {id:'a9',type:'reward',focus:'Caleb',category:'reward',title:'Reward redeemed',detail:'Caleb used points for a theme unlock and a badge.',meta:'Yesterday · 5:30 PM',icon:'ti-stars'}
+];
+
+var state={
+  student:'Caleb',
+  filter:'all',
+  selectedActivity:'a3'
+};
+
+function money(v){return '$'+v.toFixed(2);}
+function pct(done,total){return Math.round((done/total)*100);}
+
+function totals(){
+  return STUDENTS.reduce(function(acc,s){
+    acc.routineDone+=s.routineDone;
+    acc.routineTotal+=s.routineTotal;
+    acc.weeklyClaimed+=s.weeklyClaimed;
+    acc.weeklyTotal+=s.weeklyTotal;
+    acc.monthlyClaimed+=s.monthlyClaimed;
+    acc.monthlyTotal+=s.monthlyTotal;
+    acc.allowanceDue+=s.allowanceDue;
+    acc.allowancePaid+=s.allowancePaid;
+    acc.pendingApprovals+=s.pendingApprovals;
+    acc.pendingRedemptions+=s.pendingRedemptions;
+    return acc;
+  },{routineDone:0,routineTotal:0,weeklyClaimed:0,weeklyTotal:0,monthlyClaimed:0,monthlyTotal:0,allowanceDue:0,allowancePaid:0,pendingApprovals:0,pendingRedemptions:0});
+}
+
+function getStudent(id){return STUDENTS.find(function(s){return s.id===id})||STUDENTS[0];}
+
+function nav(label){
+  document.getElementById('notice').textContent='Navigation preview: '+label;
+}
+
+function setStudent(id){
+  state.student=id;
+  render();
+}
+
+function setFilter(filter){
+  state.filter=filter;
+  render();
+}
+
+function setActivity(id){
+  state.selectedActivity=id;
+  render();
+}
+
+function action(label){
+  document.getElementById('notice').textContent='Preview action: '+label;
+}
+
+function renderStats(){
+  var t=totals();
+  var allowanceUnpaid=Math.max(0,t.allowanceDue-t.allowancePaid);
+  var cards=[
+    {label:'Routine days',val:t.routineDone+'/'+t.routineTotal,sub:'Daily routines completed',color:'var(--amber)',focus:'routine'},
+    {label:'Weekly pool',val:t.weeklyClaimed+'/'+t.weeklyTotal,sub:'Shared weekly chores claimed',color:'var(--green)',focus:'chore'},
+    {label:'Monthly pool',val:t.monthlyClaimed+'/'+t.monthlyTotal,sub:'Shared monthly chores claimed',color:'var(--blue)',focus:'chore'},
+    {label:'Allowance owed',val:money(allowanceUnpaid),sub:money(t.allowanceDue)+' due this period',color:'var(--vi)',focus:'money'},
+    {label:'Pending queues',val:t.pendingApprovals+'/'+t.pendingRedemptions,sub:'Approvals / redemptions waiting',color:'var(--rose)',focus:'review'}
+  ];
+  document.getElementById('statsGrid').innerHTML=cards.map(function(c){
+    return '<div class="stat-card" style="border-left-color:'+c.color+'" onclick="setFilter(\''+c.focus+'\')">'
+      +'<div class="stat-lbl">'+c.label+'</div>'
+      +'<div class="stat-val">'+c.val+'</div>'
+      +'<div class="stat-sub">'+c.sub+'</div>'
+      +'</div>';
+  }).join('');
+}
+
+function renderActions(){
+  document.getElementById('actionsGrid').innerHTML=NAV.map(function(n){
+    return '<div class="nav-card" style="border-left-color:'+n.color+'" onclick="nav(\''+n.href+'\')">'
+      +'<div class="nav-top">'
+      +'<div class="nav-ico"><i class="ti '+n.icon+'"></i></div>'
+      +'<div class="nav-name">'+n.name+'</div>'
+      +'</div>'
+      +'<div class="nav-sub">'+n.sub+'</div>'
+      +'<div class="nav-foot"><span>'+n.label+'</span><span class="arrow"><i class="ti ti-arrow-right"></i></span></div>'
+      +'</div>';
+  }).join('');
+}
+
+function renderStudentChips(){
+  var h='';
+  STUDENTS.forEach(function(s){
+    var st=getStudent(s.id);
+    var count = st.routineDone+'/'+st.routineTotal+' routines';
+    h+='<button class="chip'+(state.student===s.id?' act':'')+'" onclick="setStudent(\''+s.id+'\')">'
+      +'<span style="width:7px;height:7px;background:'+s.color+';display:inline-block;flex-shrink:0"></span>'
+      +s.id
+      +'<span class="mini">'+count+'</span>'
+      +'</button>';
+  });
+  document.getElementById('studentChips').innerHTML=h;
+}
+
+function renderFilterChips(){
+  var chips=[
+    {id:'all',label:'All activity'},
+    {id:'routine',label:'Routines'},
+    {id:'chore',label:'Chores'},
+    {id:'money',label:'Allowance'},
+    {id:'reward',label:'Rewards'},
+    {id:'review',label:'Needs review'}
+  ];
+  document.getElementById('filterChips').innerHTML=chips.map(function(c){
+    return '<button class="chip'+(state.filter===c.id?' act':'')+'" onclick="setFilter(\''+c.id+'\')">'+c.label+'</button>';
+  }).join('');
+}
+
+function renderStudents(){
+  var h='';
+  STUDENTS.forEach(function(s){
+    var selected=state.student===s.id;
+    var routinePct=pct(s.routineDone,s.routineTotal);
+    var weeklyPct=pct(s.weeklyClaimed,s.weeklyTotal);
+    var monthlyPct=pct(s.monthlyClaimed,s.monthlyTotal);
+    var owed=Math.max(0,s.allowanceDue-s.allowancePaid);
+    h+='<div class="student-row'+(selected?' sel':'')+'" style="border-left-color:'+s.color+'" onclick="setStudent(\''+s.id+'\')">'
+      +'<div class="student-main">'
+      +'<div class="student-top">'
+      +'<span class="sdot" style="background:'+s.color+'"></span>'
+      +'<div class="sname">'+s.id+'</div>'
+      +'<span class="sbadge">'+s.grade+'</span>'
+      +'</div>'
+      +'<div class="smeta">'
+      +'<span><i class="ti ti-sun"></i>'+s.routineDone+'/'+s.routineTotal+' routine days</span>'
+      +'<span><i class="ti ti-list-check"></i>'+s.weeklyClaimed+'/'+s.weeklyTotal+' weekly</span>'
+      +'<span><i class="ti ti-calendar-month"></i>'+s.monthlyClaimed+'/'+s.monthlyTotal+' monthly</span>'
+      +'</div>'
+      +'<div class="sline"><div class="sfill" style="width:'+(routinePct*100/100)+'%;background:'+s.color+'"></div></div>'
+      +'<div class="sflags">'
+      +(owed>0?'<span class="flag amber">'+money(owed)+' owed</span>':'<span class="flag green">Paid</span>')
+      +(s.pendingApprovals?'<span class="flag blue">'+s.pendingApprovals+' approval</span>':'')
+      +(s.pendingRedemptions?'<span class="flag rose">'+s.pendingRedemptions+' redemption</span>':'')
+      +'</div>'
+      +'</div>'
+      +'<div class="student-side">'
+      +'<div class="student-score">'+routinePct+'%</div>'
+      +'<div class="student-note">routine complete</div>'
+      +'<span class="student-chip">'+weeklyPct+'% weekly</span>'
+      +'<span class="student-chip">'+monthlyPct+'% monthly</span>'
+      +'</div>'
+      +'</div>';
+  });
+  document.getElementById('studentsBody').innerHTML=h;
+  document.getElementById('studentMeta').textContent=getStudent(state.student).grade+' focus';
+}
+
+function filteredActivities(){
+  return ACTIVITY.filter(function(a){
+    var studentOk=state.student==='Caleb' ? (a.focus===state.student || a.focus==='Household') : (a.focus===state.student || a.focus==='Household');
+    var filterOk=state.filter==='all' || a.category===state.filter || (state.filter==='chore' && a.category==='chore') || (state.filter==='review' && a.type==='review');
+    if(state.filter==='all') filterOk=true;
+    return studentOk && filterOk;
+  });
+}
+
+function renderFocus(){
+  var s=getStudent(state.student);
+  var owed=Math.max(0,s.allowanceDue-s.allowancePaid);
+  var pend=s.pendingApprovals+s.pendingRedemptions;
+  document.getElementById('focusTop').innerHTML=
+    '<div class="focus-name"><span style="width:8px;height:8px;background:'+s.color+';display:inline-block;flex-shrink:0"></span><span>'+s.id+'</span><span class="sbadge">'+s.grade+'</span></div>'
+    +'<div class="focus-sub">Daily routines stay per-student. Weekly and monthly chores are shared household pools, so this view reconciles personal completion with household queues.</div>'
+    +'<div class="focus-stats">'
+      +'<div class="focus-mini"><div class="k">Routine days</div><div class="v">'+s.routineDone+'/'+s.routineTotal+'</div><div class="s">This week</div></div>'
+      +'<div class="focus-mini"><div class="k">Weekly pool</div><div class="v">'+s.weeklyClaimed+'/'+s.weeklyTotal+'</div><div class="s">Claimed</div></div>'
+      +'<div class="focus-mini"><div class="k">Allowance owed</div><div class="v">'+money(owed)+'</div><div class="s">'+money(s.allowancePaid)+' paid</div></div>'
+      +'<div class="focus-mini"><div class="k">Pending queues</div><div class="v">'+pend+'</div><div class="s">Approvals + redemptions</div></div>'
+    +'</div>';
+
+  document.getElementById('focusStrip').innerHTML=
+    '<span class="tag act">'+(state.filter==='all'?'All activity':state.filter.charAt(0).toUpperCase()+state.filter.slice(1))+'</span>'
+    +'<span class="tag">Focus updates the feed</span>'
+    +'<span class="tag">Tap a row for selection</span>';
+  document.getElementById('footerNote').textContent='Tap a nav card to jump to that chore surface. This prototype keeps the overview compact, with the household feed and per-student summary sharing the same screen.';
+  document.getElementById('pendingPill').textContent=s.pendingApprovals+' approvals';
+  document.getElementById('redemptionPill').textContent=s.pendingRedemptions+' redemptions';
+}
+
+function renderActivity(){
+  var rows=filteredActivities();
+  var h='';
+  rows.forEach(function(a){
+    var cls='activity-row '+a.type+(state.selectedActivity===a.id?' sel':'');
+    var label=a.category.toUpperCase();
+    h+='<div class="'+cls+'" onclick="setActivity(\''+a.id+'\')">'
+      +'<div class="aicon"><i class="ti '+a.icon+'"></i></div>'
+      +'<div class="ainfo">'
+      +'<div class="aname">'+a.title+' <span class="albl">'+label+'</span></div>'
+      +'<div class="adetail">'+a.detail+'</div>'
+      +'<div class="ameta">'+a.meta+' · '+a.focus+'</div>'
+      +'</div>'
+      +'<div class="aright">'
+      +(a.type==='done'?'<button class="actbtn pri" onclick="event.stopPropagation();action(\'Open '+a.title+'\')">Open</button>':'')
+      +(a.type==='review'?'<button class="actbtn" onclick="event.stopPropagation();action(\'Review '+a.title+'\')">Review</button>':'')
+      +(a.type==='reward'?'<button class="actbtn" onclick="event.stopPropagation();action(\'Open rewards queue\')">Queue</button>':'')
+      +(a.type==='money'?'<button class="actbtn" onclick="event.stopPropagation();action(\'View allowance ledger\')">Ledger</button>':'')
+      +'</div>'
+      +'</div>';
+  });
+  document.getElementById('activityFeed').innerHTML=h;
+}
+
+function render(){
+  renderStats();
+  renderActions();
+  renderStudentChips();
+  renderFilterChips();
+  renderStudents();
+  renderFocus();
+  renderActivity();
+}
+
+render();
+</script>
+</body>
+</html>

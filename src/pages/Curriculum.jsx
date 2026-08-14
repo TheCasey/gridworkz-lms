@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { serverTimestamp } from 'firebase/firestore';
-import { BookOpen, Plus, Trash2, Archive, Edit, ExternalLink, X } from 'lucide-react';
+import { ArrowRight, BookOpen, CalendarDays, Plus, Trash2, Archive, Edit, ExternalLink, X } from 'lucide-react';
 import BlockObjectivesEditor from '../components/curriculum/BlockObjectivesEditor';
-import WeeklyPlanReviewPanel from '../components/curriculum/WeeklyPlanReviewPanel';
+import { dashboardFeaturesById } from '../constants/dashboardFeatures';
 import useEntitlements from '../hooks/useEntitlements';
 import useStudents from '../hooks/useStudents';
 import useSubjects from '../hooks/useSubjects';
@@ -24,11 +24,15 @@ const C = {
   lavenderTint: '#f0eaff',
 };
 
-const inputCls = 'w-full px-3 py-2.5 rounded-lg placeholder:text-[#292827]/30 focus:outline-none text-[15px] font-body transition-colors bg-white';
-const inputStyle = { border: `1px solid ${C.parchment}`, color: C.charcoal };
-const inputFocusStyle = { border: `1px solid ${C.charcoal}` };
+const inputCls = 'op-input text-[15px] font-body transition-colors';
+const inputStyle = {
+  backgroundColor: '#202034',
+  border: '1px solid rgba(238,234,248,0.18)',
+  color: 'rgba(250,249,255,0.94)',
+};
+const inputFocusStyle = { border: `1px solid ${C.lavender}` };
 
-const labelCls = 'block text-[13px] font-label uppercase tracking-wider text-charcoal-ink/50 mb-2';
+const labelCls = 'block text-[11px] font-label uppercase tracking-[0.16em] text-[rgba(203,183,251,0.72)] mb-2';
 
 const parsePositiveInt = (value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) => {
   const parsed = Number.parseInt(value, 10);
@@ -56,17 +60,18 @@ const Toggle = ({ value, onChange }) => (
   <button
     type="button"
     onClick={() => onChange(!value)}
-    className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-    style={{ backgroundColor: value ? C.lavender : C.parchment }}
+    className="relative inline-flex h-6 w-11 items-center border transition-colors"
+    style={{
+      backgroundColor: value ? 'rgba(203,183,251,0.92)' : 'rgba(238,234,248,0.08)',
+      borderColor: value ? C.lavender : 'rgba(238,234,248,0.18)',
+    }}
   >
-    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${value ? 'translate-x-6' : 'translate-x-1'}`} />
+    <span className={`inline-block h-4 w-4 transform bg-white transition-transform shadow-sm ${value ? 'translate-x-6' : 'translate-x-1'}`} />
   </button>
 );
 
 const Curriculum = () => {
   const { currentUser } = useAuth();
-  const outletContext = useOutletContext() || {};
-  const parentSettings = outletContext.parentSettings || {};
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingSubject, setEditingSubject] = useState(null);
 
@@ -379,8 +384,10 @@ const Curriculum = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-7 w-7 border-b-2" style={{ borderColor: C.lavender }} />
+      <div className="op-page">
+        <div className="op-shell flex min-h-[360px] items-center justify-center">
+          <div className="h-7 w-7 animate-spin border-2 border-transparent border-b-[#cbb7fb]" />
+        </div>
       </div>
     );
   }
@@ -399,47 +406,59 @@ const Curriculum = () => {
   const isCreateSubjectBlocked = !editingSubject && curriculumLimitReached;
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <div>
-          <h2 className="text-[26px] font-display text-charcoal-ink" style={{ lineHeight: 1.1, letterSpacing: '-0.5px' }}>Curriculum</h2>
-          <p className="text-[14px] text-charcoal-ink/50 font-body mt-1">
-            Manage subjects, learning resources, and the first weekly-plan review surface.
-          </p>
-        </div>
-      </div>
-
-      <WeeklyPlanReviewPanel
-        activeSubjects={activeSubjects}
-        colors={C}
-        currentUser={currentUser}
-        parentSettings={parentSettings}
-        students={students}
-      />
-
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.16em] font-label text-charcoal-ink/40 mb-2">
-            Compatibility Input Path
-          </p>
-          <h3 className="text-[22px] font-display text-charcoal-ink" style={{ lineHeight: 1.08 }}>
-            Subject Editor
-          </h3>
-          <p className="text-[14px] text-charcoal-ink/50 font-body mt-1">
-            Subjects remain the source input for weekly-plan generation in this phase.
+    <div className="op-page">
+      <div className="op-shell space-y-6">
+      <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+        <div className="max-w-3xl">
+          <p className="op-eyebrow">Curriculum</p>
+          <h1 className="op-title mt-3">Per-student subject library</h1>
+          <p className="op-subtle mt-4 max-w-2xl text-[14px] font-body leading-6">
+            Manage subject plans, learning resources, completion requirements, and the compatibility bridge into weekly planning.
           </p>
         </div>
         <button
           onClick={openCreateSubjectForm}
           disabled={!canAddCurriculumItem}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors disabled:cursor-not-allowed"
-          style={{
-            backgroundColor: canAddCurriculumItem ? C.charcoal : 'rgba(41,40,39,0.2)',
-            color: '#ffffff',
-            opacity: canAddCurriculumItem ? 1 : 0.75,
-          }}
-          onMouseEnter={e => { if (canAddCurriculumItem) e.currentTarget.style.backgroundColor = '#3a3937'; }}
-          onMouseLeave={e => { e.currentTarget.style.backgroundColor = canAddCurriculumItem ? C.charcoal : 'rgba(41,40,39,0.2)'; }}
+          className="op-button w-full sm:w-auto"
+        >
+          <Plus className="w-4 h-4" />
+          {curriculumLimitReached ? 'Subject Limit Reached' : 'Add Subject'}
+        </button>
+      </section>
+
+      <section className="op-panel-muted grid gap-4 p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+        <div className="max-w-3xl">
+          <p className="op-eyebrow">Weekly Planning</p>
+          <h2 className="mt-3 text-[24px] font-display leading-none text-white">
+            Publish weekly blocks from the dedicated planner
+          </h2>
+          <p className="op-subtle mt-3 text-[13px] font-body leading-5">
+            Curriculum remains the compatibility input path. After editing subject blocks or resources, reset the student-week in Weekly Blocking before saving or publishing.
+          </p>
+        </div>
+        <Link to={`/dashboard/${dashboardFeaturesById['weekly-blocking'].path}`} className="op-button">
+          <CalendarDays className="h-4 w-4" />
+          Weekly Blocking
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      </section>
+
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <p className="op-eyebrow mb-2">
+            Compatibility Input Path
+          </p>
+          <h3 className="text-[26px] font-display text-white" style={{ lineHeight: 1 }}>
+            Subject Editor
+          </h3>
+          <p className="op-subtle text-[14px] font-body mt-2">
+            Subjects remain the source input for weekly-plan generation in this phase. New subjects are written per student; legacy shared records still render and can be edited in place.
+          </p>
+        </div>
+        <button
+          onClick={openCreateSubjectForm}
+          disabled={!canAddCurriculumItem}
+          className="op-button hidden sm:inline-flex"
         >
           <Plus className="w-4 h-4" />
           {curriculumLimitReached ? 'Subject Limit Reached' : 'Add Subject'}
@@ -448,21 +467,17 @@ const Curriculum = () => {
 
       {curriculumLimitCheck && (
         <div
-          className="mb-6 rounded-2xl px-4 py-3"
-          style={{
-            backgroundColor: curriculumLimitReached ? `${C.lavenderTint}` : '#fbfaf8',
-            border: `1px solid ${curriculumLimitReached ? `${C.lavender}90` : C.parchment}`,
-          }}
+          className="op-panel-muted mb-6 px-4 py-3"
         >
           <div className="flex items-center justify-between gap-3">
-            <p className="text-[12px] uppercase tracking-wider font-label" style={{ color: curriculumLimitReached ? C.amethyst : 'rgba(41,40,39,0.5)' }}>
+            <p className="op-eyebrow">
               Active Subject Usage
             </p>
-            <span className="text-[12px] font-label" style={{ color: curriculumLimitReached ? C.amethyst : 'rgba(41,40,39,0.45)' }}>
+            <span className="text-[12px] font-label text-[rgba(238,234,248,0.56)]">
               {curriculumLimitCheck.isUnlimited ? `${curriculumLimitCheck.usage} active` : `${curriculumLimitCheck.usage}/${curriculumLimitCheck.limit}`}
             </span>
           </div>
-          <p className="mt-1.5 text-[13px] font-body" style={{ color: curriculumLimitReached ? C.charcoal : 'rgba(41,40,39,0.68)' }}>
+          <p className="op-subtle mt-1.5 text-[13px] font-body leading-5">
             {curriculumLimitMessage}
           </p>
         </div>
@@ -470,39 +485,35 @@ const Curriculum = () => {
 
       {/* Add/Edit Modal */}
       {showAddForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3 sm:p-4">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-3 sm:p-4">
           <div
-            className="bg-white rounded-2xl w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] sm:max-h-[90vh] flex flex-col overflow-hidden"
-            style={{ border: `1px solid ${C.parchment}` }}
+            className="op-panel w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] sm:max-h-[90vh] flex flex-col overflow-hidden"
           >
 
             {/* Sticky header + step indicator */}
-            <div className="sticky top-0 bg-white z-10 flex-shrink-0" style={{ borderBottom: `1px solid ${C.parchment}` }}>
+            <div className="sticky top-0 z-10 flex-shrink-0 bg-[#27273e]" style={{ borderBottom: '1px solid rgba(238,234,248,0.12)' }}>
               <div className="flex items-center justify-between px-6 pt-6 pb-3">
                 <div>
-                  <h2 className="text-[18px] font-display text-charcoal-ink">
+                  <p className="op-eyebrow">Subject Editor</p>
+                  <h2 className="mt-2 text-[24px] font-display leading-none text-white">
                     {editingSubject ? 'Edit Subject' : 'Add New Subject'}
                   </h2>
-                  <p className="text-[12px] text-charcoal-ink/40 font-body mt-0.5">
+                  <p className="op-subtle text-[12px] font-body mt-2">
                     {STEPS[currentStep - 1].description}
                   </p>
                 </div>
-                <button onClick={resetForm} className="text-charcoal-ink/30 hover:text-charcoal-ink transition-colors">
+                <button onClick={resetForm} className="op-icon-button" title="Close">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               {!editingSubject && curriculumLimitCheck && (
                 <div
-                  className="mx-6 mb-4 rounded-xl px-4 py-3"
-                  style={{
-                    backgroundColor: isCreateSubjectBlocked ? `${C.lavenderTint}` : '#fbfaf8',
-                    border: `1px solid ${isCreateSubjectBlocked ? `${C.lavender}90` : C.parchment}`,
-                  }}
+                  className="op-panel-muted mx-6 mb-4 px-4 py-3"
                 >
-                  <p className="text-[12px] uppercase tracking-wider font-label" style={{ color: isCreateSubjectBlocked ? C.amethyst : 'rgba(41,40,39,0.5)' }}>
+                  <p className="op-eyebrow">
                     Active Subject Limit
                   </p>
-                  <p className="mt-1.5 text-[13px] font-body" style={{ color: C.charcoal }}>
+                  <p className="op-subtle mt-1.5 text-[13px] font-body leading-5">
                     {curriculumLimitMessage}
                   </p>
                 </div>
@@ -516,21 +527,21 @@ const Curriculum = () => {
                   return (
                     <React.Fragment key={n}>
                       <div className="flex flex-col items-center flex-shrink-0" style={{ width: 56 }}>
-                        <div className="w-6 h-6 rounded-full flex items-center justify-center transition-colors"
+                        <div className="w-6 h-6 flex items-center justify-center transition-colors"
                           style={{
-                            backgroundColor: done ? C.charcoal : active ? C.lavender : 'transparent',
-                            border: `1.5px solid ${done ? C.charcoal : active ? C.lavender : C.parchment}`,
-                            color: done ? '#fff' : active ? C.charcoal : 'rgba(41,40,39,0.25)',
+                            backgroundColor: done ? 'rgba(203,183,251,0.92)' : active ? 'rgba(203,183,251,0.18)' : 'transparent',
+                            border: `1.5px solid ${done || active ? C.lavender : 'rgba(238,234,248,0.18)'}`,
+                            color: done ? '#1f1f32' : active ? C.lavender : 'rgba(238,234,248,0.44)',
                             fontSize: 11, fontWeight: 700
                           }}>
                           {done ? '✓' : n}
                         </div>
-                        <span style={{ fontSize: 9, marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: active ? 700 : 400, color: active ? C.charcoal : 'rgba(41,40,39,0.35)', textAlign: 'center', lineHeight: 1.3 }}>
+                        <span style={{ fontSize: 9, marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: active ? 700 : 400, color: active ? C.lavender : 'rgba(238,234,248,0.44)', textAlign: 'center', lineHeight: 1.3 }}>
                           {step.label}
                         </span>
                       </div>
                       {idx < STEPS.length - 1 && (
-                        <div style={{ flex: 1, height: 1.5, marginTop: 11, backgroundColor: n < currentStep ? C.charcoal : C.parchment }} />
+                        <div style={{ flex: 1, height: 1.5, marginTop: 11, backgroundColor: n < currentStep ? C.lavender : 'rgba(238,234,248,0.16)' }} />
                       )}
                     </React.Fragment>
                   );
@@ -545,22 +556,22 @@ const Curriculum = () => {
               {currentStep === 1 && (<>
                 <div>
                   <label className={labelCls}>Assign Students *</label>
-                  <div className="rounded-lg overflow-hidden max-h-48 overflow-y-auto" style={{ border: `1px solid ${C.parchment}` }}>
+                  <div className="overflow-hidden max-h-48 overflow-y-auto border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)]">
                     {students.map((s) => (
                       <label key={s.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer"
-                        style={{ borderBottom: `1px solid ${C.parchment}` }}
-                        onMouseEnter={e => e.currentTarget.style.backgroundColor = C.cream}
+                        style={{ borderBottom: '1px solid rgba(238,234,248,0.1)' }}
+                        onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(238,234,248,0.08)'}
                         onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}>
                         <input type="checkbox" checked={selectedStudents.includes(s.id)}
                           onChange={(e) => setSelectedStudents(e.target.checked ? [...selectedStudents, s.id] : selectedStudents.filter(id => id !== s.id))}
                           className="w-4 h-4 accent-amethyst-link" />
-                        <span className="text-[14px] text-charcoal-ink font-body">{s.name}</span>
+                        <span className="text-[14px] text-[rgba(238,234,248,0.78)] font-body">{s.name}</span>
                       </label>
                     ))}
                   </div>
                   {selectedStudents.length === 0
-                    ? <p className="text-[12px] text-amethyst-link mt-1.5">Select at least one student</p>
-                    : <p className="text-[12px] text-charcoal-ink/40 mt-1.5">{selectedStudents.length} student{selectedStudents.length > 1 ? 's' : ''} selected</p>}
+                    ? <p className="text-[12px] text-[#cbb7fb] mt-1.5">Select at least one student</p>
+                    : <p className="op-subtle text-[12px] mt-1.5">{selectedStudents.length} student{selectedStudents.length > 1 ? 's' : ''} selected</p>}
                 </div>
                 <div>
                   <label className={labelCls}>Subject Name *</label>
@@ -574,8 +585,8 @@ const Curriculum = () => {
                   <label className={labelCls}>Subject Color</label>
                   <div className="flex items-center gap-3">
                     <input type="color" value={subjectColor} onChange={(e) => setSubjectColor(e.target.value)}
-                      className="w-14 h-10 rounded-lg cursor-pointer p-0.5 bg-white" style={{ border: `1px solid ${C.parchment}` }} />
-                    <span className="text-[13px] text-charcoal-ink/50 font-mono">{subjectColor}</span>
+                      className="w-14 h-10 cursor-pointer bg-[#202034] p-1" style={{ border: '1px solid rgba(238,234,248,0.18)' }} />
+                    <span className="text-[13px] text-[rgba(238,234,248,0.5)] font-mono">{subjectColor}</span>
                   </div>
                 </div>
               </>)}
@@ -609,8 +620,8 @@ const Curriculum = () => {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-[14px] font-body text-charcoal-ink">Require Summary</p>
-                      <p className="text-[12px] text-charcoal-ink/40 mt-0.5">
+                      <p className="text-[14px] font-body text-[rgba(250,249,255,0.9)]">Require Summary</p>
+                      <p className="op-subtle mt-0.5 text-[12px]">
                         {requireSummary ? 'Students must write a summary (min. 150 characters)' : 'No summary required'}
                       </p>
                     </div>
@@ -618,8 +629,8 @@ const Curriculum = () => {
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-[14px] font-body text-charcoal-ink">Require Timer</p>
-                      <p className="text-[12px] text-charcoal-ink/40 mt-0.5">
+                      <p className="text-[14px] font-body text-[rgba(250,249,255,0.9)]">Require Timer</p>
+                      <p className="op-subtle mt-0.5 text-[12px]">
                         {requireTimer ? 'Timer must complete before submitting' : 'Timer is optional'}
                       </p>
                     </div>
@@ -632,7 +643,7 @@ const Curriculum = () => {
               {currentStep === 3 && (<>
                 <div>
                   <label className={labelCls}>Resource Links</label>
-                  <p className="text-[12px] text-charcoal-ink/40 mb-3 font-body">Links or materials students can reference during a block</p>
+                  <p className="op-subtle mb-3 text-[12px] font-body">Links or materials students can reference during a block</p>
                   <div className="space-y-2.5">
                     {resources.map((resource, i) => (
                       <div key={i} className="flex flex-col gap-2 sm:flex-row">
@@ -650,25 +661,25 @@ const Curriculum = () => {
                           placeholder="https://..." />
                         {resources.length > 1 && (
                           <button type="button" onClick={() => handleRemoveResource(i)}
-                            className="self-start p-2 text-charcoal-ink/30 hover:text-charcoal-ink transition-colors sm:self-auto">
+                            className="self-start p-2 text-[rgba(238,234,248,0.38)] transition-colors hover:text-[rgba(250,249,255,0.92)] sm:self-auto">
                             <X className="w-4 h-4" />
                           </button>
                         )}
                       </div>
                     ))}
                     <button type="button" onClick={handleAddResource}
-                      className="flex items-center gap-2 text-[13px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                      className="flex items-center gap-2 text-[13px] text-[#cbb7fb] hover:text-[#e0d5ff] font-body transition-colors">
                       <Plus className="w-4 h-4" /> Add Resource
                     </button>
                   </div>
                 </div>
-                <div style={{ borderTop: `1px solid ${C.parchment}` }} />
+                <div style={{ borderTop: '1px solid rgba(238,234,248,0.12)' }} />
                 <div>
                   <label className={labelCls}>Custom Submission Fields</label>
-                  <p className="text-[12px] text-charcoal-ink/40 mb-3 font-body">Extra info requested from students on every block completion for this subject</p>
+                  <p className="op-subtle mb-3 text-[12px] font-body">Extra info requested from students on every block completion for this subject</p>
                   <div className="space-y-3">
                     {customFields.map((field, i) => (
-                      <div key={field.id} className="rounded-lg p-4 bg-[#faf9f8]" style={{ border: `1px solid ${C.parchment}` }}>
+                      <div key={field.id} className="op-surface p-4" style={{ borderLeft: '3px solid rgba(203,183,251,0.68)' }}>
                         <div className="grid grid-cols-1 gap-3 mb-3 sm:grid-cols-2">
                           <div>
                             <label className={labelCls}>Field Type</label>
@@ -685,7 +696,7 @@ const Curriculum = () => {
                             <input type="checkbox" checked={field.required}
                               onChange={(e) => handleCustomFieldChange(i, 'required', e.target.checked)}
                               className="w-4 h-4 accent-amethyst-link" />
-                            <label className="text-[13px] text-charcoal-ink/60 font-body">Required</label>
+                            <label className="text-[13px] text-[rgba(238,234,248,0.68)] font-body">Required</label>
                           </div>
                         </div>
                         <div className="space-y-2">
@@ -701,13 +712,13 @@ const Curriculum = () => {
                             placeholder="Helper text for the student" />
                         </div>
                         <button type="button" onClick={() => handleRemoveCustomField(i)}
-                          className="mt-3 text-[12px] text-charcoal-ink/40 hover:text-charcoal-ink font-body transition-colors">
+                          className="mt-3 text-[12px] text-[rgba(238,234,248,0.44)] hover:text-[rgba(250,249,255,0.92)] font-body transition-colors">
                           Remove Field
                         </button>
                       </div>
                     ))}
                     <button type="button" onClick={handleAddCustomField}
-                      className="flex items-center gap-2 text-[13px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                      className="flex items-center gap-2 text-[13px] text-[#cbb7fb] hover:text-[#e0d5ff] font-body transition-colors">
                       <Plus className="w-4 h-4" /> Add Custom Field
                     </button>
                   </div>
@@ -745,27 +756,17 @@ const Curriculum = () => {
               </div>
 
               {/* Step navigation */}
-              <div className="sticky bottom-0 flex flex-shrink-0 gap-3 bg-white p-4 sm:p-6" style={{ borderTop: `1px solid ${C.parchment}` }}>
+              <div className="sticky bottom-0 flex flex-shrink-0 gap-3 bg-[#27273e] p-4 sm:p-6" style={{ borderTop: '1px solid rgba(238,234,248,0.12)' }}>
                 <button type="button"
                   onClick={currentStep === 1 ? resetForm : () => setCurrentStep(s => s - 1)}
-                  className="flex-1 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors"
-                  style={{ backgroundColor: C.cream, color: C.charcoal }}
-                  onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
-                  onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}>
+                  className="op-button op-button-secondary flex-1">
                   {currentStep === 1 ? 'Cancel' : '← Back'}
                 </button>
                 <button
                   type="button"
                   onClick={handlePrimaryAction}
                   disabled={isCreateSubjectBlocked}
-                  className="flex-1 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors disabled:cursor-not-allowed"
-                  style={{
-                    backgroundColor: isCreateSubjectBlocked ? 'rgba(41,40,39,0.2)' : C.charcoal,
-                    color: '#ffffff',
-                    opacity: isCreateSubjectBlocked ? 0.75 : 1,
-                  }}
-                  onMouseEnter={e => { if (!isCreateSubjectBlocked) e.currentTarget.style.backgroundColor = '#3a3937'; }}
-                  onMouseLeave={e => { e.currentTarget.style.backgroundColor = isCreateSubjectBlocked ? 'rgba(41,40,39,0.2)' : C.charcoal; }}>
+                  className="op-button flex-1 disabled:cursor-not-allowed">
                   {isCreateSubjectBlocked
                     ? 'Upgrade Required'
                     : currentStep === STEPS.length
@@ -780,20 +781,13 @@ const Curriculum = () => {
 
       {/* Subjects Grid */}
       {activeSubjects.length === 0 ? (
-        <div className="text-center py-16">
-          <BookOpen className="w-10 h-10 text-charcoal-ink/20 mx-auto mb-4" />
-          <h3 className="text-[18px] font-display text-charcoal-ink mb-2">No subjects yet</h3>
-          <p className="text-[14px] text-charcoal-ink/40 font-body mb-6">Add your first subject to get started</p>
+        <div className="op-panel flex min-h-[360px] flex-col items-center justify-center px-6 py-16 text-center">
+          <BookOpen className="w-10 h-10 text-[#cbb7fb] mx-auto mb-4" />
+          <h3 className="text-[22px] font-display text-white mb-2">No subjects yet</h3>
+          <p className="op-subtle text-[14px] font-body mb-6">Add your first per-student subject to get started.</p>
           <button onClick={openCreateSubjectForm}
             disabled={!canAddCurriculumItem}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg font-label text-[14px] transition-colors disabled:cursor-not-allowed"
-            style={{
-              backgroundColor: canAddCurriculumItem ? C.charcoal : 'rgba(41,40,39,0.2)',
-              color: '#ffffff',
-              opacity: canAddCurriculumItem ? 1 : 0.75,
-            }}
-            onMouseEnter={e => { if (canAddCurriculumItem) e.currentTarget.style.backgroundColor = '#3a3937'; }}
-            onMouseLeave={e => { e.currentTarget.style.backgroundColor = canAddCurriculumItem ? C.charcoal : 'rgba(41,40,39,0.2)'; }}>
+            className="op-button disabled:cursor-not-allowed">
             <Plus className="w-4 h-4" /> {curriculumLimitReached ? 'Subject Limit Reached' : 'Add Your First Subject'}
           </button>
         </div>
@@ -804,28 +798,28 @@ const Curriculum = () => {
             const studentNames = studentIds.map(id => students.find(s => s.id === id)?.name || 'Unknown').join(', ');
 
             return (
-              <div key={subject.id} className="bg-white rounded-2xl p-6 hover:shadow-sm transition-shadow" style={{ border: `1px solid ${C.parchment}` }}>
+              <div key={subject.id} className="op-surface p-5 transition-colors hover:bg-[#292942]">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: subject.color || '#3B82F6' }} />
-                      <h3 className="text-[16px] font-display text-charcoal-ink truncate" style={{ lineHeight: 1.2 }}>
+                      <div className="w-3 h-8 flex-shrink-0" style={{ backgroundColor: subject.color || '#3B82F6' }} />
+                      <h3 className="text-[18px] font-display text-white truncate" style={{ lineHeight: 1.05 }}>
                         {subject.title}
                       </h3>
                     </div>
-                    <p className="text-[13px] text-charcoal-ink/40 font-body truncate">{studentNames || 'Unknown students'}</p>
+                    <p className="op-subtle text-[13px] font-body truncate">{studentNames || 'Unknown students'}</p>
                   </div>
                   <div className="flex gap-1 ml-2 flex-shrink-0">
                     <button onClick={() => handleEdit(subject)}
-                      className="p-1.5 text-charcoal-ink/30 hover:text-charcoal-ink transition-colors" title="Edit">
+                      className="op-icon-button h-8 w-8" title="Edit">
                       <Edit className="w-4 h-4" />
                     </button>
                     <button onClick={() => archiveSubject(subject.id)}
-                      className="p-1.5 text-charcoal-ink/30 hover:text-charcoal-ink transition-colors" title="Archive">
+                      className="op-icon-button h-8 w-8" title="Archive">
                       <Archive className="w-4 h-4" />
                     </button>
                     <button onClick={() => deleteSubject(subject.id)}
-                      className="p-1.5 text-charcoal-ink/30 hover:text-red-500 transition-colors" title="Delete">
+                      className="op-icon-button h-8 w-8" title="Delete">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -833,21 +827,21 @@ const Curriculum = () => {
 
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-[13px] text-charcoal-ink/50 font-body">Weekly Blocks</span>
-                    <span className="text-[13px] font-display text-charcoal-ink">{subject.block_count || 10}</span>
+                    <span className="op-subtle text-[13px] font-body">Weekly Blocks</span>
+                    <span className="text-[13px] font-display text-white">{subject.block_count || 10}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-[13px] text-charcoal-ink/50 font-body">Block Length</span>
-                    <span className="text-[13px] font-display text-charcoal-ink">{subject.block_length || 30} min</span>
+                    <span className="op-subtle text-[13px] font-body">Block Length</span>
+                    <span className="text-[13px] font-display text-white">{subject.block_length || 30} min</span>
                   </div>
 
                   {subject.resources && subject.resources.length > 0 && (
-                    <div className="pt-3" style={{ borderTop: `1px solid ${C.parchment}` }}>
-                      <p className="text-[11px] font-label uppercase tracking-wider text-charcoal-ink/40 mb-2">Resources</p>
+                    <div className="pt-3" style={{ borderTop: '1px solid rgba(238,234,248,0.12)' }}>
+                      <p className="op-eyebrow mb-2">Resources</p>
                       <div className="space-y-1.5">
                         {subject.resources.map((r, i) => (
                           <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 text-[13px] text-amethyst-link hover:text-[#5c3d9e] font-body transition-colors">
+                            className="flex items-center gap-1.5 text-[13px] text-[#cbb7fb] hover:text-[#e0d5ff] font-body transition-colors">
                             <ExternalLink className="w-3 h-3" />
                             {r.name}
                           </a>
@@ -861,6 +855,7 @@ const Curriculum = () => {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 };

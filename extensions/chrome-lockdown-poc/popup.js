@@ -2,6 +2,7 @@ import {
   PAIRING_KEY,
   POLICY_KEY,
   SYNC_STATE_KEY,
+  LOCKDOWN_SYNC_STATUSES,
   getPairingSettings,
   getPolicy,
   getSyncState,
@@ -9,10 +10,16 @@ import {
   isPairingConfigured,
   setPolicy,
 } from './policy.js';
+import {
+  getLockdownStateGuidance,
+  getRequestAccessGuidance,
+  summarizeAllowedResources,
+} from './guidance.js';
 
 const statusDot = document.getElementById('status-dot');
 const statusPillLabel = document.getElementById('status-pill-label');
 const statusCopy = document.getElementById('status-copy');
+const requestAccessCopy = document.getElementById('request-access-copy');
 const originCount = document.getElementById('origin-count');
 const creatorCount = document.getElementById('creator-count');
 const toggleButton = document.getElementById('toggle-button');
@@ -31,16 +38,42 @@ function formatDateTime(value) {
 }
 
 function describeSyncState(syncState, pairing) {
+  if (syncState.status === LOCKDOWN_SYNC_STATUSES.RECOVERY_UNPAIRED) {
+    return {
+      label: 'Parent recovery pending',
+      copy: syncState.last_error || 'A parent recovery code cleared the local pairing. Cached enforcement stays local until this browser is paired again.',
+      summary: syncState.device_id
+        ? `Recovered device: ${syncState.device_id}`
+        : 'Local pairing was cleared by parent recovery.',
+      timestamp: syncState.last_attempt_at
+        ? `Recovery accepted ${new Date(syncState.last_attempt_at).toLocaleString()}`
+        : 'Pair this browser again to restore secure policy sync.',
+    };
+  }
+
+  if (syncState.remote_policy_state === 'stale_cached_policy') {
+    return {
+      label: 'Using cached policy',
+      copy: 'The last trusted policy is still active locally. A fresh sync has not completed yet.',
+      summary: pairing.device_name
+        ? `Paired device: ${pairing.device_name}`
+        : `Device ID: ${pairing.device_id}`,
+      timestamp: syncState.last_sync_at
+        ? `Cached policy last refreshed ${new Date(syncState.last_sync_at).toLocaleString()}`
+        : 'The cached policy is still being used while secure sync recovers.',
+    };
+  }
+
   if (isLegacyPairing(pairing)) {
     return {
-      label: 'Migration required',
-      copy: 'A legacy PoC pairing is still saved. Cached enforcement is still active, but secure sync is paused until you pair with a trusted enrollment code.',
+      label: 'Older pairing saved',
+      copy: 'A saved pairing from an older format is still present. Cached enforcement is still active, but secure sync is paused until you pair with a trusted enrollment code.',
       summary: pairing.legacy_policy_id
-        ? `Legacy policy ID: ${pairing.legacy_policy_id}`
-        : 'Legacy pairing needs to be replaced with a trusted enrollment code.',
+        ? `Compatibility record: ${pairing.legacy_policy_id}`
+        : 'Older pairing data needs to be replaced with a trusted enrollment code.',
       timestamp: pairing.paired_at
-        ? `Legacy pairing saved ${new Date(pairing.paired_at).toLocaleString()}`
-        : 'Legacy pairing replacement is required before the next secure sync.',
+        ? `Older pairing saved ${new Date(pairing.paired_at).toLocaleString()}`
+        : 'Replace the older pairing before the next secure sync.',
     };
   }
 
@@ -50,6 +83,45 @@ function describeSyncState(syncState, pairing) {
       copy: 'This browser is currently enforcing only its local cached policy.',
       summary: 'No trusted pairing saved yet.',
       timestamp: 'No secure policy sync has completed yet.',
+    };
+  }
+
+  if (syncState.status === LOCKDOWN_SYNC_STATUSES.DEVICE_REVOKED) {
+    return {
+      label: 'Device revoked',
+      copy: syncState.last_error || 'This saved device credential was revoked in the parent dashboard. Cached policy remains active locally until you pair again.',
+      summary: pairing.device_name
+        ? `Revoked device: ${pairing.device_name}`
+        : `Device ID: ${pairing.device_id}`,
+      timestamp: syncState.last_attempt_at
+        ? `Revocation detected ${new Date(syncState.last_attempt_at).toLocaleString()}`
+        : 'Secure sync is paused until you pair again.',
+    };
+  }
+
+  if (syncState.status === LOCKDOWN_SYNC_STATUSES.DEVICE_INACTIVE) {
+    return {
+      label: 'Device inactive',
+      copy: syncState.last_error || 'This saved device credential is inactive on the server. Cached policy remains active locally until you pair again.',
+      summary: pairing.device_name
+        ? `Inactive device: ${pairing.device_name}`
+        : `Device ID: ${pairing.device_id}`,
+      timestamp: syncState.last_attempt_at
+        ? `Inactive status detected ${new Date(syncState.last_attempt_at).toLocaleString()}`
+        : 'Secure sync is paused until you pair again.',
+    };
+  }
+
+  if (syncState.status === LOCKDOWN_SYNC_STATUSES.INVALID_DEVICE_CREDENTIAL) {
+    return {
+      label: 'Invalid credential',
+      copy: syncState.last_error || 'The saved device credential no longer matches the server record. Pair this browser again to restore secure sync.',
+      summary: pairing.device_name
+        ? `Paired device: ${pairing.device_name}`
+        : `Device ID: ${pairing.device_id}`,
+      timestamp: syncState.last_attempt_at
+        ? `Latest sync failure ${new Date(syncState.last_attempt_at).toLocaleString()}`
+        : 'Secure sync could not validate the saved credential.',
     };
   }
 
@@ -85,11 +157,15 @@ function describeSyncState(syncState, pairing) {
     };
   }
 
-  if (syncState.status === 'error') {
+  if (syncState.status === LOCKDOWN_SYNC_STATUSES.NETWORK_ERROR || syncState.status === 'error') {
     return {
-      label: 'Using cached fallback',
-      copy: syncState.last_error || 'Secure sync failed, so the cached policy is still active.',
-      summary: 'The extension will keep enforcing the last good cached policy until sync recovers.',
+      label: syncState.using_cached_policy ? 'Using cached fallback' : 'Sync unavailable',
+      copy: syncState.using_cached_policy
+        ? (syncState.last_error || 'Secure sync failed, so the last trusted policy is still active locally.')
+        : (syncState.last_error || 'Secure sync failed before a trusted policy cache was available.'),
+      summary: syncState.using_cached_policy
+        ? 'The extension will keep enforcing the last good cached policy until sync recovers.'
+        : 'The extension could not confirm a trusted cache, so pairing must recover before a secure sync can resume.',
       timestamp: syncState.last_attempt_at
         ? `Latest sync failure ${new Date(syncState.last_attempt_at).toLocaleString()}`
         : 'Secure sync failed before a timestamp was captured.',
@@ -112,31 +188,43 @@ function renderPolicy(policy, pairing, syncState) {
   const enabled = policy.is_enabled;
   const paired = isPairingConfigured(pairing);
   const legacyPairing = isLegacyPairing(pairing);
+  const recoveryPending = syncState.status === LOCKDOWN_SYNC_STATUSES.RECOVERY_UNPAIRED;
   const syncDescription = describeSyncState(syncState, pairing);
+  const guidance = getLockdownStateGuidance({ policy, syncState });
+  const requestAccess = getRequestAccessGuidance();
+  const allowedResources = summarizeAllowedResources(policy);
+  const showStateLabel = guidance.stateKey !== 'active_block';
 
   statusDot.classList.toggle('off', !enabled);
-  statusPillLabel.textContent = enabled ? 'Blocking on' : 'Blocking off';
+  statusPillLabel.textContent = showStateLabel
+    ? (guidance.label || (enabled ? 'Blocking on' : 'Blocking off'))
+    : (enabled ? 'Blocking on' : 'Blocking off');
   statusCopy.textContent = paired
     ? enabled
-      ? 'Blocking is managed by the paired device credential and includes website and approved-creator checks.'
+      ? (showStateLabel ? guidance.copy : 'Blocking is managed by the paired device credential and includes website and approved-creator checks.')
       : 'The paired device policy currently leaves blocking off.'
-    : legacyPairing
+    : recoveryPending
+      ? 'Parent recovery cleared this browser pairing. Cached enforcement remains on locally until a trusted enrollment code pairs it again.'
+      : legacyPairing
       ? enabled
         ? 'Cached blocking is still active, but this browser needs a new trusted pairing before it can receive policy changes.'
         : 'This browser needs a new trusted pairing before it can receive policy changes.'
       : enabled
-        ? 'Top-level browsing is limited to the website allowlist and approved YouTube creators.'
+        ? guidance.copy
         : 'Browsing is unrestricted until you turn local blocking back on.';
-  originCount.textContent = String(policy.allowed_origins.length);
-  creatorCount.textContent = String(policy.allowed_youtube_channels.length);
+  requestAccessCopy.textContent = requestAccess.copy;
+  originCount.textContent = String(allowedResources.allowedOrigins.length);
+  creatorCount.textContent = String(allowedResources.allowedCreators.length);
   toggleButton.textContent = paired
     ? 'Managed by parent portal'
+    : recoveryPending
+      ? 'Parent recovery pending'
     : legacyPairing
-      ? 'Migration required'
+      ? 'Older pairing saved'
       : enabled
         ? 'Turn blocking off'
         : 'Turn blocking on';
-  toggleButton.disabled = paired || legacyPairing;
+  toggleButton.disabled = paired || legacyPairing || recoveryPending;
   syncStatusLabel.textContent = syncDescription.label;
   syncStatusCopy.textContent = syncDescription.copy;
   pairingSummary.textContent = syncDescription.summary;

@@ -7,10 +7,12 @@ export const SYNC_INTERVAL_MINUTES = 1;
 
 export const LOCKDOWN_POC_PAIRING_CODE_VERSION = 1;
 export const LOCKDOWN_TRUSTED_ENROLLMENT_CODE_VERSION = 1;
+export const LOCKDOWN_TRUSTED_RECOVERY_CODE_VERSION = 1;
 
 export const LOCKDOWN_POC_PAIRING_CONTRACT = 'lockdown_poc_firestore_pairing_v1';
 export const LOCKDOWN_TRUSTED_ENROLLMENT_CONTRACT = 'trusted_lockdown_enrollment_v1';
 export const LOCKDOWN_TRUSTED_POLICY_READ_CONTRACT = 'trusted_lockdown_device_policy_v1';
+export const LOCKDOWN_TRUSTED_RECOVERY_CONTRACT = 'trusted_lockdown_device_recovery_v1';
 
 export const PAIRING_KINDS = Object.freeze({
   UNPAIRED: 'unpaired',
@@ -38,6 +40,7 @@ export const DEFAULT_POLICY = {
       handle: '@khanacademy',
     },
   ],
+  system_resources: [],
   updated_at: null,
 };
 
@@ -79,6 +82,18 @@ export const DEFAULT_SYNC_STATE = {
   fetched_at: null,
   device_id: '',
 };
+
+export const LOCKDOWN_SYNC_STATUSES = Object.freeze({
+  UNPAIRED: 'unpaired',
+  MIGRATION_REQUIRED: 'migration_required',
+  SYNCING: 'syncing',
+  SYNCED: 'synced',
+  DEVICE_REVOKED: 'revoked',
+  DEVICE_INACTIVE: 'inactive',
+  INVALID_DEVICE_CREDENTIAL: 'invalid_credential',
+  NETWORK_ERROR: 'network_error',
+  RECOVERY_UNPAIRED: 'recovery_unpaired',
+});
 
 function trimString(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -140,6 +155,43 @@ function normalizeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function normalizeSystemResourceEntry(resource) {
+  if (!resource || typeof resource !== 'object') return null;
+
+  const resourceType = trimString(resource.resource_type || resource.type);
+  const name = trimString(resource.name || resource.label);
+  const origin = normalizeOriginEntry(resource.origin || resource.url);
+  const url = normalizeRemoteUrl(resource.url);
+  const allowed = resource.allowed !== false;
+  const decision = trimString(resource.decision);
+  const scope = trimString(resource.scope);
+  const page = trimString(resource.page);
+  const pages = Array.isArray(resource.pages)
+    ? resource.pages.map((value) => trimString(value)).filter(Boolean)
+    : [];
+  const urls = Array.isArray(resource.urls)
+    ? resource.urls.map((value) => normalizeRemoteUrl(value)).filter(Boolean)
+    : [];
+
+  if (!resourceType && !name && !origin && !url && !page && !pages.length && !urls.length && !decision) {
+    return null;
+  }
+
+  return {
+    resource_type: resourceType || (decision ? 'decision' : origin ? 'origin' : page ? 'page_group' : ''),
+    name,
+    label: name,
+    origin,
+    url,
+    allowed,
+    decision,
+    scope,
+    page,
+    pages,
+    urls,
+  };
+}
+
 export function normalizePolicy(input = {}) {
   const rawOrigins = Array.isArray(input.allowed_origins)
     ? input.allowed_origins
@@ -147,12 +199,18 @@ export function normalizePolicy(input = {}) {
   const rawChannels = Array.isArray(input.allowed_youtube_channels)
     ? input.allowed_youtube_channels
     : DEFAULT_POLICY.allowed_youtube_channels;
+  const rawSystemResources = Array.isArray(input.system_resources)
+    ? input.system_resources
+    : [];
 
   const dedupedOrigins = Array.from(
     new Set(rawOrigins.map((origin) => normalizeOriginEntry(origin)).filter(Boolean))
   );
   const normalizedChannels = rawChannels
     .map((channel) => normalizeChannelEntry(channel))
+    .filter(Boolean);
+  const normalizedSystemResources = rawSystemResources
+    .map((resource) => normalizeSystemResourceEntry(resource))
     .filter(Boolean);
 
   return {
@@ -161,8 +219,28 @@ export function normalizePolicy(input = {}) {
     is_enabled: Boolean(input.is_enabled),
     allowed_origins: dedupedOrigins,
     allowed_youtube_channels: normalizedChannels,
+    system_resources: normalizedSystemResources,
     updated_at: normalizeTimestampString(input.updated_at),
   };
+}
+
+export function getSystemAllowlistOrigins(resources = []) {
+  const originSet = new Set();
+  const origins = [];
+
+  (Array.isArray(resources) ? resources : []).forEach((resource) => {
+    const normalizedResource = normalizeSystemResourceEntry(resource);
+    const origin = normalizedResource?.allowed === false
+      ? ''
+      : normalizedResource?.origin;
+
+    if (origin && !originSet.has(origin)) {
+      originSet.add(origin);
+      origins.push(origin);
+    }
+  });
+
+  return origins;
 }
 
 export function normalizeTrustedEnrollmentMaterial(input = {}) {
@@ -178,6 +256,21 @@ export function normalizeTrustedEnrollmentMaterial(input = {}) {
     source_policy_kind: trimString(input.source_policy_kind),
     source_policy_parent_id: trimString(input.source_policy_parent_id),
     student_id: trimString(input.student_id),
+  };
+}
+
+export function normalizeTrustedRecoveryMaterial(input = {}) {
+  return {
+    recovery_kind: 'trusted_recovery',
+    recovery_contract: trimString(input.contract) || LOCKDOWN_TRUSTED_RECOVERY_CONTRACT,
+    recovery_token: trimString(input.recovery_token),
+    recovery_expires_at:
+      normalizeTimestampString(input.recovery_expires_at)
+      || normalizeTimestampString(input.expires_at),
+    recovery_url: normalizeRemoteUrl(input.recovery_url),
+    parent_id: trimString(input.parent_id),
+    student_id: trimString(input.student_id),
+    device_id: trimString(input.device_id),
   };
 }
 
@@ -281,6 +374,9 @@ function normalizePolicyContext(input = {}) {
       url: trimString(resource?.url),
       reason: trimString(resource?.reason),
     })),
+    system_resources: normalizeArray(input.system_resources)
+      .map((resource) => normalizeSystemResourceEntry(resource))
+      .filter(Boolean),
   };
 }
 
@@ -334,6 +430,51 @@ export function normalizeSyncState(input = {}) {
   };
 }
 
+const hasTrustedPolicyCache = (syncState = {}) => Boolean(
+  trimString(syncState.last_sync_at)
+  || trimString(syncState.remote_policy_updated_at)
+  || syncState.using_cached_policy === true
+);
+
+export function buildTrustedSyncFailureState({
+  currentSyncState = DEFAULT_SYNC_STATE,
+  errorCode = '',
+  errorMessage = '',
+} = {}) {
+  const normalizedErrorCode = trimString(errorCode);
+  const hasCachedPolicy = hasTrustedPolicyCache(currentSyncState);
+
+  if (normalizedErrorCode === 'device_revoked') {
+    return {
+      status: LOCKDOWN_SYNC_STATUSES.DEVICE_REVOKED,
+      last_error: errorMessage || 'The saved device credential was revoked in the parent dashboard. Pair this browser again to restore secure sync.',
+      using_cached_policy: hasCachedPolicy,
+    };
+  }
+
+  if (normalizedErrorCode === 'device_inactive') {
+    return {
+      status: LOCKDOWN_SYNC_STATUSES.DEVICE_INACTIVE,
+      last_error: errorMessage || 'The saved device credential is inactive. Pair this browser again to restore secure sync.',
+      using_cached_policy: hasCachedPolicy,
+    };
+  }
+
+  if (normalizedErrorCode === 'invalid_device_credential' || normalizedErrorCode === 'device_not_found') {
+    return {
+      status: LOCKDOWN_SYNC_STATUSES.INVALID_DEVICE_CREDENTIAL,
+      last_error: errorMessage || 'The saved device credential is no longer valid. Pair this browser again to restore secure sync.',
+      using_cached_policy: hasCachedPolicy,
+    };
+  }
+
+  return {
+    status: LOCKDOWN_SYNC_STATUSES.NETWORK_ERROR,
+    last_error: errorMessage || 'Secure sync could not reach the parent policy service.',
+    using_cached_policy: hasCachedPolicy,
+  };
+}
+
 function encodeBase64Url(value) {
   if (typeof Buffer !== 'undefined') {
     return Buffer.from(value, 'utf8')
@@ -383,6 +524,16 @@ function parseDecodedPairingPayload(payload) {
   }
 
   if (
+    payload.version === LOCKDOWN_TRUSTED_RECOVERY_CODE_VERSION
+    && trimString(payload.contract) === LOCKDOWN_TRUSTED_RECOVERY_CONTRACT
+  ) {
+    const normalized = normalizeTrustedRecoveryMaterial(payload);
+    return normalized.recovery_token && normalized.recovery_url && normalized.device_id
+      ? normalized
+      : null;
+  }
+
+  if (
     payload.version === LOCKDOWN_POC_PAIRING_CODE_VERSION
     && trimString(payload.contract) === LOCKDOWN_POC_PAIRING_CONTRACT
   ) {
@@ -425,9 +576,14 @@ export function parsePairingCode(value) {
   }
 }
 
+export function parseRecoveryCode(value) {
+  const parsed = parsePairingCode(value);
+  return parsed?.recovery_kind === 'trusted_recovery' ? parsed : null;
+}
+
 export function buildUrlFilterForOrigin(origin) {
   const normalizedOrigin = normalizeOriginEntry(origin);
-  return normalizedOrigin ? `|${normalizedOrigin}/` : null;
+  return normalizedOrigin ? `|${normalizedOrigin}^` : null;
 }
 
 export function findAllowedYoutubeChannel(policy, channelId) {

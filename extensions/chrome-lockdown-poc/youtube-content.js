@@ -1,6 +1,11 @@
+import {
+  getRequestAccessGuidance,
+  getYoutubeBlockedGuidance,
+} from './guidance.js';
+
 const POLICY_KEY = 'lockdownPolicy';
-const OVERLAY_ID = 'gridworkz-lockdown-overlay';
-const STYLE_ID = 'gridworkz-lockdown-style';
+const OVERLAY_ID = 'ownpath-lockdown-overlay';
+const STYLE_ID = 'ownpath-lockdown-style';
 const URL_POLL_MS = 500;
 const RETRY_DELAY_MS = 800;
 const MAX_PENDING_ATTEMPTS = 6;
@@ -40,8 +45,8 @@ function stopPauseLoop() {
 
 function pauseVisibleMedia() {
   document.querySelectorAll('video').forEach((video) => {
-    if (!video.paused && video.dataset.gridworkzShouldResume !== 'true') {
-      video.dataset.gridworkzShouldResume = 'true';
+    if (!video.paused && video.dataset.ownpathShouldResume !== 'true') {
+      video.dataset.ownpathShouldResume = 'true';
     }
 
     video.pause();
@@ -49,8 +54,8 @@ function pauseVisibleMedia() {
 }
 
 function resumePausedMedia() {
-  document.querySelectorAll('video[data-gridworkz-should-resume]').forEach((video) => {
-    delete video.dataset.gridworkzShouldResume;
+  document.querySelectorAll('video[data-ownpath-should-resume]').forEach((video) => {
+    delete video.dataset.ownpathShouldResume;
     void video.play().catch(() => {});
   });
 }
@@ -80,7 +85,7 @@ function ensureStyleTag() {
       display: none;
     }
 
-    #${OVERLAY_ID} .gridworkz-panel {
+    #${OVERLAY_ID} .ownpath-panel {
       width: min(560px, 100%);
       border-radius: 24px;
       border: 1px solid rgba(27, 25, 56, 0.14);
@@ -89,7 +94,7 @@ function ensureStyleTag() {
       padding: 24px;
     }
 
-    #${OVERLAY_ID} .gridworkz-eyebrow {
+    #${OVERLAY_ID} .ownpath-eyebrow {
       margin: 0 0 10px;
       text-transform: uppercase;
       letter-spacing: 0.16em;
@@ -111,14 +116,14 @@ function ensureStyleTag() {
       color: #1b1938;
     }
 
-    #${OVERLAY_ID} .gridworkz-copy {
+    #${OVERLAY_ID} .ownpath-copy {
       margin-top: 12px;
       color: rgba(41, 40, 39, 0.8);
       line-height: 1.55;
       font-size: 15px;
     }
 
-    #${OVERLAY_ID} .gridworkz-card {
+    #${OVERLAY_ID} .ownpath-card {
       margin-top: 18px;
       border-radius: 18px;
       border: 1px solid rgba(27, 25, 56, 0.12);
@@ -126,13 +131,13 @@ function ensureStyleTag() {
       padding: 16px;
     }
 
-    #${OVERLAY_ID} .gridworkz-card strong {
+    #${OVERLAY_ID} .ownpath-card strong {
       display: block;
       font-size: 18px;
       color: #1b1938;
     }
 
-    #${OVERLAY_ID} .gridworkz-card small {
+    #${OVERLAY_ID} .ownpath-card small {
       display: block;
       margin-top: 6px;
       color: rgba(41, 40, 39, 0.64);
@@ -140,7 +145,7 @@ function ensureStyleTag() {
       font-size: 13px;
     }
 
-    #${OVERLAY_ID} .gridworkz-actions {
+    #${OVERLAY_ID} .ownpath-actions {
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
@@ -174,21 +179,21 @@ function ensureOverlay() {
   overlay.id = OVERLAY_ID;
   overlay.hidden = true;
   overlay.innerHTML = `
-    <section class="gridworkz-panel" role="dialog" aria-modal="true" aria-live="polite">
-      <p class="gridworkz-eyebrow">GridWorkz Lockdown</p>
-      <h1 id="gridworkz-title"></h1>
-      <p class="gridworkz-copy" id="gridworkz-copy"></p>
-      <article class="gridworkz-card" id="gridworkz-creator-card" hidden>
-        <strong id="gridworkz-creator-name"></strong>
-        <small id="gridworkz-creator-meta"></small>
+    <section class="ownpath-panel" role="dialog" aria-modal="true" aria-live="polite">
+      <p class="ownpath-eyebrow">Own Path Lockdown</p>
+      <h1 id="ownpath-title"></h1>
+      <p class="ownpath-copy" id="ownpath-copy"></p>
+      <article class="ownpath-card" id="ownpath-creator-card" hidden>
+        <strong id="ownpath-creator-name"></strong>
+        <small id="ownpath-creator-meta"></small>
       </article>
-      <div class="gridworkz-actions">
-        <button id="gridworkz-allowlist-button" type="button">Open allowlist details</button>
+      <div class="ownpath-actions">
+        <button id="ownpath-allowlist-button" type="button">Open allowlist details</button>
       </div>
     </section>
   `;
 
-  overlay.querySelector('#gridworkz-allowlist-button').addEventListener('click', () => {
+  overlay.querySelector('#ownpath-allowlist-button').addEventListener('click', () => {
     window.open(chrome.runtime.getURL('allowlist.html'), '_blank', 'noopener');
   });
 
@@ -196,19 +201,27 @@ function ensureOverlay() {
   return overlay;
 }
 
-function renderOverlay({ title, copy, creator }) {
+function renderOverlay({ title, copy, creator, requestAccessCopy = '' }) {
   const overlay = ensureOverlay();
-  const creatorCard = overlay.querySelector('#gridworkz-creator-card');
-  const creatorName = overlay.querySelector('#gridworkz-creator-name');
-  const creatorMeta = overlay.querySelector('#gridworkz-creator-meta');
+  const creatorCard = overlay.querySelector('#ownpath-creator-card');
+  const creatorName = overlay.querySelector('#ownpath-creator-name');
+  const creatorMeta = overlay.querySelector('#ownpath-creator-meta');
+  const allowlistButton = overlay.querySelector('#ownpath-allowlist-button');
 
-  overlay.querySelector('#gridworkz-title').textContent = title;
-  overlay.querySelector('#gridworkz-copy').textContent = copy;
+  overlay.querySelector('#ownpath-title').textContent = title;
+  overlay.querySelector('#ownpath-copy').textContent = copy;
+
+  if (requestAccessCopy) {
+    allowlistButton.textContent = 'Open allowlist details';
+    allowlistButton.title = requestAccessCopy;
+  } else {
+    allowlistButton.title = '';
+  }
 
   if (creator?.title || creator?.handle || creator?.channelId) {
     creatorCard.hidden = false;
     creatorName.textContent = creator.title || creator.channelId || 'Unknown creator';
-    creatorMeta.textContent = [creator.handle, creator.channelId].filter(Boolean).join(' • ');
+    creatorMeta.textContent = creator.metadataLine || [creator.handle, creator.channelId].filter(Boolean).join(' • ') || 'Creator metadata not available';
   } else {
     creatorCard.hidden = true;
     creatorName.textContent = '';
@@ -248,13 +261,14 @@ function scheduleRetry(requestId) {
   }, RETRY_DELAY_MS);
 }
 
-function applyBlockedCreatorState(creator) {
+function applyBlockedCreatorState({ creator, policy, syncState }) {
   startPauseLoop();
+  const guidance = getYoutubeBlockedGuidance({ policy, syncState, creator });
   renderOverlay({
-    title: 'This creator is blocked right now',
-    copy:
-      'Blocking is active and this video is not from an approved YouTube creator in the current cached policy.',
-    creator
+    title: guidance.title,
+    copy: guidance.copy,
+    creator: guidance.creatorMetadata,
+    requestAccessCopy: guidance.requestAccess.copy,
   });
 }
 
@@ -263,8 +277,9 @@ function applyUnsupportedPageState() {
   renderOverlay({
     title: 'Only direct YouTube videos are allowed right now',
     copy:
-      'GridWorkz keeps YouTube limited to direct watch and shorts pages so creator approval can be checked locally.',
-    creator: null
+      'Own Path keeps YouTube limited to direct watch and shorts pages so creator approval can be checked locally.',
+    creator: null,
+    requestAccessCopy: getRequestAccessGuidance().copy,
   });
 }
 
@@ -273,8 +288,9 @@ function applyPendingState() {
   renderOverlay({
     title: 'Checking this creator',
     copy:
-      'GridWorkz is resolving the current YouTube creator before playback is allowed.',
-    creator: null
+      'Own Path is resolving the current YouTube creator before playback is allowed.',
+    creator: null,
+    requestAccessCopy: getRequestAccessGuidance().copy,
   });
 }
 
@@ -284,7 +300,8 @@ function applyUnresolvedState() {
     title: 'We could not verify this creator',
     copy:
       'This extension stays fail-closed when the current YouTube page does not expose stable creator channel data yet.',
-    creator: null
+    creator: null,
+    requestAccessCopy: getRequestAccessGuidance().copy,
   });
 }
 
@@ -343,7 +360,11 @@ async function enforceCurrentPage(reason) {
 
   if (response?.status === 'blocked') {
     pendingAttempts = 0;
-    applyBlockedCreatorState(response.creator);
+    applyBlockedCreatorState({
+      creator: response.creator,
+      policy: response.policy,
+      syncState: response.syncState,
+    });
     return;
   }
 

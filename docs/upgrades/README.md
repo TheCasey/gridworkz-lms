@@ -8,6 +8,7 @@ For execution planning on the baseline model rollout, use [curriculum-and-weekly
 
 Current upgrade docs:
 
+- [current-surface-finalization-and-rollout.md](current-surface-finalization-and-rollout.md)
 - [baseline-product-foundation.md](baseline-product-foundation.md)
 - [curriculum-and-weekly-plan-rollout.md](curriculum-and-weekly-plan-rollout.md)
 - [curriculum-modal-cleanup.md](curriculum-modal-cleanup.md)

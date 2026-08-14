@@ -1,6 +1,6 @@
 # Subscriptions And Entitlements
 
-Last updated: 2026-05-22
+Last updated: 2026-06-23
 
 Status: Implemented
 
@@ -18,6 +18,12 @@ Use stable internal plan ids even if marketing names change later.
 | `core` | $5/month | 10 | Unlimited | Yes | No |
 | `lockdown` | $10/month | 10 | Unlimited | Yes | Yes |
 
+Current naming decision:
+
+- `Core` is the public plan name for now.
+- The product may later split that offer into variants such as school-only, chores-only, or combined plans.
+- Do not rename the internal `core` plan id yet just because future packaging may branch.
+
 For this planning pass:
 
 - Treat the current `subjects` collection as the closest existing implementation of "curriculums."
@@ -25,6 +31,26 @@ For this planning pass:
 - Treat `projects` as first-class tracked work objects that sit beside curriculum assignments and consume weekly `project_work` blocks rather than masquerading as recurring curriculum.
 - Treat quizzes and assessments as weekly block categories, not as separate premium object types.
 - Treat the `lockdown` plan as including the current browser extension work, kiosk mode, and future lockdown-specific variants.
+- Treat daily routines as a free household module feature.
+- Treat chore pools, weekly/monthly chores, allowance tracking, achievements, rewards, redemptions, and related cosmetics as included in Core/Pro and Lockdown.
+- Keep `can_use_daily_routines`, `can_use_chores`, and `can_use_rewards` as separate entitlement keys so downgrade behavior can stay precise even though paid chores/rewards ship as one household module.
+
+## Current Release Sequencing Decision
+
+The internal plan structure stays the same, but the near-term commercial rollout order is now narrower:
+
+- stand up the first paid Core path at `$5/month`
+- keep the `lockdown` plan id and feature gates in code
+- present the Lockdown `$10/month` tier as `coming soon` in public-facing pricing and upgrade messaging until extension and kiosk work are ready for a dedicated release pass
+- focus immediate product-definition and rollout work on the existing dashboard, student portal, reporting, settings, and chores/rewards surfaces
+- keep Lockdown visibly present in pricing and locked-state UI as a future attractor instead of hiding it entirely
+
+This means the current subscription layer should support three different truths at once:
+
+- code and entitlements already understand `lockdown`
+- locked-state dashboard behavior may still reference Lockdown internally
+- public marketing and first paid-launch copy should not imply that Lockdown is ready for broad paid reliance today
+- public pricing should still show Lockdown as a visible `coming soon` tier
 
 ## Current-Code Reality
 
@@ -44,12 +70,14 @@ Implemented surfaces now include:
   - current plan, usage, and locked-state account summary surface
 - `src/pages/OpsEntitlements.jsx`
   - operator-only entitlement inspection, missing-record initialization, temporary overrides, clear override, downgrade warnings, and audit timeline
+- `src/pages/dashboard/ChoresRoute.jsx`
+  - route-backed household module with Free routine-only access and paid chores/rewards gating
 - `src/firebase/trustedOperations.js`
-  - callable wrappers for entitlement support operations and trusted create flows
+  - callable wrappers for entitlement support operations, trusted create flows, and chores/rewards operations
 - `src/components/LockdownPolicyPanel.jsx`
   - entitlement-aware read-only downgrade behavior for non-Lockdown plans
 - `functions/src/index.js`
-  - trusted `billingWebhook`, `createStudent`, `createSubject`, operator entitlement, and audit endpoints
+  - trusted `billingWebhook`, `createStudent`, `createSubject`, operator entitlement, chores/rewards, and audit endpoints
 - `firestore.rules`
   - trusted backstops for `accountEntitlements`, support operator allowlisting, entitlement audit logs, direct student/subject creates, and `lockdownPolicies` writes
 
@@ -69,6 +97,8 @@ Operational note:
 - Allow up to 2 students.
 - Allow up to 3 curriculum entries.
 - Do not expose projects.
+- Allow daily routine setup and completion.
+- Lock chore pools, allowance tracking, points, rewards, redemptions, and related cosmetics.
 - Do not expose lockdown controls, pairing, extension management, or kiosk configuration.
 
 ### Core plan
@@ -76,6 +106,7 @@ Operational note:
 - Allow up to 10 students.
 - Allow unlimited curriculum entries.
 - Expose projects once that feature exists.
+- Expose paid chores/rewards behavior.
 - Keep standard weekly lessons, reviews, practice blocks, and assessments inside the core planning surface rather than treating them as premium object types.
 - Keep lockdown features unavailable.
 
@@ -83,6 +114,7 @@ Operational note:
 
 - Inherit the Core plan limits and project access.
 - Unlock browser-extension mode, kiosk mode, and future lockdown setup flows.
+- Keep public-facing launch messaging in a `coming soon` state until the Lockdown rollout resumes as its own dedicated stream.
 - Keep all lockdown-related UI and policy writes behind this plan from the first production rollout.
 
 ### Downgrade behavior
@@ -93,6 +125,7 @@ Design for read-mostly downgrade handling instead of destructive cleanup:
 - Block new creates above the active plan limit.
 - Keep edits and deletes available so the parent can get back under the limit.
 - For lockdown downgrades, disable new pairing and policy edits until re-upgrade rather than silently deleting saved policy data.
+- For chores/rewards downgrades, keep saved paid records parent-readable while blocking new paid setup, allowance sync, point changes, chore review, and reward/redemption mutations.
 
 ## Recommended Technical Shape
 
@@ -106,7 +139,7 @@ That module should define:
 
 - stable plan ids
 - numeric limits such as `maxStudents` and `maxCurriculumItems`
-- feature flags such as `canUseProjects`, `canUseLockdownExtension`, and `canUseLockdownKiosk`
+- feature flags such as `canUseProjects`, `canUseDailyRoutines`, `canUseChores`, `canUseRewards`, `canUseLockdownExtension`, and `canUseLockdownKiosk`
 - helper functions for limit checks and upsell copy
 
 This lets every UI surface read from one catalog instead of hardcoding tier logic inline.
@@ -129,6 +162,9 @@ Suggested shape:
   billing_provider: "stripe",
   feature_overrides: {
     can_use_projects: false,
+    can_use_daily_routines: true,
+    can_use_chores: false,
+    can_use_rewards: false,
     can_use_lockdown_extension: false,
     can_use_lockdown_kiosk: false
   },
@@ -217,6 +253,17 @@ The MVP operator support console is now implemented:
 
 This builds on the existing trusted backend path and does not bypass it with direct Firestore edits. Operator usage guidance lives in [operator-entitlement-console-runbook.md](../support/operator-entitlement-console-runbook.md).
 
+### Workstream G. Chores and rewards module
+
+The chores and rewards module is now implemented on the same entitlement rail:
+
+- Free includes `can_use_daily_routines` only.
+- Core/Pro and Lockdown include `can_use_daily_routines`, `can_use_chores`, and `can_use_rewards`.
+- Trusted callables backstop routine setup/completion, chore setup and review, allowance sync, points, reward catalog edits, redemption requests, and redemption review.
+- Downgrade preserves history while locking new paid creates and paid state transitions.
+
+Browser and callable runtime smoke still require a seeded Firebase/staging household before production launch confidence.
+
 ## Implementation Status
 
 Completed:
@@ -228,11 +275,19 @@ Completed:
 5. Lockdown is entitlement-aware and downgrade-safe.
 6. Backend billing sync and trusted enforcement are live in sandbox mode.
 7. The operator entitlement console MVP is live with support allowlisting, missing-record initialization, temporary overrides, clear override, downgrade warnings, and audit history.
+8. The chores and rewards module is live on the shared entitlement rail with Free daily routines and paid Core/Lockdown chores/rewards behavior.
 
 Still open:
 
 1. Land future project features behind the same entitlement layer.
 2. Move Stripe from sandbox mode to live-mode products, prices, webhook secret, and webhook smoke validation when real payments are ready.
+3. Run seeded browser and callable runtime smoke for chores/rewards before treating it as production-launch confident.
+
+## Resolved Packaging Decisions
+
+- Daily routines are free.
+- Chore pools, weekly/monthly chores, allowance tracking, achievements, rewards, redemptions, and related cosmetics are included in Core/Pro and Lockdown.
+- Chores and rewards use separate entitlement keys for enforcement flexibility, but launch as one household module from a packaging standpoint.
 
 ## Open Product Questions
 
@@ -245,4 +300,5 @@ Still open:
 - [architecture.md](../architecture.md)
 - [security-hardening.md](security-hardening.md)
 - [lockdown-browser-extension-plan.md](../specs/lockdown-browser-extension-plan.md)
+- [chores-and-rewards-module.md](../specs/chores-and-rewards-module.md)
 - [operator-entitlement-console.md](../specs/operator-entitlement-console.md)

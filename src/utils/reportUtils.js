@@ -141,6 +141,50 @@ export const canSaveWeeklyReportSnapshot = (snapshot) => {
     && getReportSnapshotAssignedBlockCount(snapshot) > 0;
 };
 
+export const buildWeeklyReportReadinessSummary = (snapshot) => {
+  const assignedBlocks = Array.isArray(snapshot?.assignedBlocksSnapshot)
+    ? snapshot.assignedBlocksSnapshot
+    : [];
+  const isWeeklyPlanSnapshot = snapshot?.snapshotModel === 'weekly_plan' && assignedBlocks.length > 0;
+
+  if (!isWeeklyPlanSnapshot) {
+    return {
+      assignedBlockCount: getReportSnapshotAssignedBlockCount(snapshot),
+      incompleteBlockCount: 0,
+      missingRequiredDetailCount: 0,
+      needsReview: false,
+      checked: false,
+    };
+  }
+
+  const missingRequiredDetailCount = assignedBlocks.filter((block) => {
+    if (!block?.completed || !block?.requireInput) {
+      return false;
+    }
+
+    const summaryText = toNonEmptyString(block?.matchedSubmissionSummary?.summaryText);
+    const customFieldResponses = block?.matchedSubmissionSummary?.customFieldResponses || {};
+    const hasCustomFieldResponse = Object.values(customFieldResponses).some((value) => {
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
+
+      return toNonEmptyString(value).length > 0;
+    });
+
+    return !summaryText && !hasCustomFieldResponse;
+  }).length;
+  const incompleteBlockCount = assignedBlocks.filter((block) => !block?.completed).length;
+
+  return {
+    assignedBlockCount: assignedBlocks.length,
+    incompleteBlockCount,
+    missingRequiredDetailCount,
+    needsReview: incompleteBlockCount > 0 || missingRequiredDetailCount > 0,
+    checked: true,
+  };
+};
+
 const sortSubmissionsByTimestamp = (submissions) => (
   [...(Array.isArray(submissions) ? submissions : [])].sort((left, right) => {
     const first = toComparableDate(left?.timestamp);

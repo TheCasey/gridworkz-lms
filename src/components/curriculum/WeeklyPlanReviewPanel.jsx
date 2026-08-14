@@ -3,6 +3,7 @@ import {
   AlertCircle,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   FilePenLine,
   RefreshCw,
   Save,
@@ -16,6 +17,43 @@ import {
   getWeekPickerOptions,
   getWeekRangeByOffset,
 } from '../../utils/weekUtils';
+
+const STATUS_TONES = {
+  preview: {
+    label: 'Preview Only',
+    accent: '#cbb7fb',
+    surface: 'rgba(203, 183, 251, 0.1)',
+    text: 'rgba(238, 234, 248, 0.76)',
+  },
+  published: {
+    label: 'Published',
+    accent: '#34d399',
+    surface: 'rgba(52, 211, 153, 0.1)',
+    text: 'rgba(211, 255, 232, 0.84)',
+  },
+  archived: {
+    label: 'Archived',
+    accent: '#8f8aaa',
+    surface: 'rgba(238, 234, 248, 0.06)',
+    text: 'rgba(238, 234, 248, 0.56)',
+  },
+  draft: {
+    label: 'Draft Saved',
+    accent: '#60a5fa',
+    surface: 'rgba(96, 165, 250, 0.1)',
+    text: 'rgba(219, 234, 254, 0.84)',
+  },
+  warning: {
+    accent: '#f59e0b',
+    surface: 'rgba(245, 158, 11, 0.1)',
+    text: 'rgba(254, 243, 199, 0.86)',
+  },
+  error: {
+    accent: '#f87171',
+    surface: 'rgba(248, 113, 113, 0.1)',
+    text: 'rgba(254, 226, 226, 0.9)',
+  },
+};
 
 const clonePlanValue = (value) => {
   if (Array.isArray(value)) {
@@ -64,52 +102,81 @@ const formatPlanTimestamp = (value) => {
 const buildStatusMeta = ({ weeklyPlan, hasUnsavedEdits }) => {
   if (!weeklyPlan) {
     return {
-      label: 'Preview Only',
+      ...STATUS_TONES.preview,
       detail: hasUnsavedEdits
         ? 'Local edits are ready to save or publish.'
         : 'Generated from current subject assignments but not saved yet.',
-      backgroundColor: '#f0eaff',
-      borderColor: '#cbb7fb',
-      textColor: '#714cb6',
     };
   }
 
   if (weeklyPlan.status === WeeklyPlanStatuses.PUBLISHED) {
     return {
-      label: hasUnsavedEdits ? 'Published + Local Edits' : 'Published',
+      ...STATUS_TONES.published,
+      label: hasUnsavedEdits ? 'Published + Local Edits' : STATUS_TONES.published.label,
       detail: hasUnsavedEdits
-        ? 'You have unpublished local edits that can be re-published.'
+        ? 'Unpublished local edits can be re-published.'
         : 'This student-week already has a published weekly plan.',
-      backgroundColor: '#eef8f1',
-      borderColor: '#b9dfc3',
-      textColor: '#23693f',
     };
   }
 
   if (weeklyPlan.status === WeeklyPlanStatuses.ARCHIVED) {
     return {
-      label: 'Archived',
+      ...STATUS_TONES.archived,
       detail: 'Archived weekly plans are read-only in this phase.',
-      backgroundColor: '#f4f0eb',
-      borderColor: '#dcd7d3',
-      textColor: '#6b625a',
     };
   }
 
   return {
-    label: hasUnsavedEdits ? 'Draft + Local Edits' : 'Draft Saved',
+    ...STATUS_TONES.draft,
+    label: hasUnsavedEdits ? 'Draft + Local Edits' : STATUS_TONES.draft.label,
     detail: hasUnsavedEdits
       ? 'Draft changes are local until you save or publish them.'
       : 'This student-week has a saved draft plan.',
-    backgroundColor: '#fbfaf8',
-    borderColor: '#dcd7d3',
-    textColor: '#292827',
   };
+};
+
+const getSubjectIdForBlock = (block) => (
+  typeof block?.legacy_subject_id === 'string' && block.legacy_subject_id.trim().length > 0
+    ? block.legacy_subject_id.trim()
+    : 'unassigned'
+);
+
+const getSubjectTitleForBlock = (block) => (
+  typeof block?.legacy_subject_title === 'string' && block.legacy_subject_title.trim().length > 0
+    ? block.legacy_subject_title.trim()
+    : 'Unassigned'
+);
+
+const buildGroupedBlocks = (blocks) => {
+  const groups = new Map();
+
+  blocks.forEach((block, index) => {
+    const subjectId = getSubjectIdForBlock(block);
+
+    if (!groups.has(subjectId)) {
+      groups.set(subjectId, {
+        id: subjectId,
+        title: getSubjectTitleForBlock(block),
+        blocks: [],
+        minutes: 0,
+      });
+    }
+
+    const group = groups.get(subjectId);
+    group.blocks.push({ block, index });
+    group.minutes += Number(block?.planned_duration_minutes || 0);
+  });
+
+  return [...groups.values()];
+};
+
+const getBlockAccent = (index) => {
+  const accents = ['#cbb7fb', '#34d399', '#60a5fa', '#f59e0b', '#f87171'];
+  return accents[index % accents.length];
 };
 
 const WeeklyPlanReviewPanel = ({
   activeSubjects = [],
-  colors,
   currentUser = null,
   parentSettings = {},
   students = [],
@@ -117,6 +184,7 @@ const WeeklyPlanReviewPanel = ({
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
   const [editableBlocks, setEditableBlocks] = useState([]);
+  const [expandedSubjectIds, setExpandedSubjectIds] = useState(() => new Set());
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
@@ -181,16 +249,14 @@ const WeeklyPlanReviewPanel = ({
     () => buildStatusMeta({ weeklyPlan, hasUnsavedEdits }),
     [hasUnsavedEdits, weeklyPlan]
   );
+  const groupedBlocks = useMemo(() => buildGroupedBlocks(editableBlocks), [editableBlocks]);
+  const planSubjectCount = groupedBlocks.length;
+  const totalMinutes = editableBlocks.reduce(
+    (total, block) => total + Number(block?.planned_duration_minutes || 0),
+    0
+  );
   const planUpdatedAt = formatPlanTimestamp(weeklyPlan?.updated_at);
   const planPublishedAt = formatPlanTimestamp(weeklyPlan?.published_at);
-  const planSubjectCount = useMemo(
-    () => new Set(
-      editableBlocks
-        .map((block) => block?.legacy_subject_id)
-        .filter(Boolean)
-    ).size,
-    [editableBlocks]
-  );
   const planRequiresAttention = Boolean(hasUnsavedEdits || !weeklyPlan);
   const isArchived = weeklyPlan?.status === WeeklyPlanStatuses.ARCHIVED;
   const isPublished = weeklyPlan?.status === WeeklyPlanStatuses.PUBLISHED;
@@ -218,6 +284,18 @@ const WeeklyPlanReviewPanel = ({
     setEditableBlocks(clonePlanBlocks(sourcePlan.blocks));
   }, [hasUnsavedEdits, sourcePlan]);
 
+  useEffect(() => {
+    setExpandedSubjectIds((currentValue) => {
+      const nextValue = new Set(currentValue);
+
+      groupedBlocks.slice(0, 2).forEach((group) => {
+        nextValue.add(group.id);
+      });
+
+      return nextValue;
+    });
+  }, [groupedBlocks]);
+
   const handleBlockFieldChange = (blockId, field, value) => {
     setEditableBlocks((currentBlocks) => currentBlocks.map((block) => (
       block.id === blockId
@@ -240,6 +318,20 @@ const WeeklyPlanReviewPanel = ({
     setFeedback({
       tone: 'info',
       text: 'Preview refreshed from the current subject editor. Save draft or publish to keep the regenerated plan.',
+    });
+  };
+
+  const toggleSubjectGroup = (subjectId) => {
+    setExpandedSubjectIds((currentValue) => {
+      const nextValue = new Set(currentValue);
+
+      if (nextValue.has(subjectId)) {
+        nextValue.delete(subjectId);
+      } else {
+        nextValue.add(subjectId);
+      }
+
+      return nextValue;
     });
   };
 
@@ -296,63 +388,42 @@ const WeeklyPlanReviewPanel = ({
       return null;
     }
 
-    const toneStyles = {
-      error: {
-        backgroundColor: '#fff1f1',
-        borderColor: '#f3c2c2',
-        textColor: '#8f3030',
-        Icon: AlertCircle,
-      },
-      info: {
-        backgroundColor: '#f0eaff',
-        borderColor: '#cbb7fb',
-        textColor: '#714cb6',
-        Icon: FilePenLine,
-      },
-      success: {
-        backgroundColor: '#eef8f1',
-        borderColor: '#b9dfc3',
-        textColor: '#23693f',
-        Icon: CheckCircle2,
-      },
-    };
-    const tone = toneStyles[message.tone] || toneStyles.info;
-    const Icon = tone.Icon;
+    const tone = message.tone === 'error'
+      ? STATUS_TONES.error
+      : message.tone === 'success'
+        ? STATUS_TONES.published
+        : STATUS_TONES.preview;
+    const Icon = message.tone === 'error'
+      ? AlertCircle
+      : message.tone === 'success'
+        ? CheckCircle2
+        : FilePenLine;
 
     return (
       <div
-        className="mt-5 flex items-start gap-3 rounded-2xl px-4 py-3"
+        className="mt-5 flex items-start gap-3 border px-4 py-3"
         style={{
-          backgroundColor: tone.backgroundColor,
-          border: `1px solid ${tone.borderColor}`,
-          color: tone.textColor,
+          backgroundColor: tone.surface,
+          borderColor: tone.accent,
+          color: tone.text,
         }}
       >
         <Icon className="mt-0.5 h-4 w-4 flex-shrink-0" />
-        <p className="text-[13px] font-body">{message.text}</p>
+        <p className="text-[13px] font-body leading-5">{message.text}</p>
       </div>
     );
   };
 
   return (
-    <section
-      className="mb-8 rounded-[28px] bg-white p-6"
-      style={{ border: `1px solid ${colors.parchment}` }}
-    >
+    <section className="op-panel p-5 md:p-6">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <p
-            className="mb-2 inline-flex items-center rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.16em] font-label"
-            style={{ backgroundColor: colors.lavenderTint, color: colors.amethyst }}
-          >
-            Parent Weekly Plan Review
-          </p>
-          <h3 className="text-[22px] font-display text-charcoal-ink" style={{ lineHeight: 1.08 }}>
-            Review one student-week before it goes live
-          </h3>
-          <p className="mt-2 max-w-3xl text-[14px] font-body text-charcoal-ink/55">
-            This panel stays thin on purpose. It generates a weekly plan from the current subject editor,
-            lets you adjust block titles or instructions, then saves a draft or publishes that student-week.
+        <div className="max-w-3xl">
+          <p className="op-eyebrow">Weekly Blocking</p>
+          <h2 className="mt-3 text-[28px] font-display leading-none text-white">
+            Build the student-week before it goes live
+          </h2>
+          <p className="op-subtle mt-3 text-[13px] font-body leading-6">
+            This route uses current per-student subject assignments as the default block source, then saves or publishes the selected student-week.
           </p>
         </div>
 
@@ -361,22 +432,16 @@ const WeeklyPlanReviewPanel = ({
             type="button"
             onClick={handleRefreshFromSubjects}
             disabled={!blocksAreEditable || loading || savingPlan || publishingPlan}
-            className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-label transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-            style={{ backgroundColor: colors.cream, color: colors.charcoal }}
-            onMouseEnter={(event) => { if (!event.currentTarget.disabled) event.currentTarget.style.backgroundColor = colors.parchment; }}
-            onMouseLeave={(event) => { event.currentTarget.style.backgroundColor = colors.cream; }}
+            className="op-button op-button-secondary"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh From Subjects
+            Reset to Default
           </button>
           <button
             type="button"
             onClick={handleSaveDraft}
             disabled={!blocksAreEditable || !editableBlocks.length || loading || savingPlan || publishingPlan}
-            className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-label transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-            style={{ backgroundColor: '#fbfaf8', color: colors.charcoal, border: `1px solid ${colors.parchment}` }}
-            onMouseEnter={(event) => { if (!event.currentTarget.disabled) event.currentTarget.style.backgroundColor = colors.cream; }}
-            onMouseLeave={(event) => { event.currentTarget.style.backgroundColor = '#fbfaf8'; }}
+            className="op-button op-button-secondary"
           >
             <Save className="h-4 w-4" />
             {savingPlan ? 'Saving...' : saveButtonLabel}
@@ -385,10 +450,7 @@ const WeeklyPlanReviewPanel = ({
             type="button"
             onClick={handlePublish}
             disabled={!blocksAreEditable || !editableBlocks.length || loading || savingPlan || publishingPlan}
-            className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-label transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-            style={{ backgroundColor: colors.charcoal, color: '#ffffff' }}
-            onMouseEnter={(event) => { if (!event.currentTarget.disabled) event.currentTarget.style.backgroundColor = '#3a3937'; }}
-            onMouseLeave={(event) => { event.currentTarget.style.backgroundColor = colors.charcoal; }}
+            className="op-button"
           >
             <Send className="h-4 w-4" />
             {publishingPlan ? 'Publishing...' : publishButtonLabel}
@@ -397,29 +459,20 @@ const WeeklyPlanReviewPanel = ({
       </div>
 
       {students.length === 0 ? (
-        <div
-          className="mt-5 rounded-2xl px-5 py-4"
-          style={{ backgroundColor: '#fbfaf8', border: `1px solid ${colors.parchment}` }}
-        >
-          <p className="text-[14px] font-body text-charcoal-ink/70">
-            Add a student before planning a weekly review surface.
+        <div className="op-surface mt-5 px-5 py-4">
+          <p className="op-subtle text-[14px] font-body">
+            Add a student before planning a weekly block schedule.
           </p>
         </div>
       ) : (
         <>
-          <div className="mt-5 grid gap-4 lg:grid-cols-[1.15fr_1.15fr_0.95fr]">
-            <div
-              className="rounded-2xl px-4 py-4"
-              style={{ backgroundColor: '#fbfaf8', border: `1px solid ${colors.parchment}` }}
-            >
-              <label className="mb-2 block text-[11px] uppercase tracking-[0.16em] font-label text-charcoal-ink/45">
-                Student
-              </label>
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1.05fr_1.05fr_0.9fr]">
+            <div className="op-surface px-4 py-4">
+              <label className="op-eyebrow mb-2 block">Student</label>
               <select
                 value={selectedStudentId}
                 onChange={(event) => setSelectedStudentId(event.target.value)}
-                className="w-full rounded-xl px-3 py-2.5 text-[14px] font-body focus:outline-none"
-                style={{ border: `1px solid ${colors.parchment}`, color: colors.charcoal, backgroundColor: '#ffffff' }}
+                className="op-input"
               >
                 {students.map((student) => (
                   <option key={student.id} value={student.id}>
@@ -427,23 +480,17 @@ const WeeklyPlanReviewPanel = ({
                   </option>
                 ))}
               </select>
-              <p className="mt-2 text-[12px] font-body text-charcoal-ink/45">
-                Plans stay scoped to one student-week in this phase.
+              <p className="op-subtle mt-2 text-[12px] font-body">
+                Planning stays scoped to one student-week.
               </p>
             </div>
 
-            <div
-              className="rounded-2xl px-4 py-4"
-              style={{ backgroundColor: '#fbfaf8', border: `1px solid ${colors.parchment}` }}
-            >
-              <label className="mb-2 block text-[11px] uppercase tracking-[0.16em] font-label text-charcoal-ink/45">
-                Week
-              </label>
+            <div className="op-surface px-4 py-4">
+              <label className="op-eyebrow mb-2 block">Week</label>
               <select
                 value={selectedWeekOffset}
                 onChange={(event) => setSelectedWeekOffset(Number.parseInt(event.target.value, 10))}
-                className="w-full rounded-xl px-3 py-2.5 text-[14px] font-body focus:outline-none"
-                style={{ border: `1px solid ${colors.parchment}`, color: colors.charcoal, backgroundColor: '#ffffff' }}
+                className="op-input"
               >
                 {weekPickerOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -451,35 +498,31 @@ const WeeklyPlanReviewPanel = ({
                   </option>
                 ))}
               </select>
-              <p className="mt-2 text-[12px] font-body text-charcoal-ink/45">
+              <p className="op-subtle mt-2 text-[12px] font-body">
                 {formatWeekRange(selectedWeekRange.weekStart, selectedWeekRange.weekEnd)}
               </p>
             </div>
 
             <div
-              className="rounded-2xl px-4 py-4"
+              className="border border-l-[3px] px-4 py-4"
               style={{
-                backgroundColor: planStatusMeta.backgroundColor,
-                border: `1px solid ${planStatusMeta.borderColor}`,
+                backgroundColor: planStatusMeta.surface,
+                borderColor: 'rgba(238, 234, 248, 0.14)',
+                borderLeftColor: planStatusMeta.accent,
               }}
             >
               <div className="flex items-center justify-between gap-3">
-                <p className="text-[11px] uppercase tracking-[0.16em] font-label" style={{ color: planStatusMeta.textColor }}>
+                <p className="op-eyebrow" style={{ color: planStatusMeta.accent }}>
                   Status
                 </p>
                 {planRequiresAttention ? (
-                  <span
-                    className="rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] font-label"
-                    style={{ backgroundColor: '#ffffff90', color: planStatusMeta.textColor }}
-                  >
-                    Needs Review
-                  </span>
+                  <span className="op-pill">Needs Review</span>
                 ) : null}
               </div>
-              <p className="mt-2 text-[18px] font-display" style={{ color: planStatusMeta.textColor }}>
+              <p className="mt-2 text-[18px] font-display text-white">
                 {planStatusMeta.label}
               </p>
-              <p className="mt-1 text-[12px] font-body" style={{ color: planStatusMeta.textColor }}>
+              <p className="mt-1 text-[12px] font-body leading-5" style={{ color: planStatusMeta.text }}>
                 {planStatusMeta.detail}
               </p>
             </div>
@@ -488,173 +531,161 @@ const WeeklyPlanReviewPanel = ({
           {renderMessage()}
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div
-              className="rounded-2xl px-4 py-3"
-              style={{ backgroundColor: '#fbfaf8', border: `1px solid ${colors.parchment}` }}
-            >
-              <p className="text-[11px] uppercase tracking-[0.16em] font-label text-charcoal-ink/40">
-                Student-Week
-              </p>
-              <p className="mt-1 text-[15px] font-display text-charcoal-ink">
+            <div className="op-stat px-4 py-3">
+              <p className="op-eyebrow">Student-Week</p>
+              <p className="mt-2 truncate text-[16px] font-display text-white">
                 {selectedStudent?.name || 'Select a student'}
               </p>
-              <p className="mt-1 text-[12px] font-body text-charcoal-ink/45">
+              <p className="op-subtle mt-1 text-[12px] font-body">
                 {getWeekLabel(selectedWeekOffset)}
               </p>
             </div>
 
-            <div
-              className="rounded-2xl px-4 py-3"
-              style={{ backgroundColor: '#fbfaf8', border: `1px solid ${colors.parchment}` }}
-            >
-              <p className="text-[11px] uppercase tracking-[0.16em] font-label text-charcoal-ink/40">
-                Blocks In Plan
-              </p>
-              <p className="mt-1 text-[15px] font-display text-charcoal-ink">
+            <div className="op-stat px-4 py-3">
+              <p className="op-eyebrow">Blocks</p>
+              <p className="mt-2 text-[16px] font-display text-white">
                 {editableBlocks.length}
               </p>
-              <p className="mt-1 text-[12px] font-body text-charcoal-ink/45">
-                {planSubjectCount} active subject{planSubjectCount === 1 ? '' : 's'} feeding this week
+              <p className="op-subtle mt-1 text-[12px] font-body">
+                {planSubjectCount} active subject{planSubjectCount === 1 ? '' : 's'}
               </p>
             </div>
 
-            <div
-              className="rounded-2xl px-4 py-3"
-              style={{ backgroundColor: '#fbfaf8', border: `1px solid ${colors.parchment}` }}
-            >
-              <p className="text-[11px] uppercase tracking-[0.16em] font-label text-charcoal-ink/40">
-                Last Draft Save
+            <div className="op-stat px-4 py-3">
+              <p className="op-eyebrow">Study Time</p>
+              <p className="mt-2 text-[16px] font-display text-white">
+                {totalMinutes ? `${(totalMinutes / 60).toFixed(1)}h` : '0h'}
               </p>
-              <p className="mt-1 text-[15px] font-display text-charcoal-ink">
-                {planUpdatedAt || 'Not saved yet'}
-              </p>
-              <p className="mt-1 text-[12px] font-body text-charcoal-ink/45">
-                Drafts preserve your light block edits.
+              <p className="op-subtle mt-1 text-[12px] font-body">
+                Estimated from block durations.
               </p>
             </div>
 
-            <div
-              className="rounded-2xl px-4 py-3"
-              style={{ backgroundColor: '#fbfaf8', border: `1px solid ${colors.parchment}` }}
-            >
-              <p className="text-[11px] uppercase tracking-[0.16em] font-label text-charcoal-ink/40">
-                Published
-              </p>
-              <p className="mt-1 text-[15px] font-display text-charcoal-ink">
+            <div className="op-stat px-4 py-3">
+              <p className="op-eyebrow">Published</p>
+              <p className="mt-2 truncate text-[16px] font-display text-white">
                 {planPublishedAt || 'Not published'}
               </p>
-              <p className="mt-1 text-[12px] font-body text-charcoal-ink/45">
-                Publish is the only live approval action in this phase.
+              <p className="op-subtle mt-1 text-[12px] font-body">
+                Last save: {planUpdatedAt || 'none'}
               </p>
             </div>
           </div>
 
           <div
-            className="mt-5 rounded-2xl px-4 py-3"
-            style={{ backgroundColor: '#fbfaf8', border: `1px solid ${colors.parchment}` }}
+            className="mt-5 flex items-start gap-3 border border-l-[3px] px-4 py-3"
+            style={{
+              backgroundColor: STATUS_TONES.preview.surface,
+              borderColor: 'rgba(238, 234, 248, 0.14)',
+              borderLeftColor: STATUS_TONES.preview.accent,
+            }}
           >
-            <div className="flex items-start gap-3">
-              <CalendarDays className="mt-0.5 h-4 w-4 flex-shrink-0" style={{ color: colors.amethyst }} />
-              <div>
-                <p className="text-[13px] font-body text-charcoal-ink">
-                  The subject editor below remains the compatibility input path. After changing subjects,
-                  use <span style={{ color: colors.amethyst }}>Refresh From Subjects</span> here to regenerate the weekly preview.
-                </p>
-              </div>
-            </div>
+            <CalendarDays className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#cbb7fb]" />
+            <p className="op-subtle text-[13px] font-body leading-5">
+              Subject records remain the compatibility input path. After changing subjects, reset to default here before saving or publishing this week.
+            </p>
           </div>
 
           <div className="mt-6">
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
               <div>
-                <h4 className="text-[17px] font-display text-charcoal-ink">
-                  Weekly Blocks
-                </h4>
-                <p className="mt-1 text-[13px] font-body text-charcoal-ink/45">
-                  Edit only what needs attention before publish. This first surface is intentionally narrow.
-                </p>
+                <p className="op-eyebrow">Assignment Rows</p>
+                <h3 className="mt-2 text-[24px] font-display leading-none text-white">
+                  Weekly blocks
+                </h3>
               </div>
               {loading ? (
-                <div className="text-[12px] font-label uppercase tracking-[0.16em]" style={{ color: colors.amethyst }}>
-                  Loading...
-                </div>
+                <div className="op-pill">Loading</div>
               ) : null}
             </div>
 
             {!editableBlocks.length ? (
-              <div
-                className="rounded-2xl px-5 py-5"
-                style={{ backgroundColor: '#fbfaf8', border: `1px solid ${colors.parchment}` }}
-              >
-                <p className="text-[14px] font-body text-charcoal-ink">
+              <div className="op-surface px-5 py-5">
+                <p className="text-[14px] font-body text-white">
                   No active subject blocks are available for this student-week yet.
                 </p>
-                <p className="mt-1 text-[13px] font-body text-charcoal-ink/50">
-                  Assign at least one active subject below, then refresh this weekly-plan surface.
+                <p className="op-subtle mt-1 text-[13px] font-body">
+                  Assign at least one active subject, then reset the weekly preview.
                 </p>
               </div>
             ) : (
-              <div
-                className="space-y-3 overflow-y-auto pr-1"
-                style={{ maxHeight: '34rem' }}
-              >
-                {editableBlocks.map((block, index) => (
-                  <div
-                    key={block.id}
-                    className="rounded-2xl p-4"
-                    style={{ backgroundColor: '#fbfaf8', border: `1px solid ${colors.parchment}` }}
-                  >
-                    <div className="mb-3 flex flex-wrap items-center gap-2">
-                      <span
-                        className="rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] font-label"
-                        style={{ backgroundColor: colors.lavenderTint, color: colors.amethyst }}
+              <div className="space-y-3">
+                {groupedBlocks.map((group, groupIndex) => {
+                  const isOpen = expandedSubjectIds.has(group.id);
+                  const accent = getBlockAccent(groupIndex);
+
+                  return (
+                    <article
+                      key={group.id}
+                      className="border border-l-[3px]"
+                      style={{
+                        backgroundColor: '#202034',
+                        borderColor: 'rgba(238, 234, 248, 0.12)',
+                        borderLeftColor: accent,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleSubjectGroup(group.id)}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[rgba(238,234,248,0.04)]"
                       >
-                        {block.legacy_subject_title || 'Subject'}
-                      </span>
-                      <span className="text-[12px] font-body text-charcoal-ink/45">
-                        Block {Number.isInteger(block.legacy_block_index) ? block.legacy_block_index + 1 : index + 1}
-                      </span>
-                      <span className="text-[12px] font-body text-charcoal-ink/45">
-                        {block.planned_duration_minutes || 0} min
-                      </span>
-                      <span className="text-[12px] font-body text-charcoal-ink/45">
-                        {block.completion_mode || 'time_boxed'}
-                      </span>
-                    </div>
+                        <span className="h-2.5 w-2.5 flex-shrink-0" style={{ backgroundColor: accent }} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[14px] font-label text-white">
+                            {group.title}
+                          </span>
+                          <span className="op-subtle mt-1 block text-[12px] font-body">
+                            {group.blocks.length} block{group.blocks.length === 1 ? '' : 's'} · {group.minutes} min
+                          </span>
+                        </span>
+                        <span className="op-pill">{group.blocks.length}</span>
+                        <ChevronDown className={`h-4 w-4 text-[rgba(238,234,248,0.5)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                      </button>
 
-                    <div className="grid gap-3 lg:grid-cols-[1fr_1.4fr]">
-                      <div>
-                        <label className="mb-2 block text-[11px] uppercase tracking-[0.16em] font-label text-charcoal-ink/40">
-                          Block Title
-                        </label>
-                        <input
-                          type="text"
-                          value={block.title || ''}
-                          onChange={(event) => handleBlockFieldChange(block.id, 'title', event.target.value)}
-                          disabled={!blocksAreEditable}
-                          className="w-full rounded-xl px-3 py-2.5 text-[14px] font-body focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
-                          style={{ border: `1px solid ${colors.parchment}`, backgroundColor: '#ffffff', color: colors.charcoal }}
-                          placeholder={block.legacy_subject_title || `Block ${index + 1}`}
-                        />
-                      </div>
+                      {isOpen ? (
+                        <div className="space-y-3 border-t border-[rgba(238,234,248,0.1)] px-4 py-4">
+                          {group.blocks.map(({ block, index }) => (
+                            <div key={block.id} className="op-surface p-4">
+                              <div className="mb-3 flex flex-wrap items-center gap-2">
+                                <span className="op-pill">
+                                  Block {Number.isInteger(block.legacy_block_index) ? block.legacy_block_index + 1 : index + 1}
+                                </span>
+                                <span className="op-pill">{block.planned_duration_minutes || 0} min</span>
+                                <span className="op-pill">{block.completion_mode || 'time_boxed'}</span>
+                              </div>
 
-                      <div>
-                        <label className="mb-2 block text-[11px] uppercase tracking-[0.16em] font-label text-charcoal-ink/40">
-                          Instruction
-                        </label>
-                        <textarea
-                          value={block.instruction || ''}
-                          onChange={(event) => handleBlockFieldChange(block.id, 'instruction', event.target.value)}
-                          disabled={!blocksAreEditable}
-                          rows={3}
-                          className="w-full rounded-xl px-3 py-2.5 text-[14px] font-body focus:outline-none resize-none disabled:cursor-not-allowed disabled:opacity-70"
-                          style={{ border: `1px solid ${colors.parchment}`, backgroundColor: '#ffffff', color: colors.charcoal }}
-                          placeholder="Add a student-facing note only when this week needs one."
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                              <div className="grid gap-3 lg:grid-cols-[1fr_1.35fr]">
+                                <div>
+                                  <label className="op-eyebrow mb-2 block">Block Title</label>
+                                  <input
+                                    type="text"
+                                    value={block.title || ''}
+                                    onChange={(event) => handleBlockFieldChange(block.id, 'title', event.target.value)}
+                                    disabled={!blocksAreEditable}
+                                    className="op-input disabled:cursor-not-allowed disabled:opacity-60"
+                                    placeholder={block.legacy_subject_title || `Block ${index + 1}`}
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="op-eyebrow mb-2 block">Instruction</label>
+                                  <textarea
+                                    value={block.instruction || ''}
+                                    onChange={(event) => handleBlockFieldChange(block.id, 'instruction', event.target.value)}
+                                    disabled={!blocksAreEditable}
+                                    rows={3}
+                                    className="op-input resize-none disabled:cursor-not-allowed disabled:opacity-60"
+                                    placeholder="Add a student-facing note only when this week needs one."
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
               </div>
             )}
           </div>
