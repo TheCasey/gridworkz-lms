@@ -565,6 +565,7 @@ export const buildStudentChoreWorkspaceModel = ({
     accessState,
     canShowArea: enabled,
     canInteract: enabled && hasStudentContext,
+    canUseChorePools: choreState?.access?.can_use_chores === true,
     routineDateKey,
     routines,
     availableChores,

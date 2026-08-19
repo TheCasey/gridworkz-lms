@@ -56,10 +56,12 @@ node scripts/smoke-private-beta-callables.mjs --run --target emulator
 5. Request a parent-created reward and confirm points reserve immediately; reject/cancel and confirm points refund.
 6. Downgrade to Free and confirm history is visible while new paid creates/reviews/redemptions are blocked.
 
-## Current Manual Follow-Up
+## Seeded Runtime Status
 
-Local validation covers state-model behavior and security-rule/callable source review. Browser and callable runtime smoke still require seeded Firebase/staging credentials:
+On 2026-08-19, the student portal path completed a disposable local emulator pass covering PIN unlock, student isolation, school timers/submissions, daily routines, chore completion and parent review, allowance/point effects, reward cancellation/refund, reward approval/fulfillment, and Free/Lockdown gating. See `student-portal-seeded-e2e-2026-08-19.md`.
+
+Staging/browser confirmation is still required before production launch confidence:
 
 - Parent target: `http://localhost:3000/dashboard/chores`
 - Student target: `http://localhost:3000/student/:slug`
-- Required seed: parent auth, two students with PINs, entitlement switch between Free/Core/Lockdown, deployed or emulator-backed callable runtime.
+- Required staging seed: disposable parent auth, two students with PINs, entitlement switch between Free/Core/Lockdown, and deployed callable runtime.

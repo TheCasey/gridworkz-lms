@@ -112,12 +112,17 @@ This file records the *why* behind key decisions so future sessions don't re-lit
 ### Mobile student navigation
 **Decision:** The student portal is desktop-capable but mobile-first at narrow widths. Desktop uses top workspace tabs and a contextual right rail; mobile uses a five-item bottom navigation bar and stacks rail content below the active workspace.
 **Rationale:** Students should be able to save the portal link to a phone or tablet home screen and reach School, Chores, Allowance, Rewards, and Avatar without navigating the parent-oriented sidebar pattern.
-**Status:** Implemented in the standalone prototype and live responsive route. Installable PWA metadata and offline behavior remain separate implementation work.
+**Status:** Implemented in the standalone prototype and live responsive route. A full installable PWA is now an approved follow-on, including manifest, icons, standalone display behavior, update strategy, and an explicitly bounded offline policy.
 
 ### Layered avatar assets
 **Decision:** Avatars use stable catalog IDs for a base, outfit, and accessory. Art layers share one transparent canvas and are resolved from a controlled manifest; student clients do not supply arbitrary asset URLs.
 **Rationale:** This allows generated artwork to replace placeholders without changing layout or persistence contracts, while keeping future student writes narrow and safe.
-**Status:** Prototype asset folders, manifest, replacement guidance, and a CSS-backed live preview have landed. Persistence and trusted selection updates are not implemented.
+**Status:** Prototype asset folders, manifest, replacement guidance, and a CSS-backed live preview have landed. Stable-ID avatar persistence is approved; its trusted selection update is not implemented yet.
+
+### Avatar asset storage
+**Decision:** Final avatar, outfit, and accessory artwork will use securely configured storage-backed uploads and a controlled catalog/manifest. The student record persists only approved catalog IDs, never arbitrary upload URLs.
+**Rationale:** Storage-backed assets allow art to evolve without app releases while preserving a narrow trusted write surface and preventing students from injecting external assets.
+**Status:** Decided. Storage rules, upload tooling, catalog publication, and trusted selection persistence remain implementation work.
 
 ---
 

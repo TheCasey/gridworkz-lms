@@ -35,8 +35,8 @@ The student portal is the public-facing flow at `/student/:slug`.
 - Student authentication/session hardening is still an upgrade path, not a solved problem.
 - Deeper project progress and more explicit "what should I do next?" guidance remain future work.
 - The worksheet runtime and bounded `Ask for help` hint flow are still future work.
-- Avatar selection persistence still needs a controlled asset catalog plus a trusted/student-safe asset-ID update contract.
-- Installable PWA metadata and offline policy remain a deliberate follow-on; the current responsive route can be saved as a normal home-screen browser link.
+- Avatar selection persistence is approved around stable catalog IDs, with final artwork supplied through secure storage-backed uploads. Storage rules, catalog publication, and the trusted/student-safe asset-ID update still need implementation.
+- A full installable PWA is approved. Manifest/icons, standalone behavior, update strategy, offline-data boundaries, and install verification still need implementation; the current responsive route can already be saved as a normal home-screen browser link.
 - Kiosk mode is still future work and should not be treated as part of the current student-portal runtime.
 
 ## Related Planning

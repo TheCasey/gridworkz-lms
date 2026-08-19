@@ -14,12 +14,12 @@ The approved/frozen prototype is `ownpath_student_portal.html`. It is a UI contr
 | Weekly/monthly chores | `useStudentChores`, `StudentChoresWorkspaceV2` | Trusted claim, proof note, completion, cooldown, quota and review status | The live UI does not create direct client-side writes or bypass trusted callables. |
 | Allowance | Current parent allowance records; no student allowance surface yet | No student write behavior is assumed | Prototype presents a separate Coming Soon workspace until base earning, bounty, adjustment, and payout details are finalized. |
 | Reward store | `useStudentChores`, `StudentRewardStoreV2` | Wallet balance, trusted redemption request/cancel, request history and built-in unlocks | Reward prices and stock come from the existing trusted response in production. |
-| Avatar builder | `StudentAvatarWorkspace`, prototype asset manifest | No persistence contract exists yet | The live route provides a CSS-backed preview. Add parent-owned allowed asset IDs and a trusted/student-safe selection update before persistence. Never accept arbitrary asset URLs from the student client. |
-| Mobile saved link | Existing `/student/:slug` route | Browser bookmark/home-screen shortcut and PIN continuation | The responsive route works as a saved web link. A true installable PWA still needs a web manifest, icons, display mode, caching policy, and install verification. |
+| Avatar builder | `StudentAvatarWorkspace`, prototype asset manifest | Stable-ID persistence is approved but not implemented | The live route provides a CSS-backed preview. Final art will use secure storage-backed uploads plus a controlled catalog; the student record will persist only approved asset IDs through a trusted/student-safe update. |
+| Mobile/PWA entry | Existing `/student/:slug` route | Browser shortcut and PIN continuation work today | A full installable PWA is approved. It still needs a web manifest, complete icon set, standalone display behavior, update handling, bounded offline policy, and install verification. |
 
 ## Avatar data recommendation
 
-Persist only stable IDs such as `avatar-01`, `outfit-02`, and `accessory-01`. Resolve those IDs through a parent-controlled catalog or bundled manifest. This keeps student writes narrow and avoids storing untrusted URLs. The layered art contract lives in `student-avatar-assets/README.md`.
+Persist only stable IDs such as `avatar-01`, `outfit-02`, and `accessory-01`. Resolve those IDs through a controlled catalog whose approved files are uploaded to secured storage. This keeps student writes narrow and avoids storing untrusted URLs. The layered art contract lives in `student-avatar-assets/README.md`.
 
 ## Responsive contract
 

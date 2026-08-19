@@ -123,14 +123,22 @@ service cloud.firestore {
 
     // Timer sessions: portal needs unauthenticated cross-device persistence
     match /timerSessions/{timerSessionId} {
-      allow get: if studentExists(resource.data.student_id) &&
-        timerSubjectIsAssigned(resource.data.student_id, resource.data.subject_id);
+      // A missing deterministic timer document must resolve as "not found" so the
+      // portal can fall back to local storage without entering a denied-listener loop.
+      allow get: if resource == null ||
+        (
+          studentExists(resource.data.student_id) &&
+          timerSubjectIsAssigned(resource.data.student_id, resource.data.subject_id)
+        );
       allow list: if false;
       allow create, update: if studentExists(request.resource.data.student_id) &&
         timerSubjectIsAssigned(request.resource.data.student_id, request.resource.data.subject_id) &&
         validTimerTimerSessionData(request.resource.data);
-      allow delete: if studentExists(resource.data.student_id) &&
-        timerSubjectIsAssigned(resource.data.student_id, resource.data.subject_id);
+      allow delete: if resource == null ||
+        (
+          studentExists(resource.data.student_id) &&
+          timerSubjectIsAssigned(resource.data.student_id, resource.data.subject_id)
+        );
     }
 
     // Weekly plans: parent-owned and identity-stable for one student-week planning

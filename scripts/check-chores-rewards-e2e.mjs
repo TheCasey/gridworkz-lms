@@ -246,6 +246,20 @@ assert.equal(
 );
 assert.equal(paidStudentView.rewards.wallet.student_id, 'student_a');
 assert.deepEqual(paidStudentView.rewards.myRedemptions, [], 'student reward state excludes sibling redemptions');
+const sanitizedTrustedRewardStore = buildStudentRewardStoreModel({
+  rewardState: {
+    wallet: paidStudentView.rewards.wallet,
+    catalog: paidStudentView.rewards.catalog.map(({ can_afford, can_redeem, unavailable_reason, ...reward }) => reward),
+    myRedemptions: paidStudentView.rewards.myRedemptions,
+  },
+  enabled: true,
+  hasStudentContext: true,
+});
+assert.equal(
+  sanitizedTrustedRewardStore.catalog.find((reward) => reward.id === 'reward_movie')?.can_redeem,
+  true,
+  'client reward model derives redemption eligibility from sanitized trusted wallet, cost, and stock facts'
+);
 
 const monthlyNextEligible = getNextEligibleTime({
   frequencyPool: ChoreFrequencyPools.MONTHLY,

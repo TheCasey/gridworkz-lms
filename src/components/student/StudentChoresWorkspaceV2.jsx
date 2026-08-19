@@ -27,6 +27,12 @@ const StudentChoresWorkspaceV2 = ({
     }, {}));
   }, [workspace.routineDateKey, workspace.routines]);
 
+  useEffect(() => {
+    if (!workspace.canUseChorePools && activeSection !== 'daily') {
+      setActiveSection('daily');
+    }
+  }, [activeSection, workspace.canUseChorePools]);
+
   const availableByPool = useMemo(() => ({
     weekly: workspace.availableChores.filter((chore) => getPool(chore) === 'weekly'),
     monthly: workspace.availableChores.filter((chore) => getPool(chore) === 'monthly'),
@@ -106,8 +112,8 @@ const StudentChoresWorkspaceV2 = ({
 
         <div className="student-subtabs" role="tablist" aria-label="Chore sections">
           <button type="button" role="tab" aria-selected={activeSection === 'daily'} className={activeSection === 'daily' ? 'is-active' : ''} onClick={() => setActiveSection('daily')}><ListChecks />Daily routine</button>
-          <button type="button" role="tab" aria-selected={activeSection === 'weekly'} className={activeSection === 'weekly' ? 'is-active' : ''} onClick={() => setActiveSection('weekly')}><CalendarDays />Weekly chores</button>
-          <button type="button" role="tab" aria-selected={activeSection === 'monthly'} className={activeSection === 'monthly' ? 'is-active' : ''} onClick={() => setActiveSection('monthly')}><CalendarRange />Monthly chores</button>
+          {workspace.canUseChorePools ? <button type="button" role="tab" aria-selected={activeSection === 'weekly'} className={activeSection === 'weekly' ? 'is-active' : ''} onClick={() => setActiveSection('weekly')}><CalendarDays />Weekly chores</button> : null}
+          {workspace.canUseChorePools ? <button type="button" role="tab" aria-selected={activeSection === 'monthly'} className={activeSection === 'monthly' ? 'is-active' : ''} onClick={() => setActiveSection('monthly')}><CalendarRange />Monthly chores</button> : null}
         </div>
 
         {error?.message ? <div className="student-error" role="alert">{error.message}</div> : null}
@@ -144,8 +150,8 @@ const StudentChoresWorkspaceV2 = ({
 
       <aside className="student-workspace-rail">
         <div className="student-rail-section"><p className="student-eyebrow">Today&apos;s routine</p><strong className="student-rail-big">{completedRoutineCount} / {workspace.routines.length}</strong><span className="student-muted">templates complete</span></div>
-        <div className="student-rail-section"><p className="student-eyebrow">Weekly chores</p><div className="student-rail-stat"><span>Remaining</span><strong>{workspace.counts.remaining.weekly}</strong></div><div className="student-rail-stat"><span>Claimed</span><strong>{claimedByPool.weekly.length}</strong></div></div>
-        <div className="student-rail-section"><p className="student-eyebrow">Monthly chores</p><div className="student-rail-stat"><span>Remaining</span><strong>{workspace.counts.remaining.monthly}</strong></div><div className="student-rail-stat"><span>Claimed</span><strong>{claimedByPool.monthly.length}</strong></div></div>
+        {workspace.canUseChorePools ? <div className="student-rail-section"><p className="student-eyebrow">Weekly chores</p><div className="student-rail-stat"><span>Remaining</span><strong>{workspace.counts.remaining.weekly}</strong></div><div className="student-rail-stat"><span>Claimed</span><strong>{claimedByPool.weekly.length}</strong></div></div> : null}
+        {workspace.canUseChorePools ? <div className="student-rail-section"><p className="student-eyebrow">Monthly chores</p><div className="student-rail-stat"><span>Remaining</span><strong>{workspace.counts.remaining.monthly}</strong></div><div className="student-rail-stat"><span>Claimed</span><strong>{claimedByPool.monthly.length}</strong></div></div> : null}
         {workspace.rewardWallet ? <div className="student-rail-section"><p className="student-eyebrow">Points</p><strong className="student-rail-big">{workspace.rewardWallet.total_points || 0}</strong></div> : null}
       </aside>
     </div>

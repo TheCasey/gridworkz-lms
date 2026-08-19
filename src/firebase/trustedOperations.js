@@ -1,9 +1,13 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { connectFunctionsEmulator, getFunctions, httpsCallable } from 'firebase/functions';
 import { app } from './firebaseConfig';
 import { TrustedFunctionNames } from '../constants/schema';
 
 const region = import.meta.env.VITE_FIREBASE_FUNCTIONS_REGION || 'us-central1';
 const functions = getFunctions(app, region);
+
+if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true') {
+  connectFunctionsEmulator(functions, '127.0.0.1', 5001);
+}
 
 const createStudentCallable = httpsCallable(functions, TrustedFunctionNames.CREATE_STUDENT);
 const createSubjectCallable = httpsCallable(functions, TrustedFunctionNames.CREATE_SUBJECT);

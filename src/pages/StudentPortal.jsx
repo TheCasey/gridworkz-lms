@@ -870,7 +870,11 @@ const StudentPortal = () => {
         created_at: serverTimestamp()
       });
 
-      await removeTimer(subject.id);
+      try {
+        await removeTimer(subject.id);
+      } catch (timerCleanupError) {
+        console.warn('Block was submitted, but the remote timer could not be cleared:', timerCleanupError);
+      }
       setActiveTimers(prev => { const u = { ...prev }; delete u[subject.id]; return u; });
       setSelectedSubject(null); setSelectedBlockIndex(null);
       setSummaryText(''); setSelectedResources([]); resetCustomFieldResponses();
@@ -937,7 +941,7 @@ const StudentPortal = () => {
       <header className="student-portal-topbar">
         <div className="student-portal-brand"><span>OwnPath</span><strong>Student Portal</strong></div>
         <div className="student-portal-topbar-spacer" />
-        {studentChores.rewardStore.wallet ? <div className="student-portal-points"><Star />{studentChores.rewardStore.wallet.total_points || 0} pts</div> : null}
+        {studentChores.canShowRewardTab && studentChores.rewardStore.wallet ? <div className="student-portal-points"><Star />{studentChores.rewardStore.wallet.total_points || 0} pts</div> : null}
         <label className="sr-only" htmlFor="student-alarm-sound">Timer alarm sound</label>
         <select id="student-alarm-sound" className="student-alarm-select" value={alarmSound} onChange={(event) => handleAlarmChange(event.target.value)}>
           {ALARM_SOUNDS.map((sound) => <option key={sound.file} value={sound.file}>{sound.label}</option>)}

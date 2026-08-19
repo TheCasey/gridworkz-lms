@@ -658,7 +658,28 @@ export const buildStudentRewardStoreModel = ({
     lifetime_points: 0,
     updated_at: null,
   };
-  const catalog = Array.isArray(rewardState?.catalog) ? rewardState.catalog : [];
+  const walletPoints = toNonNegativeInteger(wallet.total_points, 0);
+  const catalog = (Array.isArray(rewardState?.catalog) ? rewardState.catalog : []).map((reward) => {
+    const isUnlocked = reward?.is_unlocked === true;
+    const isOutOfStock = toNonNegativeInteger(reward?.available_quantity, 0) <= 0;
+    const canAfford = walletPoints >= toNonNegativeInteger(reward?.point_cost, 0);
+    let unavailableReason = toString(reward?.unavailable_reason);
+
+    if (!unavailableReason) {
+      if (isUnlocked) unavailableReason = 'Already unlocked';
+      else if (isOutOfStock) unavailableReason = 'Out of stock';
+      else if (!canAfford) unavailableReason = 'Not enough points';
+    }
+
+    return {
+      ...reward,
+      can_afford: typeof reward?.can_afford === 'boolean' ? reward.can_afford : canAfford,
+      can_redeem: typeof reward?.can_redeem === 'boolean'
+        ? reward.can_redeem
+        : !isUnlocked && !isOutOfStock && canAfford,
+      unavailable_reason: unavailableReason,
+    };
+  });
   const myRedemptions = Array.isArray(rewardState?.myRedemptions) ? rewardState.myRedemptions : [];
   const canShowArea = Boolean(enabled);
   const hasContent = catalog.length > 0 || myRedemptions.length > 0;

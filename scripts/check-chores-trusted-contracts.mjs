@@ -518,11 +518,10 @@ callableNames.forEach((functionName) => {
   );
 });
 
-assert.equal(
-  JSON.parse(firebaseConfigSource).emulators,
-  undefined,
-  'repo firebase.json has no callable emulator harness configured for this phase'
-);
+const emulatorConfig = JSON.parse(firebaseConfigSource).emulators;
+assert.equal(emulatorConfig?.auth?.port, 9099, 'Auth emulator should use the documented seed-script port');
+assert.equal(emulatorConfig?.firestore?.port, 8080, 'Firestore emulator should use the documented seed-script port');
+assert.equal(emulatorConfig?.functions?.port, 5001, 'Functions emulator should use the documented callable-smoke port');
 
 console.log('Chores trusted contract checks passed.');
-console.log('Callable emulator harness: not configured in firebase.json; manual seeded callable smoke remains required.');
+console.log('Callable emulator harness: Auth, Firestore, and Functions ports are configured in firebase.json.');

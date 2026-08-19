@@ -103,7 +103,8 @@ Reports decision recorded:
 - Approved/frozen: `ownpath_student_portal.html` is the visual and interaction contract for the route.
 - Landed: responsive shell around the existing published-plan launcher, timer, submission, chore, and reward contracts.
 - Add avatar persistence only after allowed asset IDs and trusted write rules are explicit.
-- Treat a saved home-screen link as baseline mobile access; add a web app manifest and install/offline policy only as a deliberate PWA pass.
+- Implement final avatar art as secured storage-backed uploads resolved through a controlled catalog; persist only approved asset IDs.
+- Implement a full PWA as a deliberate follow-on with manifest/icons, standalone behavior, update handling, and an explicit offline-data policy.
 
 ## Near-term Build Order
 
