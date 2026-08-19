@@ -6,6 +6,8 @@ import {
   Archive,
   Ban,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Edit,
   Gift,
@@ -30,11 +32,19 @@ import {
   dashboardFeaturesById,
 } from '../../constants/dashboardFeatures';
 import {
+  ChoreClaimStatuses,
+  ChoreCompletionStatuses,
   ChoreFrequencyPools,
   RewardCatalogItemTypes,
   RewardRedemptionStatuses,
 } from '../../constants/schema';
 import useChoreSetup from '../../hooks/useChoreSetup';
+import {
+  getActiveChoreClaim,
+  getChoreAvailability,
+  getLatestChoreCompletion,
+} from '../../utils/choreUtils';
+import { getCurrentWeekRange } from '../../utils/weekUtils';
 import {
   buildChoreDefinitionDraft,
   buildChoreSettingsDraft,
@@ -80,8 +90,8 @@ const buildSectionTitle = (title, description, Icon) => (
   </div>
 );
 
-const SectionCard = ({ children }) => (
-  <section className="op-chores-section">
+const SectionCard = ({ children, className = '' }) => (
+  <section className={`op-chores-section ${className}`}>
     {children}
   </section>
 );
@@ -167,6 +177,24 @@ const formatDateTime = (value) => {
 
   return resolved.toLocaleString();
 };
+const resolveDate = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const resolved = value?.toDate?.() || new Date(value);
+  return Number.isNaN(resolved?.getTime?.()) ? null : resolved;
+};
+const formatShortDate = (value) => {
+  const resolved = resolveDate(value);
+  return resolved
+    ? resolved.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '';
+};
+const formatCurrentMonthLabel = () => new Date().toLocaleDateString('en-US', {
+  month: 'long',
+  year: 'numeric',
+});
 
 const ChoresRoute = () => {
   const {
@@ -198,6 +226,8 @@ const ChoresRoute = () => {
   const isRewardReadOnly = featureShellState === DASHBOARD_FEATURE_STATES.LOCKED || !canManageRewards;
   const isPaidModuleLocked = !canManageChorePools || !canManageRewards;
   const {
+    choreClaims,
+    choreCompletions,
     choreDefinitions,
     choreSettings,
     error,
@@ -952,6 +982,106 @@ const ChoresRoute = () => {
           : isRewardsRoute
             ? `${totalVisibleWalletPoints} household points available`
             : 'Household chore status at a glance';
+  const rawChoreById = new Map(
+    (Array.isArray(choreDefinitions) ? choreDefinitions : []).map((definition) => [definition.id, definition])
+  );
+  const studentById = new Map(students.map((student) => [student.id, student]));
+  const poolWeekConfig = viewModel?.settings || {};
+  const { weekStart: currentPoolWeekStart, weekEnd: currentPoolWeekEnd } = getCurrentWeekRange(
+    new Date(),
+    poolWeekConfig
+  );
+  const currentPoolMonthStart = new Date();
+  currentPoolMonthStart.setDate(1);
+  currentPoolMonthStart.setHours(0, 0, 0, 0);
+  const currentPoolMonthEnd = new Date(currentPoolMonthStart);
+  currentPoolMonthEnd.setMonth(currentPoolMonthEnd.getMonth() + 1);
+  const poolPeriodStart = isMonthlyChoresRoute ? currentPoolMonthStart : currentPoolWeekStart;
+  const poolPeriodEnd = isMonthlyChoresRoute ? currentPoolMonthEnd : currentPoolWeekEnd;
+  const isInActivePoolPeriod = (value) => {
+    const resolved = resolveDate(value);
+    return Boolean(resolved && resolved >= poolPeriodStart && resolved < poolPeriodEnd);
+  };
+  const poolRows = activeDetailPool.map((card) => {
+    const definition = rawChoreById.get(card.id) || card;
+    const activeClaim = getActiveChoreClaim({
+      choreDefinitionId: card.id,
+      claims: choreClaims,
+      now: new Date(),
+      claimExpirationHours: viewModel?.settings?.claim_expiration_hours,
+    });
+    const latestCompletion = getLatestChoreCompletion({
+      choreDefinitionId: card.id,
+      completions: choreCompletions,
+    });
+    const availability = getChoreAvailability({
+      choreDefinition: definition,
+      studentId: selectedDetailProgress?.student_id,
+      claims: choreClaims,
+      completions: choreCompletions,
+      now: new Date(),
+      weekConfig: poolWeekConfig,
+      claimExpirationHours: viewModel?.settings?.claim_expiration_hours,
+    });
+    const completionIsCurrent = isInActivePoolPeriod(
+      latestCompletion?.completed_at || latestCompletion?.created_at
+    );
+    const completionStudent = studentById.get(latestCompletion?.student_id);
+    const claimStudent = studentById.get(activeClaim?.student_id);
+    let status = 'available';
+    let statusLabel = 'Available';
+
+    if (latestCompletion?.status === ChoreCompletionStatuses.COMPLETED && completionIsCurrent) {
+      status = 'pending';
+      statusLabel = `Pending approval${completionStudent?.name ? ` · ${completionStudent.name}` : ''}`;
+    } else if (activeClaim?.status === ChoreClaimStatuses.CLAIMED) {
+      status = 'claimed';
+      statusLabel = `Claimed${claimStudent?.name ? ` · ${claimStudent.name}` : ''}`;
+    } else if (latestCompletion?.status === ChoreCompletionStatuses.APPROVED && completionIsCurrent) {
+      status = 'done';
+      statusLabel = `Done${completionStudent?.name ? ` · ${completionStudent.name}` : ''}`;
+    } else if (availability.unavailable_reason === 'cooldown') {
+      status = 'cooldown';
+      statusLabel = `Unavailable until ${formatShortDate(availability.next_eligible_at)}`;
+    }
+
+    return {
+      ...card,
+      definition,
+      activeClaim,
+      latestCompletion,
+      availability,
+      status,
+      statusLabel,
+    };
+  });
+  const selectedPoolCompletions = (Array.isArray(choreCompletions) ? choreCompletions : [])
+    .filter((completion) => {
+      const definition = rawChoreById.get(completion.chore_definition_id);
+      return definition?.frequency_pool === detailPoolLabel
+        && completion.student_id === selectedDetailProgress?.student_id
+        && isInActivePoolPeriod(completion.completed_at || completion.created_at);
+    })
+    .sort((left, right) => (
+      (resolveDate(right.completed_at || right.created_at)?.getTime() || 0)
+      - (resolveDate(left.completed_at || left.created_at)?.getTime() || 0)
+    ));
+  const selectedApprovedPoolCompletions = selectedPoolCompletions.filter(
+    (completion) => completion.status === ChoreCompletionStatuses.APPROVED
+  );
+  const selectedClaimedPoolRows = poolRows.filter(
+    (row) => row.status === 'claimed' && row.activeClaim?.student_id === selectedDetailProgress?.student_id
+  );
+  const poolAvailableCount = poolRows.filter((row) => row.status === 'available').length;
+  const selectedAllowanceCard = allowanceCards.find((card) => (
+    card.student_id === selectedChoresDetailStudentId
+  )) || allowanceCards[0] || null;
+  const getAllowanceCount = (card, key) => Number(card?.[key] || 0);
+  const getAllowancePercent = (card, completedKey, requiredKey) => {
+    const required = getAllowanceCount(card?.required_counts, requiredKey);
+    const completed = getAllowanceCount(card?.completed_counts, completedKey);
+    return required > 0 ? Math.min(100, Math.round((completed / required) * 100)) : 0;
+  };
 
   const renderRoutineCard = (routine) => (
     <div
@@ -1357,6 +1487,279 @@ const ChoresRoute = () => {
     </div>
   );
 
+  const renderPoolConsole = () => {
+    const quotaCompleted = detailPoolLabel === 'monthly'
+      ? selectedDetailProgress?.progress.monthly_blocks_completed || 0
+      : selectedDetailProgress?.progress.weekly_blocks_completed || 0;
+    const quotaRequired = detailPoolLabel === 'monthly'
+      ? selectedDetailProgress?.quotas.required_monthly_chore_blocks || 0
+      : selectedDetailProgress?.quotas.required_weekly_chore_blocks || 0;
+    const periodLabel = isMonthlyChoresRoute
+      ? `${formatCurrentMonthLabel()} (current)`
+      : `${formatShortDate(currentPoolWeekStart)} – ${formatShortDate(new Date(currentPoolWeekEnd.getTime() - 1))} (current)`;
+
+    return (
+      <section className="op-pool-console">
+        <div className="op-pool-periodbar">
+          <button type="button" disabled aria-label="Previous period"><ChevronLeft className="h-4 w-4" /></button>
+          <strong>{periodLabel}</strong>
+          <button type="button" disabled aria-label="Next period"><ChevronRight className="h-4 w-4" /></button>
+          <span>
+            {selectedDetailPendingReview.length > 0 ? `${selectedDetailPendingReview.length} pending approval · ` : ''}
+            {selectedApprovedPoolCompletions.length}/{activeDetailPool.length} completed this {detailPoolLabel === 'monthly' ? 'month' : 'week'}
+          </span>
+        </div>
+
+        <div className="op-pool-console-body">
+          <aside className="op-pool-pane">
+            <div className="op-pool-pane-head">
+              <strong>{isMonthlyChoresRoute ? 'Monthly pool' : 'Chore pool'}</strong>
+              <span>{activeDetailPool.length} chores · {poolAvailableCount} available</span>
+            </div>
+            <div className="op-pool-rows">
+              {poolRows.length > 0 ? poolRows.map((row) => (
+                <div key={row.id} className={`op-pool-row is-${row.status}`}>
+                  <div className="op-pool-row-main">
+                    <div className="op-pool-row-title">
+                      <strong>{row.title}</strong>
+                      {Number(pointSettingsDraft.chore_block_points || 0) > 0 ? (
+                        <span>{pointSettingsDraft.chore_block_points} pts</span>
+                      ) : null}
+                    </div>
+                    <div className="op-pool-row-meta">
+                      {row.effort_label ? <span>{row.effort_label}</span> : null}
+                      <span>{row.minimum_cooldown_days}d cooldown</span>
+                    </div>
+                    <div className="op-pool-row-badges">
+                      <span className={`is-${row.status}`}>{row.statusLabel}</span>
+                      <span className="is-allowance">Allowance</span>
+                      {row.proof_requirement ? <span className="is-proof">Proof req</span> : null}
+                      {row.requires_parent_approval ? <span className="is-approval">Approval req</span> : null}
+                    </div>
+                  </div>
+                  <div className="op-pool-row-actions">
+                    <button
+                      type="button"
+                      disabled={isReadOnly || busyRecordId === row.id}
+                      aria-label={`Edit ${row.title}`}
+                      onClick={() => {
+                        setChoreDraft(buildChoreDefinitionDraft(row.definition));
+                        setShowChoreEditor(true);
+                      }}
+                    >
+                      <Edit className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isReadOnly || busyRecordId === row.id}
+                      aria-label={`Archive ${row.title}`}
+                      onClick={() => handleArchiveChore(row.definition, false)}
+                    >
+                      {busyRecordId === row.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                </div>
+              )) : (
+                <EmptyState icon={ListTodo} title={`No ${detailPoolLabel} chores yet`} detail="Add a real chore to start this shared pool." />
+              )}
+            </div>
+          </aside>
+
+          <div className="op-pool-activity-pane">
+            <div className="op-pool-student-tabs">
+              {progressCards.map((progressCard) => {
+                const completed = detailPoolLabel === 'monthly'
+                  ? progressCard.progress.monthly_blocks_completed
+                  : progressCard.progress.weekly_blocks_completed;
+                const required = detailPoolLabel === 'monthly'
+                  ? progressCard.quotas.required_monthly_chore_blocks
+                  : progressCard.quotas.required_weekly_chore_blocks;
+
+                return (
+                  <button
+                    key={progressCard.student_id}
+                    type="button"
+                    className={selectedDetailProgress?.student_id === progressCard.student_id ? 'is-active' : ''}
+                    onClick={() => setSelectedChoresDetailStudentId(progressCard.student_id)}
+                  >
+                    <strong>{progressCard.student_name}</strong>
+                    <span>{completed}/{required} quota · {progressCard.pending_review_count || 0} pending</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="op-pool-activity-scroll">
+              <div className="op-pool-banner">
+                Shared {detailPoolLabel} pool: {poolAvailableCount} available, {selectedClaimedPoolRows.length} claimed, {selectedDetailPendingReview.length} awaiting review.
+              </div>
+              <div className="op-pool-stat-grid">
+                <div><strong>{quotaCompleted}/{quotaRequired}</strong><span>{detailPoolLabel} quota credited</span></div>
+                <div><strong>{selectedPoolCompletions.length}</strong><span>completed or pending</span></div>
+                <div><strong>{selectedClaimedPoolRows.length}</strong><span>in progress</span></div>
+              </div>
+
+              {selectedDetailPendingReview.length > 0 ? (
+                <div className="op-pool-activity-section">
+                  <p>Pending approval</p>
+                  {selectedDetailPendingReview.map((record) => (
+                    <div key={record.id} className="op-pool-activity-row is-pending">
+                      <div>
+                        <strong>{record.chore_title}</strong>
+                        <span>
+                          Completed {formatShortDate(record.completed_at)}{record.proof_note ? ` · ${record.proof_note}` : ''}
+                        </span>
+                        <input
+                          value={reviewNotes[record.id] || ''}
+                          disabled={isReadOnly || reviewingId === record.id}
+                          onChange={(event) => setReviewNotes((prev) => ({ ...prev, [record.id]: event.target.value }))}
+                          placeholder="Optional review note"
+                        />
+                      </div>
+                      <div className="op-pool-review-actions">
+                        <button type="button" disabled={isReadOnly || reviewingId === record.id} onClick={() => handleReviewAction(record.id, 'approve')}>Approve</button>
+                        <button type="button" disabled={isReadOnly || reviewingId === record.id} onClick={() => handleReviewAction(record.id, 'return')}>Return</button>
+                        <button type="button" disabled={isReadOnly || reviewingId === record.id} onClick={() => handleReviewAction(record.id, 'reject')}>Reject</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {selectedClaimedPoolRows.length > 0 ? (
+                <div className="op-pool-activity-section">
+                  <p>In progress</p>
+                  {selectedClaimedPoolRows.map((row) => (
+                    <div key={row.id} className="op-pool-activity-row is-claimed">
+                      <div><strong>{row.title}</strong><span>Claimed {formatShortDate(row.activeClaim?.claimed_at || row.activeClaim?.created_at)}</span></div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {selectedApprovedPoolCompletions.length > 0 ? (
+                <div className="op-pool-activity-section">
+                  <p>Completed this {detailPoolLabel === 'monthly' ? 'month' : 'week'}</p>
+                  {selectedApprovedPoolCompletions.map((completion) => (
+                    <div key={completion.id} className="op-pool-activity-row is-done">
+                      <div>
+                        <strong>{rawChoreById.get(completion.chore_definition_id)?.title || 'Archived chore'}</strong>
+                        <span>Completed {formatShortDate(completion.completed_at || completion.created_at)}</span>
+                      </div>
+                      {Number(pointSettingsDraft.chore_block_points || 0) > 0 ? <b>+{pointSettingsDraft.chore_block_points} pts</b> : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {selectedDetailPendingReview.length === 0 && selectedClaimedPoolRows.length === 0 && selectedApprovedPoolCompletions.length === 0 ? (
+                <div className="op-pool-empty">No {detailPoolLabel} chore activity for {selectedDetailProgress?.student_name || 'this student'} yet.</div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  };
+
+  const renderAllowanceConsole = () => {
+    if (!selectedAllowanceCard) {
+      return <EmptyState icon={Clock3} title="No allowance records yet" detail="Add students and save an allowance policy to begin." />;
+    }
+
+    const weeklyPercent = getAllowancePercent(selectedAllowanceCard, 'weekly_chore_blocks', 'weekly_chore_blocks');
+    const monthlyPercent = getAllowancePercent(selectedAllowanceCard, 'monthly_chore_blocks', 'monthly_chore_blocks');
+    const totalPercent = Math.min(100, Math.round(Number(selectedAllowanceCard.completion_ratio || 0) * 100));
+
+    return (
+      <section className="op-allowance-console">
+        <div className="op-allowance-periodbar">
+          <button type="button" disabled aria-label="Previous allowance period"><ChevronLeft className="h-4 w-4" /></button>
+          <strong>{allowancePeriod.period_label || 'Current period'}</strong>
+          <button type="button" disabled aria-label="Next allowance period"><ChevronRight className="h-4 w-4" /></button>
+          <span>{allowanceSummary.unpaid_count || 0} unpaid</span>
+        </div>
+
+        <div className="op-allowance-student-cards">
+          {allowanceCards.map((card, index) => {
+            const cardPercent = Math.min(100, Math.round(Number(card.completion_ratio || 0) * 100));
+            return (
+              <button
+                key={card.student_id}
+                type="button"
+                className={selectedAllowanceCard.student_id === card.student_id ? 'is-active' : ''}
+                style={{ '--student-accent': ['#7c6fd4', '#0f9e7a', '#ba7517'][index % 3] }}
+                onClick={() => setSelectedChoresDetailStudentId(card.student_id)}
+              >
+                <div><i /><strong>{card.student_name}</strong><small>{card.completion_policy === 'prorated' ? 'PROP' : 'A/N'} · {card.period_type}</small></div>
+                <b>{formatCurrency(card.adjusted_earned_amount)}</b>
+                <span>of {formatCurrency(card.allowance_amount)} base</span>
+                <em><i style={{ width: `${cardPercent}%` }} /></em>
+                <div className="op-allowance-card-badges">
+                  <span>{card.paid_status.replace('_', ' ')}</span>
+                  <span>{card.completed_counts.total_blocks || 0}/{card.required_counts.total_blocks || 0} complete</span>
+                  {card.is_missing ? <span>Needs sync</span> : null}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="op-allowance-ledger-focus">
+          <div className="op-allowance-ledger-head">
+            <strong>{selectedAllowanceCard.student_name} — {selectedAllowanceCard.period_label || 'Current period'}</strong>
+            <div>
+              <button type="button" onClick={() => setShowAllowanceSettings(true)}><Settings2 className="h-3.5 w-3.5" /> Edit settings</button>
+              <button type="button" disabled={isReadOnly || syncingAllowance} onClick={handleSyncAllowance}><RotateCcw className={`h-3.5 w-3.5 ${syncingAllowance ? 'animate-spin' : ''}`} /> Refresh</button>
+            </div>
+          </div>
+
+          <p className="op-allowance-ledger-label">Base allowance</p>
+          <div className="op-allowance-ledger-table">
+            <div><span><strong>Weekly chores</strong><small>{selectedAllowanceCard.completed_counts.weekly_chore_blocks || 0} of {selectedAllowanceCard.required_counts.weekly_chore_blocks || 0} completed</small></span><b>{weeklyPercent}%</b></div>
+            <div><span><strong>Monthly chores</strong><small>{selectedAllowanceCard.completed_counts.monthly_chore_blocks || 0} of {selectedAllowanceCard.required_counts.monthly_chore_blocks || 0} completed</small></span><b>{monthlyPercent}%</b></div>
+            {selectedAllowanceCard.include_routines ? (
+              <div><span><strong>Routine days</strong><small>{selectedAllowanceCard.completed_counts.routine_days || 0} of {selectedAllowanceCard.required_counts.routine_days || 0} completed</small></span><b>{getAllowancePercent(selectedAllowanceCard, 'routine_days', 'routine_days')}%</b></div>
+            ) : null}
+            <div className="is-total"><span><strong>Base earned</strong><small>{selectedAllowanceCard.completion_policy.replace('_', ' ')} · {selectedAllowanceCard.period_type} period</small></span><b>{formatCurrency(selectedAllowanceCard.calculated_earned_amount)}</b></div>
+          </div>
+
+          <p className="op-allowance-ledger-label">Adjustments</p>
+          <div className="op-allowance-adjustment-row">
+            <div>
+              <input
+                type="number"
+                step="0.01"
+                value={allowanceAdjustmentDrafts[selectedAllowanceCard.student_id] ?? ''}
+                disabled={isReadOnly || allowanceBusyStudentId === selectedAllowanceCard.student_id}
+                onChange={(event) => setAllowanceAdjustmentDrafts((prev) => ({ ...prev, [selectedAllowanceCard.student_id]: event.target.value }))}
+                aria-label="Parent adjustment amount"
+              />
+              <span>Parent adjustment</span>
+            </div>
+            <b>{formatCurrency(selectedAllowanceCard.parent_adjustment_amount)}</b>
+            <button type="button" disabled={isReadOnly || allowanceBusyStudentId === selectedAllowanceCard.student_id} onClick={() => handleAllowanceBookkeeping(selectedAllowanceCard.student_id, false)}>Save adjustment</button>
+          </div>
+
+          <div className="op-allowance-pay-row">
+            <div><strong>Total earned</strong><span>{totalPercent}% of configured requirements complete</span></div>
+            <b>{formatCurrency(selectedAllowanceCard.adjusted_earned_amount)}</b>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={allowancePaidDrafts[selectedAllowanceCard.student_id] ?? ''}
+              disabled={isReadOnly || allowanceBusyStudentId === selectedAllowanceCard.student_id}
+              onChange={(event) => setAllowancePaidDrafts((prev) => ({ ...prev, [selectedAllowanceCard.student_id]: event.target.value }))}
+              aria-label="Paid out amount"
+            />
+            <button type="button" disabled={isReadOnly || allowanceBusyStudentId === selectedAllowanceCard.student_id} onClick={() => handleAllowanceBookkeeping(selectedAllowanceCard.student_id, true)}>Record paid out</button>
+          </div>
+        </div>
+      </section>
+    );
+  };
+
   if (loading) {
     return (
       <div className="op-page">
@@ -1424,18 +1827,6 @@ const ChoresRoute = () => {
                 Add chore
               </button>
             ) : null}
-            {isAllowanceRoute ? (
-              <>
-                <button type="button" className="op-proto-btn" onClick={() => setShowAllowanceSettings((open) => !open)}>
-                  <Settings2 className="h-3.5 w-3.5" />
-                  {showAllowanceSettings ? 'Close settings' : 'Edit settings'}
-                </button>
-                <button type="button" className="op-proto-btn op-proto-btn-primary" disabled={isReadOnly || syncingAllowance} onClick={handleSyncAllowance}>
-                  {syncingAllowance ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                  Refresh ledger
-                </button>
-              </>
-            ) : null}
             {isRewardsRoute && rewardTab === 'store' ? (
               <button
                 type="button"
@@ -1452,7 +1843,7 @@ const ChoresRoute = () => {
             ) : null}
           </div>
         </div>
-        <div className="op-chores-subbar">
+        {isSectionDashboard ? <div className="op-chores-subbar">
           <div className="op-report-chip-row">
             <Link
               to={`/dashboard/${dashboardFeaturesById.chores.path}`}
@@ -1477,8 +1868,8 @@ const ChoresRoute = () => {
           <span className="op-chores-notice">
             {activeRouteNotice}
           </span>
-        </div>
-      <div className="op-chores-body">
+        </div> : null}
+      <div className={`op-chores-body ${(isWeeklyChoresRoute || isMonthlyChoresRoute || isAllowanceRoute) ? 'is-console' : ''}`}>
         {(isReadOnly || isRoutineReadOnly || isRewardReadOnly) ? (
           <div
             className="op-panel-muted px-4 py-3"
@@ -1680,6 +2071,9 @@ const ChoresRoute = () => {
             </section>
           </>
         ) : null}
+
+        {(isWeeklyChoresRoute || isMonthlyChoresRoute) ? renderPoolConsole() : null}
+        {isAllowanceRoute ? renderAllowanceConsole() : null}
 
         {isDailyRoutinesRoute ? (
         <SectionCard colors={colors}>
@@ -1927,38 +2321,7 @@ const ChoresRoute = () => {
         </SectionCard>
         ) : null}
 
-        {(isWeeklyChoresRoute || isMonthlyChoresRoute) ? (
-          <div className="op-chores-detail-toolbar">
-            <div className="op-chores-student-tabs">
-              {progressCards.map((progressCard) => (
-                <button
-                  key={progressCard.student_id}
-                  type="button"
-                  className={selectedDetailProgress?.student_id === progressCard.student_id ? 'is-active' : ''}
-                  onClick={() => setSelectedChoresDetailStudentId(progressCard.student_id)}
-                >
-                  <span>{progressCard.student_name}</span>
-                  <small>
-                    {detailPoolLabel === 'monthly'
-                      ? progressCard.progress.monthly_blocks_completed
-                      : progressCard.progress.weekly_blocks_completed}
-                    /
-                    {detailPoolLabel === 'monthly'
-                      ? progressCard.quotas.required_monthly_chore_blocks
-                      : progressCard.quotas.required_weekly_chore_blocks} quota
-                  </small>
-                </button>
-              ))}
-            </div>
-            <div className="op-chores-inline-stats">
-              <span><strong>{activeDetailPool.length}</strong> in pool</span>
-              <span><strong>{selectedDetailPendingReview.length}</strong> pending</span>
-              <span><strong>{selectedDetailProgress?.available_counts?.[detailPoolLabel] || 0}</strong> available</span>
-            </div>
-          </div>
-        ) : null}
-
-        {visibleChorePoolSections.map((section) => (
+        {(showChoreEditor ? visibleChorePoolSections : []).map((section) => (
           <SectionCard key={section.pool} colors={colors}>
             <div className="op-chores-section-head">
               {buildSectionTitle(section.title, section.description, ListTodo, colors)}
@@ -2162,7 +2525,7 @@ const ChoresRoute = () => {
         ))}
 
         {isAllowanceRoute && showAllowanceSettings ? (
-        <SectionCard colors={colors}>
+        <SectionCard colors={colors} className="op-allowance-settings-panel">
           <div className="op-chores-section-head">
             {buildSectionTitle(
               'Quotas And Allowance',
@@ -2170,10 +2533,15 @@ const ChoresRoute = () => {
               Settings2,
               colors
             )}
-            <ActionButton type="submit" disabled={savingSettings || isReadOnly} onClick={handleSaveSettings}>
-              {savingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Save Settings
-            </ActionButton>
+            <div className="flex items-center gap-2">
+              <ActionButton tone="light" disabled={savingSettings} onClick={() => setShowAllowanceSettings(false)}>
+                Close
+              </ActionButton>
+              <ActionButton type="submit" disabled={savingSettings || isReadOnly} onClick={handleSaveSettings}>
+                {savingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save Settings
+              </ActionButton>
+            </div>
           </div>
 
           <form className="mt-6 space-y-6" onSubmit={handleSaveSettings}>
@@ -2524,7 +2892,7 @@ const ChoresRoute = () => {
         </SectionCard>
         ) : null}
 
-        {isAllowanceRoute ? (
+        {isAllowanceRoute && allowanceCards.length === 0 ? (
         <SectionCard colors={colors}>
           <div className="op-chores-section-head">
             {buildSectionTitle(
@@ -3105,7 +3473,7 @@ const ChoresRoute = () => {
         </SectionCard>
         ) : null}
 
-        {(isWeeklyChoresRoute || isMonthlyChoresRoute) ? (
+        {(isWeeklyChoresRoute || isMonthlyChoresRoute) && progressCards.length === 0 ? (
         <SectionCard colors={colors}>
           <div className="flex flex-wrap items-start justify-between gap-4">
             {buildSectionTitle(
