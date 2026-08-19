@@ -92,12 +92,22 @@ This file records the *why* behind key decisions so future sessions don't re-lit
 ### Themeable accent layer
 **Decision:** Student portal base is the same dark navy structure as parent portal. Theme = CSS custom property swap for accent colors + optional background. Base structure never changes.
 **Rationale:** Predictable layout for parents reviewing. Themes feel earned/special without breaking usability.
-**Status:** Decision made. Implementation not yet started.
+**Status:** Decision made. First standalone responsive prototype created in `ownpath_student_portal.html`; app implementation has not started.
 
 ### Age range
 **Decision:** Design for 6–16. No age-gating within the student portal — same interface serves all ages.
 **Rationale:** Household may have a 7-year-old and a 15-year-old. Parent controls complexity via block setup, not portal version.
 **Status:** Decided.
+
+### Mobile student navigation
+**Decision:** The student portal is desktop-capable but mobile-first at narrow widths. Desktop uses top workspace tabs and a contextual right rail; mobile uses a four-item bottom navigation bar and stacks rail content below the active workspace.
+**Rationale:** Students should be able to save the portal link to a phone or tablet home screen and reach School, Chores, Rewards, and Avatar without navigating the parent-oriented sidebar pattern.
+**Status:** Implemented in the standalone prototype. Installable PWA metadata and offline behavior remain separate implementation work.
+
+### Layered avatar assets
+**Decision:** Avatars use stable catalog IDs for a base, outfit, and accessory. Art layers share one transparent canvas and are resolved from a controlled manifest; student clients do not supply arbitrary asset URLs.
+**Rationale:** This allows generated artwork to replace placeholders without changing layout or persistence contracts, while keeping future student writes narrow and safe.
+**Status:** Prototype asset folders, manifest, and replacement guidance created. Persistence and trusted selection updates are not implemented.
 
 ---
 

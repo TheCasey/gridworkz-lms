@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "canvas": { "width": 1024, "height": 1024 },
+  "layers": ["base", "outfit", "accessory"],
+  "assets": {
+    "avatars": [
+      { "id": "avatar-01", "file": "avatars/avatar-01.webp", "label": "Base 01" },
+      { "id": "avatar-02", "file": "avatars/avatar-02.webp", "label": "Base 02" },
+      { "id": "avatar-03", "file": "avatars/avatar-03.webp", "label": "Base 03" }
+    ],
+    "outfits": [
+      { "id": "outfit-01", "file": "outfits/outfit-01.webp", "label": "Indigo hoodie" },
+      { "id": "outfit-02", "file": "outfits/outfit-02.webp", "label": "Explorer" },
+      { "id": "outfit-03", "file": "outfits/outfit-03.webp", "label": "Space suit" }
+    ],
+    "accessories": [
+      { "id": "accessory-01", "file": "accessories/accessory-01.webp", "label": "Explorer cap" },
+      { "id": "accessory-02", "file": "accessories/accessory-02.webp", "label": "Star glasses" }
+    ]
+  }
+}

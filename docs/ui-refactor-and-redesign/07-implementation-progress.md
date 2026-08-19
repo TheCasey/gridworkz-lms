@@ -20,6 +20,7 @@ This note tracks the route-by-route redesign implementation so the work order st
 - `/dashboard/settings` has started in app code; account plan/access status, usage cards, school-year controls, quarter preview, timezone, weekly reset, and save footer have been moved to the redesign language while preserving the parent settings save flow.
 - Shared redesign tokens/classes for the new dashboard language have started.
 - Parent dashboard shell/header/sidebar have started moving to the dark redesign language and now use the compact 190px rail/topbar proportions from the HTML examples.
+- A standalone responsive student portal prototype is ready for review in `ownpath_student_portal.html`. It covers PIN entry, School, Chores, Rewards, and a layered My Avatar workspace; desktop uses top tabs/right rails and mobile uses a bottom navigation bar with stacked content. `08-student-portal-prototype-mapping.md` records how each prototype state maps to the current portal, hooks, and trusted operations. This is not yet a replacement of `StudentPortal.jsx`.
 
 ## Still Remaining
 
@@ -27,8 +28,9 @@ This note tracks the route-by-route redesign implementation so the work order st
 - Weekly Blocking deeper model work: copy-week, separate reusable assignment-template persistence, and a cleaner objective-selection/publishing workflow around saved/published week state.
 - Reports deeper evidence workflow: actual file/photo evidence drawer, parent override persistence, and official print inclusion of full assigned-block snapshots.
 - Settings deeper account actions, billing management, and student access defaults after the related data-model decisions.
-- Student portal redesign.
-- Mobile polish pass across the student-facing surfaces.
+- Student portal implementation from the approved prototype, including live data wiring without changing the existing trusted contracts.
+- Student avatar persistence/catalog decision and final generated asset population.
+- Installable-PWA metadata/offline policy if home-screen installation beyond a saved browser link is required.
 - Final end-to-end QA of the redesign shell and route transitions.
 - Chores follow-on model gaps are deliberately not mocked: routine time-of-day is inferred from compatible fields/template titles and history cells remain read-only until persisted time-of-day and trusted parent-correction contracts exist. Weekly/monthly historical period navigation and allowance bounty rows likewise still need persisted contracts.
 
