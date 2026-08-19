@@ -8,7 +8,7 @@ This note tracks the route-by-route redesign implementation so the work order st
 
 - `/dashboard/homeschool` overview surface has been started in app code and now closely follows `ownpath_homeschool_overview.html` for the visible dashboard: compact topbar, all-family/student focus tabs, week draft banner, navigation strip, active-subjects-by-student panel, quick stats, and attention items. It remains real-data driven from students/subjects/week settings; lower recent-completions feed and real all-family publish state are not wired yet.
 - `/dashboard/chores` overview surface has been started in app code and now reflects `ownpath_chores_overview.html` with compact topbar/subbar, stats strip, navigation strip, student snapshot list, focused-student summary, and activity feed while preserving trusted chore/reward/allowance handlers.
-- `/dashboard/chores/daily-routines` is ready for basic home testing: it has real-data student tabs, a compact current-week rail, dense routine rows, contextual create controls, and a viewport-contained editor while preserving Free access and grouped routine handlers.
+- `/dashboard/chores/daily-routines` received a screenshot-driven correction and is ready for basic home testing: it now has the prototype's student-tab/week-control strip, Morning/Afternoon/Evening groups, real checklist-item rows with seven-day completion history, and fixed weekly summary rail. Free access and grouped routine handlers remain intact.
 - `/dashboard/chores/weekly-chores` has completed a screenshot-driven correction: the route now follows the prototype's period strip and fixed two-pane structure, with the real pool on the left and real student quota/activity/review state on the right. Existing add/edit/archive and trusted review behavior remains intact.
 - `/dashboard/chores/monthly-chores` has completed the same screenshot-driven two-pane correction with monthly period, quota, cooldown, claim, and completion language.
 - `/dashboard/chores/allowance` has completed a screenshot-driven correction: selectable real student summary cards now lead into one focused requirement/earnings/adjustment/payment ledger, with settings in a right-side panel. Trusted sync/bookkeeping handlers are preserved. The seeded local environment still returns the existing Firebase callable error for allowance sync; the route recovers and displays unsynced records.
@@ -30,7 +30,7 @@ This note tracks the route-by-route redesign implementation so the work order st
 - Student portal redesign.
 - Mobile polish pass across the student-facing surfaces.
 - Final end-to-end QA of the redesign shell and route transitions.
-- Chores follow-on model gaps are deliberately not mocked: routine time-of-day buckets/history correction dots, weekly/monthly historical period navigation, and allowance bounty rows still need persisted contracts before those prototype interactions can be reproduced exactly.
+- Chores follow-on model gaps are deliberately not mocked: routine time-of-day is inferred from compatible fields/template titles and history cells remain read-only until persisted time-of-day and trusted parent-correction contracts exist. Weekly/monthly historical period navigation and allowance bounty rows likewise still need persisted contracts.
 
 ## Suggested Next Order
 

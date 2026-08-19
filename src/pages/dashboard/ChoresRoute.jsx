@@ -195,6 +195,32 @@ const formatCurrentMonthLabel = () => new Date().toLocaleDateString('en-US', {
   month: 'long',
   year: 'numeric',
 });
+const formatDateKey = (value) => {
+  const resolved = resolveDate(value);
+  if (!resolved) {
+    return '';
+  }
+
+  const year = resolved.getFullYear();
+  const month = String(resolved.getMonth() + 1).padStart(2, '0');
+  const day = String(resolved.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+const inferRoutineTimeOfDay = (routine = {}) => {
+  const explicitValue = String(routine.time_of_day || routine.timeOfDay || '').toLowerCase();
+  if (['morning', 'afternoon', 'evening'].includes(explicitValue)) {
+    return explicitValue;
+  }
+
+  const title = String(routine.title || '').toLowerCase();
+  if (/evening|night|bedtime|after dinner/.test(title)) {
+    return 'evening';
+  }
+  if (/afternoon|after school|midday|lunch/.test(title)) {
+    return 'afternoon';
+  }
+  return 'morning';
+};
 
 const ChoresRoute = () => {
   const {
@@ -236,6 +262,7 @@ const ChoresRoute = () => {
     rewardCatalogItems,
     rewardRedemptions,
     rewardSettings,
+    routineCompletions,
     routineTemplates,
     viewModel,
   } = useChoreSetup({
@@ -273,6 +300,7 @@ const ChoresRoute = () => {
   const [pointAdjustmentDrafts, setPointAdjustmentDrafts] = useState({});
   const [pointAdjustmentNotes, setPointAdjustmentNotes] = useState({});
   const [pointBusyStudentId, setPointBusyStudentId] = useState('');
+  const [routineWeekOffset, setRoutineWeekOffset] = useState(0);
   const [rewardRestockDrafts, setRewardRestockDrafts] = useState({});
   const [rewardBusyId, setRewardBusyId] = useState('');
   const [reviewingRewardId, setReviewingRewardId] = useState('');
@@ -1082,6 +1110,48 @@ const ChoresRoute = () => {
     const completed = getAllowanceCount(card?.completed_counts, completedKey);
     return required > 0 ? Math.min(100, Math.round((completed / required) * 100)) : 0;
   };
+  const routineWeekStart = new Date(currentPoolWeekStart);
+  routineWeekStart.setDate(routineWeekStart.getDate() + (routineWeekOffset * 7));
+  const routineWeekEnd = new Date(routineWeekStart);
+  routineWeekEnd.setDate(routineWeekEnd.getDate() + 7);
+  const routineWeekDates = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(routineWeekStart);
+    date.setDate(date.getDate() + index);
+    return date;
+  });
+  const routinePeriodLabel = `${formatShortDate(routineWeekStart)} – ${formatShortDate(new Date(routineWeekEnd.getTime() - 1))}${routineWeekOffset === 0 ? ' (current)' : ''}`;
+  const rawRoutineById = new Map(
+    (Array.isArray(routineTemplates) ? routineTemplates : []).map((routine) => [routine.id, routine])
+  );
+  const selectedRoutineTemplates = visibleRoutineCards.map((card) => rawRoutineById.get(card.id) || card);
+  const selectedRoutineCompletions = (Array.isArray(routineCompletions) ? routineCompletions : []).filter(
+    (completion) => completion.student_id === selectedDetailProgress?.student_id
+      && completion.date_key >= formatDateKey(routineWeekStart)
+      && completion.date_key < formatDateKey(routineWeekEnd)
+  );
+  const routineCompletionByKey = new Map(selectedRoutineCompletions.map((completion) => [
+    `${completion.routine_template_id}:${completion.date_key}`,
+    completion,
+  ]));
+  const selectedRoutineDaysCompleted = new Set(
+    selectedRoutineCompletions.map((completion) => completion.date_key).filter(Boolean)
+  ).size;
+  const routineSections = [
+    { id: 'morning', label: 'Morning', tone: 'morning' },
+    { id: 'afternoon', label: 'Afternoon', tone: 'afternoon' },
+    { id: 'evening', label: 'Evening', tone: 'evening' },
+  ].map((section) => ({
+    ...section,
+    templates: selectedRoutineTemplates.filter((routine) => inferRoutineTimeOfDay(routine) === section.id),
+  }));
+  const getRoutineCountForStudent = (studentId) => new Set(
+    (Array.isArray(routineCompletions) ? routineCompletions : [])
+      .filter((completion) => completion.student_id === studentId
+        && completion.date_key >= formatDateKey(routineWeekStart)
+        && completion.date_key < formatDateKey(routineWeekEnd))
+      .map((completion) => completion.date_key)
+      .filter(Boolean)
+  ).size;
 
   const renderRoutineCard = (routine) => (
     <div
@@ -1487,6 +1557,183 @@ const ChoresRoute = () => {
     </div>
   );
 
+  const renderDailyRoutineConsole = () => {
+    const todayKey = formatDateKey(new Date());
+    const totalRoutineItems = routineSections.reduce((sum, section) => (
+      sum + section.templates.reduce((templateSum, template) => (
+        templateSum + Math.max(1, Array.isArray(template.checklist_items) ? template.checklist_items.length : 0)
+      ), 0)
+    ), 0);
+    const requiredRoutineDays = Number(selectedDetailProgress?.quotas.required_routine_days || 0);
+
+    const openRoutineEditor = (routine) => {
+      setRoutineDraft(buildRoutineTemplateDraft(routine));
+      setShowRoutineEditor(true);
+    };
+
+    const createRoutineForSection = (section) => {
+      setRoutineDraft({
+        ...createDefaultRoutineTemplateDraft(),
+        title: `${section.label} routine`,
+      });
+      setShowRoutineEditor(true);
+    };
+
+    return (
+      <section className="op-routine-console">
+        <div className="op-routine-controls">
+          <div className="op-routine-student-tabs">
+            {progressCards.map((progressCard) => {
+              const completedDays = getRoutineCountForStudent(progressCard.student_id);
+              return (
+                <button
+                  key={progressCard.student_id}
+                  type="button"
+                  className={selectedDetailProgress?.student_id === progressCard.student_id ? 'is-active' : ''}
+                  onClick={() => setSelectedChoresDetailStudentId(progressCard.student_id)}
+                >
+                  <strong>{progressCard.student_name}</strong>
+                  <small>{completedDays}/{progressCard.quotas.required_routine_days || 0} routine days</small>
+                </button>
+              );
+            })}
+          </div>
+          <div className="op-routine-week-nav">
+            <button
+              type="button"
+              aria-label="Previous week"
+              disabled={routineWeekOffset <= -4}
+              onClick={() => setRoutineWeekOffset((offset) => Math.max(-4, offset - 1))}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <strong>{routinePeriodLabel}</strong>
+            <button
+              type="button"
+              aria-label="Next week"
+              disabled={routineWeekOffset >= 0}
+              onClick={() => setRoutineWeekOffset((offset) => Math.min(0, offset + 1))}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="op-routine-console-body">
+          <main className="op-routine-main">
+            <div className={`op-routine-banner ${selectedRoutineDaysCompleted >= requiredRoutineDays && requiredRoutineDays > 0 ? 'is-complete' : 'is-warn'}`}>
+              <span>{routineWeekOffset === 0 ? 'Routine days completed this week' : 'Routine days completed that week'}</span>
+              <strong>{selectedRoutineDaysCompleted} / {requiredRoutineDays}</strong>
+            </div>
+
+            {routineSections.map((section) => {
+              const itemCount = section.templates.reduce((sum, template) => (
+                sum + Math.max(1, Array.isArray(template.checklist_items) ? template.checklist_items.length : 0)
+              ), 0);
+
+              return (
+                <section key={section.id} className={`op-routine-period is-${section.tone}`}>
+                  <div className="op-routine-period-head">
+                    <strong>{section.label}</strong>
+                    <span>{itemCount} item{itemCount === 1 ? '' : 's'}</span>
+                  </div>
+                  <div className="op-routine-period-rows">
+                    {section.templates.length > 0 ? section.templates.flatMap((template) => {
+                      const items = Array.isArray(template.checklist_items) && template.checklist_items.length > 0
+                        ? template.checklist_items
+                        : [{ id: 'routine', label: template.title }];
+
+                      return items.map((item, itemIndex) => (
+                        <div key={`${template.id}:${item.id || itemIndex}`} className="op-routine-row">
+                          <span className="op-routine-grip" aria-hidden="true">⋮⋮</span>
+                          <span className="op-routine-row-info">
+                            <strong>{item.label || template.title}</strong>
+                            {item.label !== template.title ? <small>{template.title}</small> : null}
+                          </span>
+                          <span className="op-routine-days" aria-label={`${item.label || template.title} completion history`}>
+                            {routineWeekDates.map((date) => {
+                              const dateKey = formatDateKey(date);
+                              const completion = routineCompletionByKey.get(`${template.id}:${dateKey}`);
+                              const completedItemIds = Array.isArray(completion?.completed_item_ids)
+                                ? completion.completed_item_ids
+                                : [];
+                              const isDone = completedItemIds.includes(item.id)
+                                || (item.id === 'routine' && Boolean(completion));
+                              const isPast = dateKey < todayKey;
+                              const isMissed = !isDone && isPast;
+                              const isToday = dateKey === todayKey;
+                              const dayLabel = date.toLocaleDateString('en-US', { weekday: 'narrow' });
+                              return (
+                                <span key={dateKey} className="op-routine-day-wrap">
+                                  <small>{dayLabel}</small>
+                                  <span
+                                    className={`op-routine-day ${isDone ? 'is-done' : isMissed ? 'is-missed' : 'is-pending'} ${isToday ? 'is-today' : ''}`}
+                                    title={`${date.toLocaleDateString()}: ${isDone ? 'complete' : isMissed ? 'not completed' : 'pending'}`}
+                                  >
+                                    {isDone ? '✓' : isMissed ? '×' : ''}
+                                  </span>
+                                </span>
+                              );
+                            })}
+                          </span>
+                          <span className="op-routine-row-actions">
+                            <button type="button" aria-label={`Edit ${template.title}`} disabled={isRoutineReadOnly} onClick={() => openRoutineEditor(template)}>
+                              <Edit className="h-3.5 w-3.5" />
+                            </button>
+                            <button type="button" aria-label={`Archive ${template.title}`} disabled={isRoutineReadOnly || busyRecordId === template.id} onClick={() => handleArchiveRoutine(template, false)}>
+                              {busyRecordId === template.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
+                            </button>
+                          </span>
+                        </div>
+                      ));
+                    }) : (
+                      <div className="op-routine-empty-row">No {section.label.toLowerCase()} routines yet.</div>
+                    )}
+                    <button type="button" className="op-routine-add-row" disabled={isRoutineReadOnly} onClick={() => createRoutineForSection(section)}>
+                      <Plus className="h-3 w-3" />
+                      Add {section.label.toLowerCase()} routine
+                    </button>
+                  </div>
+                </section>
+              );
+            })}
+          </main>
+
+          <aside className="op-routine-summary">
+            <div className="op-routine-summary-head">{routineWeekOffset === 0 ? 'This week' : 'That week'}</div>
+            <div className="op-routine-summary-body">
+              <div className="op-routine-summary-stat"><strong>{totalRoutineItems}</strong><span>total routines</span></div>
+              <div className="op-routine-summary-stat is-accent"><strong>{selectedRoutineDaysCompleted}/{requiredRoutineDays}</strong><span>routine days</span></div>
+              <div className="op-routine-summary-rule" />
+              <p>By time of day</p>
+              {routineSections.map((section) => {
+                const count = section.templates.reduce((sum, template) => (
+                  sum + Math.max(1, Array.isArray(template.checklist_items) ? template.checklist_items.length : 0)
+                ), 0);
+                return <div key={section.id} className={`op-routine-summary-row is-${section.tone}`}><i /><span>{section.label}</span><strong>{count}</strong></div>;
+              })}
+              <div className="op-routine-summary-rule" />
+              <p>All students</p>
+              {progressCards.map((progressCard, index) => (
+                <div key={progressCard.student_id} className={`op-routine-summary-row is-student-${index % 3}`}>
+                  <i />
+                  <span>{progressCard.student_name}</span>
+                  <strong>{getRoutineCountForStudent(progressCard.student_id)}/{progressCard.quotas.required_routine_days || 0}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="op-routine-summary-actions">
+              <Link to={`/dashboard/${dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.REWARDS].path}`} className="op-proto-btn">
+                <Gift className="h-3.5 w-3.5" />
+                Routine day points
+              </Link>
+            </div>
+          </aside>
+        </div>
+      </section>
+    );
+  };
+
   const renderPoolConsole = () => {
     const quotaCompleted = detailPoolLabel === 'monthly'
       ? selectedDetailProgress?.progress.monthly_blocks_completed || 0
@@ -1800,7 +2047,7 @@ const ChoresRoute = () => {
             {isDailyRoutinesRoute ? (
               <button
                 type="button"
-                className="op-proto-btn op-proto-btn-primary"
+                className="op-proto-btn"
                 disabled={isRoutineReadOnly}
                 onClick={() => {
                   setRoutineDraft(createDefaultRoutineTemplateDraft());
@@ -1869,7 +2116,7 @@ const ChoresRoute = () => {
             {activeRouteNotice}
           </span>
         </div> : null}
-      <div className={`op-chores-body ${(isWeeklyChoresRoute || isMonthlyChoresRoute || isAllowanceRoute) ? 'is-console' : ''}`}>
+      <div className={`op-chores-body ${(isDailyRoutinesRoute || isWeeklyChoresRoute || isMonthlyChoresRoute || isAllowanceRoute) ? 'is-console' : ''}`}>
         {(isReadOnly || isRoutineReadOnly || isRewardReadOnly) ? (
           <div
             className="op-panel-muted px-4 py-3"
@@ -2072,11 +2319,12 @@ const ChoresRoute = () => {
           </>
         ) : null}
 
+        {isDailyRoutinesRoute ? renderDailyRoutineConsole() : null}
         {(isWeeklyChoresRoute || isMonthlyChoresRoute) ? renderPoolConsole() : null}
         {isAllowanceRoute ? renderAllowanceConsole() : null}
 
-        {isDailyRoutinesRoute ? (
-        <SectionCard colors={colors}>
+        {isDailyRoutinesRoute && showRoutineEditor ? (
+        <SectionCard className="op-routine-editor-panel" colors={colors}>
           <div className="op-chores-detail-toolbar">
             <div className="op-chores-student-tabs">
               {progressCards.map((progressCard) => (
