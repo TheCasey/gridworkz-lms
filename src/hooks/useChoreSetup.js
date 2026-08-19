@@ -32,6 +32,7 @@ export const useChoreSetup = ({
   const [choreCompletions, setChoreCompletions] = useState([]);
   const [allowancePeriods, setAllowancePeriods] = useState([]);
   const [rewardSettings, setRewardSettings] = useState(null);
+  const [pointLedgerEntries, setPointLedgerEntries] = useState([]);
   const [pointWallets, setPointWallets] = useState([]);
   const [rewardCatalogItems, setRewardCatalogItems] = useState([]);
   const [rewardRedemptions, setRewardRedemptions] = useState([]);
@@ -48,6 +49,7 @@ export const useChoreSetup = ({
       setChoreCompletions([]);
       setAllowancePeriods([]);
       setRewardSettings(null);
+      setPointLedgerEntries([]);
       setPointWallets([]);
       setRewardCatalogItems([]);
       setRewardRedemptions([]);
@@ -66,6 +68,7 @@ export const useChoreSetup = ({
       'completions',
       'allowancePeriods',
       'rewardSettings',
+      'pointLedgerEntries',
       'pointWallets',
       'rewardCatalogItems',
       'rewardRedemptions',
@@ -158,6 +161,15 @@ export const useChoreSetup = ({
         handleError
       ),
       onSnapshot(
+        query(collection(db, Collections.POINT_LEDGER_ENTRIES), where('parent_id', '==', parentId)),
+        (snapshot) => {
+          setPointLedgerEntries(mapSnapshotDocs(snapshot));
+          setError(null);
+          markLoaded('pointLedgerEntries');
+        },
+        handleError
+      ),
+      onSnapshot(
         query(collection(db, Collections.STUDENT_POINT_WALLETS), where('parent_id', '==', parentId)),
         (snapshot) => {
           setPointWallets(mapSnapshotDocs(snapshot));
@@ -226,6 +238,7 @@ export const useChoreSetup = ({
     error,
     loading,
     allowancePeriods,
+    pointLedgerEntries,
     pointWallets,
     rewardCatalogItems,
     rewardRedemptions,

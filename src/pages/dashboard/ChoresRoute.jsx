@@ -221,6 +221,17 @@ const inferRoutineTimeOfDay = (routine = {}) => {
   }
   return 'morning';
 };
+const getRewardIcon = (reward = {}) => {
+  const title = String(reward.title || reward.title_snapshot || '').toLowerCase();
+  if (title.includes('sunrise')) return '🌅';
+  if (title.includes('twilight')) return '🌙';
+  if (reward.unlock_type === 'avatar' || title.includes('avatar')) return '🐉';
+  if (reward.unlock_type === 'badge' || title.includes('badge')) return '⭐';
+  if (title.includes('screen')) return '🎮';
+  if (title.includes('dinner') || title.includes('food')) return '🍕';
+  if (title.includes('movie')) return '🎬';
+  return '🎁';
+};
 
 const ChoresRoute = () => {
   const {
@@ -258,6 +269,7 @@ const ChoresRoute = () => {
     choreSettings,
     error,
     loading,
+    pointLedgerEntries,
     pointWallets,
     rewardCatalogItems,
     rewardRedemptions,
@@ -308,6 +320,7 @@ const ChoresRoute = () => {
   const [selectedChoresOverviewStudentId, setSelectedChoresOverviewStudentId] = useState('');
   const [selectedChoresDetailStudentId, setSelectedChoresDetailStudentId] = useState('');
   const [showAllowanceSettings, setShowAllowanceSettings] = useState(false);
+  const [showPointAdjustment, setShowPointAdjustment] = useState(false);
   const [rewardTab, setRewardTab] = useState('store');
 
   useEffect(() => {
@@ -735,6 +748,7 @@ const ChoresRoute = () => {
         ...prev,
         [studentId]: '',
       }));
+      setShowPointAdjustment(false);
     } catch (saveError) {
       console.error('Error saving point adjustment:', saveError);
       alert('Failed to save the point adjustment. Please try again.');
@@ -844,6 +858,32 @@ const ChoresRoute = () => {
     || rewardRedemption.status === RewardRedemptionStatuses.REJECTED
     || rewardRedemption.status === RewardRedemptionStatuses.CANCELED
   ));
+  const selectedRewardWallet = pointWalletCards.find((wallet) => (
+    wallet.student_id === selectedChoresDetailStudentId
+  )) || pointWalletCards[0] || null;
+  const selectedRewardRequests = rewardRequestCards.filter((request) => (
+    request.student_id === selectedRewardWallet?.student_id
+  ));
+  const selectedOpenRewardRequests = selectedRewardRequests.filter((request) => (
+    request.status === RewardRedemptionStatuses.REQUESTED
+    || request.status === RewardRedemptionStatuses.APPROVED
+  ));
+  const selectedClosedRewardRequests = selectedRewardRequests.filter((request) => (
+    request.status === RewardRedemptionStatuses.FULFILLED
+    || request.status === RewardRedemptionStatuses.REJECTED
+    || request.status === RewardRedemptionStatuses.CANCELED
+  ));
+  const selectedPointLedgerEntries = (Array.isArray(pointLedgerEntries) ? pointLedgerEntries : [])
+    .filter((entry) => entry.student_id === selectedRewardWallet?.student_id)
+    .map((entry) => ({
+      ...entry,
+      delta_points: Number.parseInt(entry.delta_points, 10) || 0,
+      created_at_date: entry.created_at?.toDate?.()
+        || (entry.created_at ? new Date(entry.created_at) : null),
+    }))
+    .sort((left, right) => (
+      (right.created_at_date?.getTime?.() || 0) - (left.created_at_date?.getTime?.() || 0)
+    ));
   const summaryCards = [
     {
       label: 'Daily Routines',
@@ -1557,6 +1597,233 @@ const ChoresRoute = () => {
     </div>
   );
 
+  const renderRewardsConsole = () => {
+    const estimatedWeeklyPoints = (
+      (Number(pointSettingsDraft.chore_block_points || 0) * 3)
+      + (Number(pointSettingsDraft.school_block_points || 0) * 5 * 6)
+      + (pointSettingsDraft.routine_points_enabled
+        ? Number(pointSettingsDraft.routine_day_points || 0) * 5
+        : 0)
+    );
+
+    const openRewardEditor = (reward = null) => {
+      setRewardDraft(reward ? buildRewardCatalogDraft(reward) : createDefaultRewardDraft());
+      setShowRewardEditor(true);
+    };
+
+    return (
+      <section className="op-rewards-console">
+        <div className="op-rewards-tabs" role="tablist" aria-label="Reward views">
+          {[
+            { id: 'store', label: 'Reward Store', Icon: Gift },
+            { id: 'students', label: 'Students & Points', Icon: Users, badge: openRewardRequestCards.length },
+            { id: 'settings', label: 'Point Settings', Icon: Settings2 },
+          ].map(({ id, label, Icon, badge }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={rewardTab === id}
+              className={rewardTab === id ? 'is-active' : ''}
+              onClick={() => setRewardTab(id)}
+            >
+              <Icon className="h-4 w-4" />
+              <span>{label}</span>
+              {badge > 0 ? <small>{badge}</small> : null}
+            </button>
+          ))}
+        </div>
+
+        {rewardTab === 'store' ? (
+          <div className="op-reward-store">
+            <div className="op-reward-section-label"><span>Built-in rewards</span><small>Managed unlock catalog</small></div>
+            <div className="op-reward-card-grid">
+              {builtInRewardCards.map((reward) => (
+                <article key={reward.id} className="op-reward-store-card is-built-in">
+                  <span className="op-reward-store-icon">{getRewardIcon(reward)}</span>
+                  <strong>{reward.title.replace(/^\w+:\s*/, '')}</strong>
+                  <p>{reward.description}</p>
+                  <div className="op-reward-price"><b>{reward.point_cost}</b><span>pts</span></div>
+                  <div className="op-reward-card-footer"><span>Built-in</span><em>Enabled</em></div>
+                </article>
+              ))}
+            </div>
+
+            <div className="op-reward-section-label"><span>Parent-created rewards</span></div>
+            <div className="op-reward-card-grid">
+              {activeParentRewardCards.map((reward) => (
+                <article key={reward.id} className="op-reward-store-card is-parent">
+                  <div className="op-reward-card-actions">
+                    <button type="button" aria-label={`Edit ${reward.title}`} disabled={isRewardReadOnly} onClick={() => openRewardEditor(reward)}><Edit className="h-3.5 w-3.5" /></button>
+                    <button type="button" aria-label={`Archive ${reward.title}`} disabled={isRewardReadOnly || rewardBusyId === reward.id} onClick={() => handleArchiveReward(reward, false)}>{rewardBusyId === reward.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}</button>
+                  </div>
+                  <span className="op-reward-store-icon">{getRewardIcon(reward)}</span>
+                  <strong>{reward.title}</strong>
+                  <p>{reward.description || reward.fulfillment_terms || 'Parent-created household reward'}</p>
+                  <div className="op-reward-price is-parent"><b>{reward.point_cost}</b><span>pts</span></div>
+                  <div className="op-reward-badges">
+                    {reward.stock_quantity > 0 ? <span className="is-stock">{reward.available_quantity} left</span> : null}
+                    <span className={reward.redemption_requires_approval ? 'is-approval' : 'is-auto'}>{reward.redemption_requires_approval ? 'approval req' : 'auto-approve'}</span>
+                  </div>
+                  {reward.stock_quantity > 0 ? (
+                    <div className="op-reward-restock">
+                      <input
+                        type="number"
+                        min="1"
+                        value={rewardRestockDrafts[reward.id] ?? ''}
+                        disabled={isRewardReadOnly || rewardBusyId === reward.id}
+                        onChange={(event) => setRewardRestockDrafts((current) => ({ ...current, [reward.id]: event.target.value }))}
+                        placeholder="Qty"
+                        aria-label={`Restock quantity for ${reward.title}`}
+                      />
+                      <button type="button" disabled={isRewardReadOnly || rewardBusyId === reward.id} onClick={() => handleRestockReward(reward)}>Restock</button>
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+              <button type="button" className="op-reward-add-card" disabled={isRewardReadOnly} onClick={() => openRewardEditor()}>
+                <Plus className="h-5 w-5" />
+                <span>Add reward</span>
+              </button>
+            </div>
+
+            {archivedParentRewardCards.length > 0 ? (
+              <div className="op-reward-archived-line">
+                <span>{archivedParentRewardCards.length} archived reward{archivedParentRewardCards.length === 1 ? '' : 's'}</span>
+                {archivedParentRewardCards.map((reward) => (
+                  <button key={reward.id} type="button" disabled={isRewardReadOnly || rewardBusyId === reward.id} onClick={() => handleArchiveReward(reward, true)}>
+                    <RotateCcw className="h-3 w-3" /> Restore {reward.title}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {rewardTab === 'students' ? (
+          <div className="op-reward-students-console">
+            <aside className="op-reward-student-list">
+              {pointWalletCards.map((wallet, index) => {
+                const pendingCount = rewardRequestCards.filter((request) => (
+                  request.student_id === wallet.student_id
+                  && (request.status === RewardRedemptionStatuses.REQUESTED || request.status === RewardRedemptionStatuses.APPROVED)
+                )).length;
+                return (
+                  <button
+                    key={wallet.student_id}
+                    type="button"
+                    className={`${selectedRewardWallet?.student_id === wallet.student_id ? 'is-selected' : ''} is-student-${index % 3}`}
+                    onClick={() => setSelectedChoresDetailStudentId(wallet.student_id)}
+                  >
+                    <i />
+                    <span><strong>{wallet.student_name}{pendingCount > 0 ? <em>{pendingCount}</em> : null}</strong><small>★ {wallet.total_points} pts</small></span>
+                  </button>
+                );
+              })}
+            </aside>
+            <div className="op-reward-student-detail">
+              {selectedRewardWallet ? (
+                <>
+                  <div className="op-reward-student-head">
+                    <i />
+                    <strong>{selectedRewardWallet.student_name}</strong>
+                    <span><b>★ {selectedRewardWallet.total_points}</b><small>{selectedRewardWallet.lifetime_points} lifetime pts</small></span>
+                    <button type="button" disabled={isRewardReadOnly} onClick={() => setShowPointAdjustment(true)}><Plus className="h-3.5 w-3.5" /> Adjust</button>
+                  </div>
+                  <div className="op-reward-student-scroll">
+                    {selectedOpenRewardRequests.length > 0 ? (
+                      <>
+                        <p className="op-reward-ledger-label is-pending">Pending approval ({selectedOpenRewardRequests.length})</p>
+                        {selectedOpenRewardRequests.map((request) => (
+                          <div key={request.id} className="op-reward-redemption-row">
+                            <span><strong>{request.title_snapshot}</strong><small>Requested {formatShortDate(request.requested_at_date)} · ★ {request.point_cost_snapshot} pts</small></span>
+                            <div>
+                              {request.status === RewardRedemptionStatuses.REQUESTED ? (
+                                <>
+                                  <button type="button" className="is-approve" disabled={isRewardReadOnly || reviewingRewardId === request.id} onClick={() => handleRewardRedemptionAction(request.id, 'approve')}><CheckCircle2 className="h-3.5 w-3.5" /> Approve</button>
+                                  <button type="button" className="is-reject" aria-label={`Reject ${request.title_snapshot}`} disabled={isRewardReadOnly || reviewingRewardId === request.id} onClick={() => handleRewardRedemptionAction(request.id, 'reject')}><Ban className="h-3.5 w-3.5" /></button>
+                                </>
+                              ) : (
+                                <>
+                                  <button type="button" className="is-approve" disabled={isRewardReadOnly || reviewingRewardId === request.id} onClick={() => handleRewardRedemptionAction(request.id, 'fulfill')}><Gift className="h-3.5 w-3.5" /> Fulfill</button>
+                                  <button type="button" className="is-reject" aria-label={`Cancel ${request.title_snapshot}`} disabled={isRewardReadOnly || reviewingRewardId === request.id} onClick={() => handleRewardRedemptionAction(request.id, 'cancel')}><RotateCcw className="h-3.5 w-3.5" /></button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    ) : null}
+
+                    <p className="op-reward-ledger-label">Point history</p>
+                    {selectedPointLedgerEntries.length > 0 ? selectedPointLedgerEntries.map((entry) => (
+                      <div key={entry.id} className={`op-reward-ledger-row ${entry.delta_points >= 0 ? 'is-positive' : 'is-negative'}`}>
+                        <Sparkles className="h-4 w-4" />
+                        <span><strong>{entry.description || String(entry.source_type || 'point entry').replaceAll('_', ' ')}</strong><small>{formatShortDate(entry.created_at_date)}</small></span>
+                        <b>{formatSignedPoints(entry.delta_points)}</b>
+                      </div>
+                    )) : <div className="op-reward-empty-ledger">No point entries have been recorded for this student yet.</div>}
+
+                    {selectedClosedRewardRequests.length > 0 ? (
+                      <>
+                        <p className="op-reward-ledger-label">Past redemptions</p>
+                        {selectedClosedRewardRequests.slice(0, 8).map((request) => (
+                          <div key={request.id} className="op-reward-redemption-row is-closed">
+                            <span><strong>{request.title_snapshot}</strong><small>{formatShortDate(request.fulfilled_at_date || request.approved_at_date || request.requested_at_date)} · ★ {request.point_cost_snapshot} pts</small></span>
+                            <em>{request.status}</em>
+                          </div>
+                        ))}
+                      </>
+                    ) : null}
+                  </div>
+                </>
+              ) : <div className="op-reward-empty-ledger">Add a student to start tracking points.</div>}
+            </div>
+          </div>
+        ) : null}
+
+        {rewardTab === 'settings' ? (
+          <form className="op-reward-settings-console" onSubmit={handleSavePointSettings}>
+            <div className="op-reward-settings-heading"><span>Points earned per action</span><button type="submit" disabled={savingPointSettings || isRewardReadOnly}>{savingPointSettings ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save settings</button></div>
+            <div className="op-reward-settings-table">
+              {[
+                { id: 'weekly', label: 'Weekly chore', detail: 'Standard weekly pool chore completed', field: 'chore_block_points' },
+                { id: 'monthly', label: 'Monthly chore', detail: 'Uses the shared pool-chore award value', field: 'chore_block_points' },
+                { id: 'school', label: 'School block', detail: 'Curriculum assignment completed through a trusted source', field: 'school_block_points' },
+              ].map((row) => (
+                <label key={row.id} className="op-reward-settings-row">
+                  <span><strong>{row.label}</strong><small>{row.detail}</small></span>
+                  <input type="number" min="0" step="1" value={pointSettingsDraft[row.field]} disabled={isRewardReadOnly || savingPointSettings} onChange={(event) => setPointSettingsDraft((current) => ({ ...current, [row.field]: event.target.value }))} />
+                  <em>pts</em>
+                </label>
+              ))}
+              <div className="op-reward-settings-row">
+                <span><strong>Full routine day</strong><small>Point-eligible routine completed for the day</small></span>
+                <input type="number" min="0" step="1" value={pointSettingsDraft.routine_day_points} disabled={isRewardReadOnly || savingPointSettings || !pointSettingsDraft.routine_points_enabled} onChange={(event) => setPointSettingsDraft((current) => ({ ...current, routine_day_points: event.target.value }))} />
+                <Toggle checked={pointSettingsDraft.routine_points_enabled === true} disabled={isRewardReadOnly || savingPointSettings} onChange={(checked) => setPointSettingsDraft((current) => ({ ...current, routine_points_enabled: checked }))} />
+                <em>pts</em>
+              </div>
+            </div>
+            <div className="op-reward-settings-heading"><span>Streak bonuses</span></div>
+            <div className="op-reward-model-note">Streak bonuses are not shown as editable values because the current trusted reward-settings contract does not persist them.</div>
+            <div className="op-reward-settings-heading"><span>Suggested baseline</span></div>
+            <div className="op-reward-baseline">At current settings, an active student doing <b>3 weekly chores</b>, <b>5 school blocks/day</b>{pointSettingsDraft.routine_points_enabled ? ', and full routines daily' : ''} earns roughly <strong>{estimatedWeeklyPoints} pts/week</strong>.</div>
+          </form>
+        ) : null}
+
+        {showPointAdjustment && selectedRewardWallet ? (
+          <div className="op-reward-adjustment-panel">
+            <div className="op-reward-adjustment-title"><strong>Adjust points — {selectedRewardWallet.student_name}</strong><button type="button" onClick={() => setShowPointAdjustment(false)}>Close</button></div>
+            <p>Use a negative number to deduct points. The trusted operation prevents the balance from dropping below zero.</p>
+            <label><span>Points</span><input type="number" step="1" value={pointAdjustmentDrafts[selectedRewardWallet.student_id] ?? ''} disabled={isRewardReadOnly || pointBusyStudentId === selectedRewardWallet.student_id} onChange={(event) => setPointAdjustmentDrafts((current) => ({ ...current, [selectedRewardWallet.student_id]: event.target.value }))} placeholder="50 or -25" /></label>
+            <label><span>Reason</span><input value={pointAdjustmentNotes[selectedRewardWallet.student_id] ?? ''} disabled={isRewardReadOnly || pointBusyStudentId === selectedRewardWallet.student_id} onChange={(event) => setPointAdjustmentNotes((current) => ({ ...current, [selectedRewardWallet.student_id]: event.target.value }))} placeholder="Bonus for great attitude" /></label>
+            <div><button type="button" onClick={() => setShowPointAdjustment(false)}>Cancel</button><button type="button" className="is-primary" disabled={isRewardReadOnly || pointBusyStudentId === selectedRewardWallet.student_id} onClick={() => handleAdjustPoints(selectedRewardWallet.student_id)}>{pointBusyStudentId === selectedRewardWallet.student_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Apply</button></div>
+          </div>
+        ) : null}
+      </section>
+    );
+  };
+
   const renderDailyRoutineConsole = () => {
     const todayKey = formatDateKey(new Date());
     const totalRoutineItems = routineSections.reduce((sum, section) => (
@@ -2116,7 +2383,7 @@ const ChoresRoute = () => {
             {activeRouteNotice}
           </span>
         </div> : null}
-      <div className={`op-chores-body ${(isDailyRoutinesRoute || isWeeklyChoresRoute || isMonthlyChoresRoute || isAllowanceRoute) ? 'is-console' : ''}`}>
+      <div className={`op-chores-body ${(isDailyRoutinesRoute || isWeeklyChoresRoute || isMonthlyChoresRoute || isAllowanceRoute || isRewardsRoute) ? 'is-console' : ''}`}>
         {(isReadOnly || isRoutineReadOnly || isRewardReadOnly) ? (
           <div
             className="op-panel-muted px-4 py-3"
@@ -2322,6 +2589,7 @@ const ChoresRoute = () => {
         {isDailyRoutinesRoute ? renderDailyRoutineConsole() : null}
         {(isWeeklyChoresRoute || isMonthlyChoresRoute) ? renderPoolConsole() : null}
         {isAllowanceRoute ? renderAllowanceConsole() : null}
+        {isRewardsRoute ? renderRewardsConsole() : null}
 
         {isDailyRoutinesRoute && showRoutineEditor ? (
         <SectionCard className="op-routine-editor-panel" colors={colors}>
@@ -3198,7 +3466,7 @@ const ChoresRoute = () => {
         </SectionCard>
         ) : null}
 
-        {isRewardsRoute ? (
+        {isRewardsRoute && rewardTab === 'legacy-tabs' ? (
           <div className="op-reward-tabs" role="tablist" aria-label="Reward views">
             {[
               { id: 'store', label: 'Reward store', meta: `${activeParentRewardCards.length} active` },
@@ -3220,7 +3488,7 @@ const ChoresRoute = () => {
           </div>
         ) : null}
 
-        {isRewardsRoute && rewardTab === 'students' ? (
+        {isRewardsRoute && rewardTab === 'legacy-students' ? (
         <SectionCard colors={colors}>
           <div className="flex flex-wrap items-start justify-between gap-4">
             {buildSectionTitle(
@@ -3432,8 +3700,8 @@ const ChoresRoute = () => {
         </SectionCard>
         ) : null}
 
-        {isRewardsRoute && rewardTab !== 'students' ? (
-        <SectionCard colors={colors}>
+        {isRewardsRoute && rewardTab === 'store' && showRewardEditor ? (
+        <SectionCard className="op-reward-editor-panel" colors={colors}>
           <div className="op-chores-section-head">
             {buildSectionTitle(
               rewardTab === 'requests' ? 'Reward Requests' : 'Reward Store',
