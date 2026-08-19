@@ -20,7 +20,7 @@ This note tracks the route-by-route redesign implementation so the work order st
 - `/dashboard/settings` has started in app code; account plan/access status, usage cards, school-year controls, quarter preview, timezone, weekly reset, and save footer have been moved to the redesign language while preserving the parent settings save flow.
 - Shared redesign tokens/classes for the new dashboard language have started.
 - Parent dashboard shell/header/sidebar have started moving to the dark redesign language and now use the compact 190px rail/topbar proportions from the HTML examples.
-- A standalone responsive student portal prototype is ready for review in `ownpath_student_portal.html`. School follows the weekly-choice model: compact subject accordions reveal numbered blocks, and selecting a block expands that subject in place with its instructions, resources, response requirements, and timer—there is no separate selected-block section or day assignment. Chores is separated into Daily Routine, Weekly Chores, and Monthly Chores. Allowance is a separate Coming Soon workspace while bounty/earning details are finalized. Rewards and layered My Avatar remain included; desktop uses top tabs/right rails and mobile uses a five-item bottom navigation bar. `08-student-portal-prototype-mapping.md` records how each prototype state maps to current portal contracts. This is not yet a replacement of `StudentPortal.jsx`.
+- The responsive student portal direction in `ownpath_student_portal.html` is approved/frozen and its first real implementation has landed at `/student/:slug`. School now groups the real current week by subject, reveals numbered blocks, and expands selected block instructions/resources/response requirements/timer controls in place. Chores has Daily Routine, Weekly Chores, and Monthly Chores subviews wired to existing trusted handlers. Rewards uses the real wallet/catalog/request/cancel flow. Allowance remains a separate Coming Soon workspace. My Avatar provides a layered placeholder preview against the documented asset IDs but deliberately does not persist selections. Desktop uses top tabs/right rails; mobile uses bottom navigation and stacked content. PIN, timer, submission, compatibility, entitlement, chore, and reward contracts remain unchanged.
 
 ## Still Remaining
 
@@ -28,7 +28,7 @@ This note tracks the route-by-route redesign implementation so the work order st
 - Weekly Blocking deeper model work: copy-week, separate reusable assignment-template persistence, and a cleaner objective-selection/publishing workflow around saved/published week state.
 - Reports deeper evidence workflow: actual file/photo evidence drawer, parent override persistence, and official print inclusion of full assigned-block snapshots.
 - Settings deeper account actions, billing management, and student access defaults after the related data-model decisions.
-- Student portal implementation from the approved prototype, including live data wiring without changing the existing trusted contracts.
+- Student portal follow-through: seeded household/mobile regression testing, avatar persistence/catalog contract, and any deliberate PWA install/offline work.
 - Student avatar persistence/catalog decision and final generated asset population.
 - Installable-PWA metadata/offline policy if home-screen installation beyond a saved browser link is required.
 - Final end-to-end QA of the redesign shell and route transitions.

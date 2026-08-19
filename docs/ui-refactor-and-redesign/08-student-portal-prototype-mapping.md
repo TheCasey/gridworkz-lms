@@ -2,7 +2,7 @@
 
 Last updated: 2026-08-19
 
-The review prototype is `ownpath_student_portal.html`. It is intentionally a UI contract, not a second application or data model. Mock values demonstrate states that the current portal already receives from real records and trusted operations.
+The approved/frozen prototype is `ownpath_student_portal.html`. It is a UI contract, not a second application or data model. The first live route implementation now maps those states to real records and trusted operations.
 
 | Prototype surface | Existing application source | Existing behavior to preserve | Implementation note |
 | --- | --- | --- | --- |
@@ -10,11 +10,11 @@ The review prototype is `ownpath_student_portal.html`. It is intentionally a UI 
 | Published school plan | `useStudentPortalWeeklyPlan`, `buildStudentWorkLauncherContract` | Published weekly plan first, compatible subject fallback, completion state | Prototype groups the current week by subject and exposes its numbered blocks. It deliberately does not create day assignments or daily quotas. |
 | Selected school block | `StudentPortal.jsx`, `timerUtils.js`, `workLauncherUtils.js` | Student-chosen block, start, pause, resume, reset, single-active-timer rules, resources and completion | Tapping a subject expands its weekly blocks; tapping a block expands that same subject row further and moves the shared instruction/resource/timer controls into it. |
 | Block response | `StudentPortal.jsx`, subject/weekly-plan response fields | Written response, custom fields, resource links, existing submission flow | Photo upload is a visual placeholder because the evidence file workflow is not implemented yet. |
-| Daily routines | `useStudentChores`, `StudentChoresWorkspace` | Real checklist items and trusted `completeTrustedRoutine` submission | Individual taps are local selection state until the full routine is submitted, matching current trusted behavior. |
-| Weekly/monthly chores | `useStudentChores`, `StudentChoresWorkspace` | Trusted claim, proof note, completion, cooldown, quota and review status | Prototype does not create client-side writes or bypass trusted callables. |
+| Daily routines | `useStudentChores`, `StudentChoresWorkspaceV2` | Real checklist items and trusted `completeTrustedRoutine` submission | Individual taps are local selection state until the full routine is submitted, matching current trusted behavior. |
+| Weekly/monthly chores | `useStudentChores`, `StudentChoresWorkspaceV2` | Trusted claim, proof note, completion, cooldown, quota and review status | The live UI does not create direct client-side writes or bypass trusted callables. |
 | Allowance | Current parent allowance records; no student allowance surface yet | No student write behavior is assumed | Prototype presents a separate Coming Soon workspace until base earning, bounty, adjustment, and payout details are finalized. |
-| Reward store | `useStudentChores`, `StudentRewardStore` | Wallet balance, trusted redemption request/cancel, request history and built-in unlocks | Reward prices and stock come from the existing trusted response in production. |
-| Avatar builder | New prototype asset manifest | No persistence contract exists yet | Add parent-owned allowed asset IDs and a trusted/student-safe selection update before production wiring. Never accept arbitrary asset URLs from the student client. |
+| Reward store | `useStudentChores`, `StudentRewardStoreV2` | Wallet balance, trusted redemption request/cancel, request history and built-in unlocks | Reward prices and stock come from the existing trusted response in production. |
+| Avatar builder | `StudentAvatarWorkspace`, prototype asset manifest | No persistence contract exists yet | The live route provides a CSS-backed preview. Add parent-owned allowed asset IDs and a trusted/student-safe selection update before persistence. Never accept arbitrary asset URLs from the student client. |
 | Mobile saved link | Existing `/student/:slug` route | Browser bookmark/home-screen shortcut and PIN continuation | The responsive route works as a saved web link. A true installable PWA still needs a web manifest, icons, display mode, caching policy, and install verification. |
 
 ## Avatar data recommendation

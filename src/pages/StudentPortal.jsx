@@ -5,7 +5,19 @@ import {
   doc, getDocs, serverTimestamp, setDoc, deleteDoc
 } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
-import { Check, BookOpen, Lock, X, ExternalLink, Bell } from 'lucide-react';
+import {
+  BookOpen,
+  Check,
+  Coins,
+  ExternalLink,
+  Gift,
+  ListChecks,
+  Lock,
+  LogOut,
+  Star,
+  UserRound,
+  X,
+} from 'lucide-react';
 
 import { getCurrentWeekRange, getWeekConfig } from '../utils/weekUtils';
 import {
@@ -24,8 +36,11 @@ import {
   buildWorkLauncherTimerSessionPayload,
 } from '../utils/workLauncherUtils';
 import useStudentChores from '../hooks/useStudentChores';
-import StudentChoresWorkspace from '../components/student/StudentChoresWorkspace';
-import StudentRewardStore from '../components/StudentRewardStore';
+import StudentAvatarWorkspace from '../components/student/StudentAvatarWorkspace';
+import StudentChoresWorkspaceV2 from '../components/student/StudentChoresWorkspaceV2';
+import StudentPortalPinGate from '../components/student/StudentPortalPinGate';
+import StudentRewardStoreV2 from '../components/student/StudentRewardStoreV2';
+import StudentSchoolWorkspace from '../components/student/StudentSchoolWorkspace';
 
 const ALARM_SOUNDS = [
   { file: 'alarm-clock.mp3', label: 'Alarm Clock' },
@@ -713,6 +728,19 @@ const StudentPortal = () => {
     );
   };
 
+  const handleSubjectToggle = (subjectId) => {
+    setExpandedSubjectId((currentSubjectId) => {
+      if (currentSubjectId === subjectId) {
+        setExpandedBlockIndex(null);
+        return null;
+      }
+
+      setExpandedBlockIndex(null);
+      return subjectId;
+    });
+    setError('');
+  };
+
   const handleBlockSelect = (subject, blockIndex) => {
     const subjectPolicy = getSubjectPolicy(subject, { blockIndex });
     if (!subject || isBlockCompleted(subject, blockIndex) || !subjectPolicy.subjectAvailability.allowed) return;
@@ -874,18 +902,18 @@ const StudentPortal = () => {
 
   if (portalLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="animate-spin rounded-full h-7 w-7" style={{ border: '2px solid transparent', borderBottomColor: C.lavender }} />
+      <div className="student-portal-v2 student-portal-loading">
+        <div className="student-loading-spinner" />
       </div>
     );
   }
 
   if (!student) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white" style={{ fontFamily: FONT }}>
-        <div className="text-center">
-          <h2 style={{ fontSize: 24, fontWeight: 540, color: C.charcoal, lineHeight: 1.1 }}>Student Not Found</h2>
-          <p className="text-[14px] mt-2" style={{ color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>Please check your URL and try again.</p>
+      <div className="student-portal-v2 student-portal-loading" style={{ fontFamily: FONT }}>
+        <div className="student-empty-state">
+          <h2>Student not found</h2>
+          <p>Please check your link and try again.</p>
         </div>
       </div>
     );
@@ -894,136 +922,74 @@ const StudentPortal = () => {
   // PIN screen
   if (!isAuthenticated && student.access_pin) {
     return (
-      <div style={{
-        minHeight: '100vh', background: 'linear-gradient(160deg, #201f45 0%, #1b1938 50%, #14122e 100%)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        padding: '48px 16px', fontFamily: FONT,
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{ width: '28px', height: '2px', backgroundColor: C.lavender, margin: '0 auto 20px' }} />
-          <h1 style={{ fontSize: '48px', fontWeight: 540, lineHeight: 0.96, letterSpacing: '-1.32px', color: 'rgba(255,255,255,0.95)', margin: 0 }}>
-            OWN PATH
-          </h1>
-          <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', marginTop: '12px', textTransform: 'uppercase', letterSpacing: '0.16em' }}>
-            Student Portal
-          </p>
-        </div>
-        <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '16px', padding: '40px' }}>
-          <p style={{ fontSize: '20px', fontWeight: 540, lineHeight: 1.25, letterSpacing: '-0.4px', color: C.charcoal, marginBottom: '6px' }}>
-            Welcome, {student.name}
-          </p>
-          <p style={{ fontSize: '14px', color: 'rgba(41,40,39,0.5)', marginBottom: '28px', fontWeight: 460 }}>Enter your PIN to continue</p>
-          {error && (
-            <div style={{ backgroundColor: '#f5f0ff', border: `1px solid ${C.lavender}`, borderRadius: '8px', padding: '12px 14px', marginBottom: '20px', fontSize: '14px', color: C.charcoal }}>
-              {error}
-            </div>
-          )}
-          <form onSubmit={handlePinSubmit}>
-            <input
-              type="password" maxLength="6" pattern="[0-9]{4,6}" required
-              value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="••••"
-              style={{ width: '100%', padding: '12px', backgroundColor: '#fff', border: `1px solid ${C.parchment}`, borderRadius: '8px', fontSize: '24px', color: C.charcoal, textAlign: 'center', outline: 'none', boxSizing: 'border-box', letterSpacing: '0.3em', marginBottom: '16px', fontFamily: FONT }}
-              onFocus={e => e.target.style.borderColor = C.charcoal}
-              onBlur={e => e.target.style.borderColor = C.parchment}
-            />
-            <button type="submit"
-              style={{ width: '100%', padding: '12px', backgroundColor: C.cream, color: C.charcoal, border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 700, cursor: 'pointer', fontFamily: FONT }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}
-            >
-              Enter Portal
-            </button>
-          </form>
-        </div>
-      </div>
+      <StudentPortalPinGate
+        studentName={student.name}
+        pin={pin}
+        error={error}
+        onPinChange={setPin}
+        onSubmit={handlePinSubmit}
+      />
     );
   }
 
   return (
-    <div className="min-h-screen bg-white" style={{ fontFamily: FONT }}>
-      {/* Header */}
-      <header className="bg-white" style={{ borderBottom: `1px solid ${C.parchment}` }}>
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="flex justify-between items-center h-14">
-            <h1 style={{ fontSize: 16, fontWeight: 540, color: C.charcoal }}>My Learning</h1>
-            <div className="flex items-center gap-4">
-              <span style={{ fontSize: 14, color: 'rgba(41,40,39,0.5)', fontWeight: 460 }}>{student.name}</span>
-              <div className="flex items-center gap-1.5">
-                <Bell className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'rgba(41,40,39,0.35)' }} />
-                <select
-                  value={alarmSound}
-                  onChange={(e) => handleAlarmChange(e.target.value)}
-                  style={{
-                    fontSize: 13, color: C.charcoal, fontWeight: 460, fontFamily: FONT,
-                    border: `1px solid ${C.parchment}`, borderRadius: 6, padding: '3px 6px',
-                    backgroundColor: '#fff', cursor: 'pointer', outline: 'none', maxWidth: 140,
-                  }}
-                >
-                  {ALARM_SOUNDS.map(s => (
-                    <option key={s.file} value={s.file}>{s.label}</option>
-                  ))}
-                </select>
-              </div>
-              <button onClick={handleSignOut}
-                style={{ fontSize: 13, color: C.amethyst, fontWeight: 460, textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', fontFamily: FONT }}>
-                Sign Out
-              </button>
-            </div>
-          </div>
-        </div>
+    <div className="student-portal-v2" style={{ fontFamily: FONT }}>
+      <header className="student-portal-topbar">
+        <div className="student-portal-brand"><span>OwnPath</span><strong>Student Portal</strong></div>
+        <div className="student-portal-topbar-spacer" />
+        {studentChores.rewardStore.wallet ? <div className="student-portal-points"><Star />{studentChores.rewardStore.wallet.total_points || 0} pts</div> : null}
+        <label className="sr-only" htmlFor="student-alarm-sound">Timer alarm sound</label>
+        <select id="student-alarm-sound" className="student-alarm-select" value={alarmSound} onChange={(event) => handleAlarmChange(event.target.value)}>
+          {ALARM_SOUNDS.map((sound) => <option key={sound.file} value={sound.file}>{sound.label}</option>)}
+        </select>
+        <button type="button" className="student-profile-control" onClick={() => setActiveWorkspace('profile')}><span className="student-mini-avatar" /><span className="student-profile-name">{student.name}</span><UserRound /></button>
+        {student.access_pin ? <button type="button" className="student-button is-icon" onClick={handleSignOut} aria-label="Sign out"><LogOut /></button> : null}
       </header>
 
-      <main className="max-w-6xl mx-auto py-8 px-6">
-        <div className="flex items-center gap-2 mb-7" data-testid="student-portal-workspaces">
-          <button
-            type="button"
-            onClick={() => setActiveWorkspace('school')}
-            className="px-3 py-2 rounded-lg text-[13px] transition-colors"
-            style={{
-              backgroundColor: activeWorkspace === 'school' ? C.charcoal : C.cream,
-              color: activeWorkspace === 'school' ? '#fff' : C.charcoal,
-              fontWeight: 700,
-              fontFamily: FONT,
-            }}
-          >
-            School
-          </button>
-          {studentChores.canShowTab && (
-            <button
-              type="button"
-              onClick={() => setActiveWorkspace('chores')}
-              className="px-3 py-2 rounded-lg text-[13px] transition-colors"
-              data-testid="student-portal-chores-tab"
-              style={{
-                backgroundColor: activeWorkspace === 'chores' ? C.charcoal : C.cream,
-                color: activeWorkspace === 'chores' ? '#fff' : C.charcoal,
-                fontWeight: 700,
-                fontFamily: FONT,
-              }}
-            >
-              Chores
-            </button>
-          )}
-          {studentChores.canShowRewardTab && (
-            <button
-              type="button"
-              onClick={() => setActiveWorkspace('rewards')}
-              className="px-3 py-2 rounded-lg text-[13px] transition-colors"
-              data-testid="student-portal-rewards-tab"
-              style={{
-                backgroundColor: activeWorkspace === 'rewards' ? C.charcoal : C.cream,
-                color: activeWorkspace === 'rewards' ? '#fff' : C.charcoal,
-                fontWeight: 700,
-                fontFamily: FONT,
-              }}
-            >
-              Rewards
-            </button>
-          )}
-        </div>
+      <nav className="student-portal-nav" aria-label="Student workspaces" data-testid="student-portal-workspaces">
+        <button type="button" className={activeWorkspace === 'school' ? 'is-active' : ''} onClick={() => setActiveWorkspace('school')}><BookOpen />School</button>
+        {studentChores.canShowTab ? <button type="button" className={activeWorkspace === 'chores' ? 'is-active' : ''} onClick={() => setActiveWorkspace('chores')} data-testid="student-portal-chores-tab"><ListChecks />Chores{studentChores.workspace.claimedChores.length > 0 ? <span className="student-nav-badge">{studentChores.workspace.claimedChores.length}</span> : null}</button> : null}
+        <button type="button" className={activeWorkspace === 'allowance' ? 'is-active' : ''} onClick={() => setActiveWorkspace('allowance')}><Coins />Allowance</button>
+        {studentChores.canShowRewardTab ? <button type="button" className={activeWorkspace === 'rewards' ? 'is-active' : ''} onClick={() => setActiveWorkspace('rewards')} data-testid="student-portal-rewards-tab"><Gift />Rewards</button> : null}
+        <button type="button" className={activeWorkspace === 'profile' ? 'is-active' : ''} onClick={() => setActiveWorkspace('profile')}><UserRound />My Avatar</button>
+      </nav>
 
-        {activeWorkspace === 'chores' ? (
-          <StudentChoresWorkspace
+      <main className="student-portal-content">
+
+        {activeWorkspace === 'school' ? (
+          <StudentSchoolWorkspace
+            student={student}
+            hasPublishedWeeklyPlan={hasPublishedWeeklyPlan}
+            publishedWorkItems={publishedWorkItems}
+            subjects={subjects}
+            portalAccess={portalAccess}
+            totalCompletedBlocks={totalCompletedBlocks}
+            totalBlocks={totalBlocks}
+            weeklyPct={weeklyPct}
+            error={error}
+            activeTimers={activeTimers}
+            expandedSubjectId={expandedSubjectId}
+            expandedBlockIndex={expandedBlockIndex}
+            submitting={submitting}
+            currentWorkGuidance={currentWorkGuidance}
+            isBlockCompleted={isBlockCompleted}
+            isSubmissionLocked={isSubmissionLocked}
+            getSubjectPolicy={getSubjectPolicy}
+            getWorkItemPolicy={getWorkItemPolicy}
+            getEffectiveInstruction={getEffectiveInstruction}
+            getEffectiveCustomFields={getEffectiveCustomFields}
+            onToggleSubject={handleSubjectToggle}
+            onSelectBlock={handleBlockSelect}
+            onSelectWorkItem={handleWorkItemSelect}
+            onStartTimer={startTimer}
+            onPauseTimer={pauseTimer}
+            onResumeTimer={resumeTimer}
+            onResetTimer={resetTimer}
+            onCompleteSubject={handleCompleteBlock}
+            onCompleteWorkItem={handleCompleteWorkItem}
+          />
+        ) : activeWorkspace === 'chores' ? (
+          <StudentChoresWorkspaceV2
             workspace={studentChores.workspace}
             loading={studentChores.loading}
             error={studentChores.error}
@@ -1033,16 +999,9 @@ const StudentPortal = () => {
             claimingIds={studentChores.claimingIds}
             completingClaimIds={studentChores.completingClaimIds}
             completingRoutineIds={studentChores.completingRoutineIds}
-            colors={{
-              charcoal: C.charcoal,
-              amethyst: C.amethyst,
-              cream: C.cream,
-              parchment: C.parchment,
-              lavender: C.lavender,
-            }}
           />
         ) : activeWorkspace === 'rewards' ? (
-          <StudentRewardStore
+          <StudentRewardStoreV2
             store={studentChores.rewardStore}
             loading={studentChores.loading}
             error={studentChores.error}
@@ -1050,14 +1009,19 @@ const StudentPortal = () => {
             onCancelRedemption={studentChores.cancelRewardRedemption}
             requestingRewardIds={studentChores.requestingRewardIds}
             cancelingRewardIds={studentChores.cancelingRewardIds}
-            colors={{
-              charcoal: C.charcoal,
-              amethyst: C.amethyst,
-              cream: C.cream,
-              parchment: C.parchment,
-              lavender: C.lavender,
-            }}
           />
+        ) : activeWorkspace === 'allowance' ? (
+          <div className="student-workspace-layout">
+            <section className="student-workspace-main">
+              <header className="student-page-heading"><div><h1>Allowance</h1><p>Your weekly earnings workspace</p></div><span className="student-status-chip">Coming soon</span></header>
+              <div className="student-coming-soon"><div><Coins /><h1>Allowance is coming soon</h1><p>Your parent is finishing the rules for base allowance, chore bounties, adjustments, and payouts.</p></div></div>
+            </section>
+            <aside className="student-workspace-rail">
+              <div className="student-rail-section"><p className="student-eyebrow">Planned here</p><strong className="student-rail-title">Weekly earnings</strong><p className="student-rail-copy">See completed allowance chores, extra bounties, adjustments, and payout status in one place.</p></div>
+            </aside>
+          </div>
+        ) : activeWorkspace === 'profile' ? (
+          <StudentAvatarWorkspace />
         ) : (
           <>
         {/* Weekly Progress */}
@@ -1686,11 +1650,19 @@ const StudentPortal = () => {
         )}
       </main>
 
+      <nav className="student-portal-mobile-nav" aria-label="Student workspaces">
+        <button type="button" className={activeWorkspace === 'school' ? 'is-active' : ''} onClick={() => setActiveWorkspace('school')}><BookOpen /><span>School</span></button>
+        {studentChores.canShowTab ? <button type="button" className={activeWorkspace === 'chores' ? 'is-active' : ''} onClick={() => setActiveWorkspace('chores')}><ListChecks /><span>Chores</span></button> : null}
+        <button type="button" className={activeWorkspace === 'allowance' ? 'is-active' : ''} onClick={() => setActiveWorkspace('allowance')}><Coins /><span>Allowance</span></button>
+        {studentChores.canShowRewardTab ? <button type="button" className={activeWorkspace === 'rewards' ? 'is-active' : ''} onClick={() => setActiveWorkspace('rewards')}><Gift /><span>Rewards</span></button> : null}
+        <button type="button" className={activeWorkspace === 'profile' ? 'is-active' : ''} onClick={() => setActiveWorkspace('profile')}><UserRound /><span>Avatar</span></button>
+      </nav>
+
       {/* Summary Submission Modal */}
       {activeWorkspace === 'school' && selectedSubject && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl w-full max-w-md mx-4" style={{ border: `1px solid ${C.parchment}` }}>
-            <div className="flex items-center justify-between p-6" style={{ borderBottom: `1px solid ${C.parchment}` }}>
+        <div className="student-submission-backdrop">
+          <div className="student-submission-modal">
+            <div className="student-submission-header">
               <div>
                 <h2 style={{ fontSize: 18, fontWeight: 540, color: C.charcoal, lineHeight: 1.2 }}>{getPortalSubjectTitle(selectedSubject)}</h2>
                 <p className="text-[13px] mt-0.5" style={{ color: 'rgba(41,40,39,0.4)', fontWeight: 460 }}>Block {selectedBlockIndex + 1}</p>
@@ -1702,7 +1674,7 @@ const StudentPortal = () => {
             </div>
 
             <form onSubmit={(e) => { e.preventDefault(); submitBlock(selectedSubject, selectedBlockIndex, summaryText); }}
-              className="p-6 space-y-5" autoComplete="off">
+              className="student-submission-form space-y-5" autoComplete="off">
 
               {/* Objective instruction banner — student override takes priority over shared */}
               {(() => {

@@ -92,7 +92,7 @@ This file records the *why* behind key decisions so future sessions don't re-lit
 ### Themeable accent layer
 **Decision:** Student portal base is the same dark navy structure as parent portal. Theme = CSS custom property swap for accent colors + optional background. Base structure never changes.
 **Rationale:** Predictable layout for parents reviewing. Themes feel earned/special without breaking usability.
-**Status:** Decision made. First standalone responsive prototype created in `ownpath_student_portal.html`; app implementation has not started.
+**Status:** Approved prototype direction is frozen in `ownpath_student_portal.html` and the first real route implementation has landed in `StudentPortal.jsx`.
 
 ### Age range
 **Decision:** Design for 6–16. No age-gating within the student portal — same interface serves all ages.
@@ -102,22 +102,22 @@ This file records the *why* behind key decisions so future sessions don't re-lit
 ### Weekly-choice school launcher
 **Decision:** The student school workspace is organized by subject for the current week, not by day. Tapping a subject reveals its numbered blocks; tapping a block expands that same subject row further to reveal instructions, resources, response requirements, and timer controls in place.
 **Rationale:** Weekly Blocking defines the work that must be completed during the week while students retain ownership of when and in what order they complete it. A student may complete one subject in a day or spread it across the week.
-**Status:** Implemented in the standalone prototype. This aligns with the existing published weekly-plan launcher contract and the non-negotiable week-level assignment decision.
+**Status:** Implemented in both the approved prototype and the live React route using the existing published weekly-plan launcher contract and compatible subject fallback.
 
 ### Student chore navigation
 **Decision:** The student Chores workspace contains three explicit subviews: Daily Routine, Weekly Chores, and Monthly Chores. Allowance is a separate primary workspace.
 **Rationale:** Each cadence has a different student action model—checking routine items versus claiming from weekly or monthly pools—and should not be mixed in one long page.
-**Status:** Implemented in the standalone prototype. Allowance is intentionally marked Coming Soon until bounty and earning details are finalized.
+**Status:** Implemented in the prototype and live route. Allowance remains intentionally marked Coming Soon until bounty and earning details are finalized.
 
 ### Mobile student navigation
 **Decision:** The student portal is desktop-capable but mobile-first at narrow widths. Desktop uses top workspace tabs and a contextual right rail; mobile uses a five-item bottom navigation bar and stacks rail content below the active workspace.
 **Rationale:** Students should be able to save the portal link to a phone or tablet home screen and reach School, Chores, Allowance, Rewards, and Avatar without navigating the parent-oriented sidebar pattern.
-**Status:** Implemented in the standalone prototype. Installable PWA metadata and offline behavior remain separate implementation work.
+**Status:** Implemented in the standalone prototype and live responsive route. Installable PWA metadata and offline behavior remain separate implementation work.
 
 ### Layered avatar assets
 **Decision:** Avatars use stable catalog IDs for a base, outfit, and accessory. Art layers share one transparent canvas and are resolved from a controlled manifest; student clients do not supply arbitrary asset URLs.
 **Rationale:** This allows generated artwork to replace placeholders without changing layout or persistence contracts, while keeping future student writes narrow and safe.
-**Status:** Prototype asset folders, manifest, and replacement guidance created. Persistence and trusted selection updates are not implemented.
+**Status:** Prototype asset folders, manifest, replacement guidance, and a CSS-backed live preview have landed. Persistence and trusted selection updates are not implemented.
 
 ---
 
