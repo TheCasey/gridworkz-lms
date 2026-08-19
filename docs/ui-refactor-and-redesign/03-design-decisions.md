@@ -100,7 +100,7 @@ This file records the *why* behind key decisions so future sessions don't re-lit
 **Status:** Decided.
 
 ### Weekly-choice school launcher
-**Decision:** The student school workspace is organized by subject for the current week, not by day. Tapping a subject reveals its numbered blocks; tapping a block reveals instructions, resources, response requirements, and timer controls.
+**Decision:** The student school workspace is organized by subject for the current week, not by day. Tapping a subject reveals its numbered blocks; tapping a block expands that same subject row further to reveal instructions, resources, response requirements, and timer controls in place.
 **Rationale:** Weekly Blocking defines the work that must be completed during the week while students retain ownership of when and in what order they complete it. A student may complete one subject in a day or spread it across the week.
 **Status:** Implemented in the standalone prototype. This aligns with the existing published weekly-plan launcher contract and the non-negotiable week-level assignment decision.
 
