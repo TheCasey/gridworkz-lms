@@ -2613,6 +2613,332 @@
     }
   }
 
+  /* Chore detail routes follow the dense prototype console rather than the
+     roomier generic dashboard-card treatment. */
+  .op-chores-section {
+    background: #1f1f32;
+    border-left: 3px solid #7c6fd4;
+    min-width: 0;
+    padding: 12px;
+  }
+
+  .op-chores-section + .op-chores-section {
+    margin-top: 0;
+  }
+
+  .op-chores-section-head,
+  .op-chores-detail-toolbar {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+  }
+
+  .op-chores-section-head {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    margin: -12px -12px 0;
+    min-height: 46px;
+    padding: 8px 12px;
+  }
+
+  .op-chores-section-title {
+    align-items: center;
+    display: flex;
+    gap: 9px;
+    min-width: 0;
+  }
+
+  .op-chores-section-icon {
+    align-items: center;
+    background: #2e2e48;
+    display: flex;
+    flex-shrink: 0;
+    height: 28px;
+    justify-content: center;
+    width: 28px;
+  }
+
+  .op-chores-section-title h3 {
+    color: #eeeaf8;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .op-chores-section-title p {
+    color: #8f8aaa;
+    font-size: 10px;
+    line-height: 1.3;
+    margin-top: 2px;
+  }
+
+  .op-chores-detail-toolbar {
+    background: #181828;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    margin: -12px -14px 0;
+    min-height: 43px;
+    padding: 0 14px;
+  }
+
+  .op-chores-student-tabs,
+  .op-reward-tabs {
+    align-items: stretch;
+    display: flex;
+    min-width: 0;
+    overflow-x: auto;
+  }
+
+  .op-chores-student-tabs button,
+  .op-reward-tabs button {
+    border-bottom: 2px solid transparent;
+    color: #8f8aaa;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    gap: 1px;
+    justify-content: center;
+    min-height: 42px;
+    padding: 6px 12px;
+    text-align: left;
+  }
+
+  .op-chores-student-tabs button:hover,
+  .op-reward-tabs button:hover {
+    color: #c4bedc;
+  }
+
+  .op-chores-student-tabs button.is-active,
+  .op-reward-tabs button.is-active {
+    border-bottom-color: #7c6fd4;
+    color: #b8adff;
+  }
+
+  .op-chores-student-tabs span,
+  .op-reward-tabs span {
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .op-chores-student-tabs small,
+  .op-reward-tabs small {
+    color: #585674;
+    font-size: 9px;
+  }
+
+  .op-chores-student-tabs button.is-active small,
+  .op-reward-tabs button.is-active small {
+    color: #8f8aaa;
+  }
+
+  .op-chores-period-label {
+    color: #8f8aaa;
+    flex-shrink: 0;
+    font-size: 10px;
+  }
+
+  .op-chores-inline-stats {
+    align-items: center;
+    color: #8f8aaa;
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 10px;
+    gap: 10px;
+  }
+
+  .op-chores-inline-stats strong {
+    color: #eeeaf8;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .op-chores-routine-layout {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) 190px;
+    margin-top: 10px;
+  }
+
+  .op-chores-compact-list,
+  .op-allowance-ledger-list,
+  .op-reward-request-list {
+    background: rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin-top: 10px;
+  }
+
+  .op-chores-list-row,
+  .op-allowance-ledger-card,
+  .op-reward-request-card {
+    background: #26263c;
+    border-left: 3px solid transparent;
+    padding: 10px 12px;
+    transition: background-color 150ms ease, border-color 150ms ease;
+  }
+
+  .op-chores-list-row:hover,
+  .op-allowance-ledger-card:hover,
+  .op-reward-request-card:hover {
+    background: #2e2e48;
+    border-left-color: #7c6fd4;
+  }
+
+  .op-chores-list-row h4,
+  .op-allowance-ledger-card h4,
+  .op-reward-request-card h4 {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .op-chores-list-row .op-subtle,
+  .op-allowance-ledger-card .op-subtle,
+  .op-reward-request-card .op-subtle {
+    font-size: 10px;
+    line-height: 1.35;
+    margin-top: 3px;
+  }
+
+  .op-chores-list-row .op-button,
+  .op-allowance-ledger-card .op-button,
+  .op-reward-request-card .op-button,
+  .op-reward-catalog-card .op-button {
+    min-height: 26px;
+    padding: 4px 8px;
+  }
+
+  .op-chores-detail-rail {
+    background: #181828;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .op-chores-rail-title {
+    color: #c4bedc;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .op-chores-summary-card {
+    background: #26263c;
+    border-left: 3px solid #7c6fd4;
+    min-width: 0;
+    padding: 9px 10px;
+  }
+
+  .op-chores-summary-label {
+    color: #585674;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .op-chores-summary-value {
+    color: #eeeaf8;
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1;
+    margin-top: 6px;
+    text-transform: capitalize;
+  }
+
+  .op-chores-summary-detail {
+    color: #8f8aaa;
+    font-size: 9px;
+    line-height: 1.3;
+    margin-top: 5px;
+  }
+
+  .op-chores-editor {
+    background: #1f1f32;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 24px 90px rgba(0, 0, 0, 0.72);
+    left: 50%;
+    max-height: calc(100vh - 70px);
+    max-width: 760px;
+    overflow-y: auto;
+    padding: 16px;
+    position: fixed;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(calc(100vw - 32px), 760px);
+    z-index: 80;
+  }
+
+  .op-allowance-summary-grid,
+  .op-reward-summary-grid {
+    background: rgba(255, 255, 255, 0.08);
+    display: grid;
+    gap: 1px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-top: 10px;
+  }
+
+  .op-allowance-ledger-card {
+    padding: 12px;
+  }
+
+  .op-reward-tabs {
+    background: #181828;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+    margin: -12px -14px 0;
+    padding: 0 14px;
+  }
+
+  .op-reward-catalog-card {
+    background: #26263c;
+    border-left: 3px solid #7c6fd4;
+    padding: 12px;
+  }
+
+  .op-reward-catalog-card h4 {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  @media (max-width: 900px) {
+    .op-chores-routine-layout {
+      grid-template-columns: 1fr;
+    }
+
+    .op-chores-detail-rail {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .op-allowance-summary-grid,
+    .op-reward-summary-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 640px) {
+    .op-chores-detail-toolbar,
+    .op-chores-section-head {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .op-chores-detail-toolbar {
+      padding-bottom: 8px;
+      padding-top: 6px;
+    }
+
+    .op-chores-inline-stats {
+      padding-bottom: 4px;
+    }
+
+    .op-chores-detail-rail,
+    .op-allowance-summary-grid,
+    .op-reward-summary-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
   .op-input:focus {
     background: #23233a;
     border-color: rgba(203, 183, 251, 0.78);

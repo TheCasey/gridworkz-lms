@@ -69,34 +69,30 @@ const labelClassName = 'mb-2 block text-[11px] uppercase tracking-[0.16em] font-
 const textareaClassName = `${inputClassName} min-h-[96px] resize-y`;
 
 const buildSectionTitle = (title, description, Icon) => (
-  <div className="flex items-start gap-3">
-    <div
-      className="flex h-11 w-11 flex-shrink-0 items-center justify-center border border-[rgba(203,183,251,0.24)] bg-[#202034]"
-    >
-      <Icon className="h-5 w-5 text-[#cbb7fb]" />
+  <div className="op-chores-section-title">
+    <div className="op-chores-section-icon">
+      <Icon className="h-4 w-4 text-[#cbb7fb]" />
     </div>
-    <div>
-      <h3 className="text-[22px] font-display text-white" style={{ lineHeight: 1.05 }}>
-        {title}
-      </h3>
-      <p className="op-subtle mt-2 text-[13px] font-body leading-5">{description}</p>
+    <div className="min-w-0">
+      <h3>{title}</h3>
+      <p>{description}</p>
     </div>
   </div>
 );
 
 const SectionCard = ({ children }) => (
-  <section className="op-panel p-5 md:p-6">
+  <section className="op-chores-section">
     {children}
   </section>
 );
 
 const SummaryCard = ({ label, value, detail }) => (
-  <div className="op-stat p-4">
-    <p className="op-eyebrow">{label}</p>
-    <p className="mt-3 text-[30px] font-display text-white" style={{ lineHeight: 1 }}>
+  <div className="op-chores-summary-card">
+    <p className="op-chores-summary-label">{label}</p>
+    <p className="op-chores-summary-value">
       {value}
     </p>
-    <p className="op-subtle mt-2 text-[13px] font-body leading-5">{detail}</p>
+    <p className="op-chores-summary-detail">{detail}</p>
   </div>
 );
 
@@ -252,6 +248,9 @@ const ChoresRoute = () => {
   const [reviewingRewardId, setReviewingRewardId] = useState('');
   const [hasAttemptedAllowanceSync, setHasAttemptedAllowanceSync] = useState(false);
   const [selectedChoresOverviewStudentId, setSelectedChoresOverviewStudentId] = useState('');
+  const [selectedChoresDetailStudentId, setSelectedChoresDetailStudentId] = useState('');
+  const [showAllowanceSettings, setShowAllowanceSettings] = useState(false);
+  const [rewardTab, setRewardTab] = useState('store');
 
   useEffect(() => {
     setSettingsDraft(buildChoreSettingsDraft({
@@ -283,6 +282,12 @@ const ChoresRoute = () => {
       ])
     ));
   }, [rewardCatalogItems]);
+
+  useEffect(() => {
+    if (!students.some((student) => student.id === selectedChoresDetailStudentId)) {
+      setSelectedChoresDetailStudentId(students[0]?.id || '');
+    }
+  }, [selectedChoresDetailStudentId, students]);
 
   useEffect(() => {
     const allowanceCards = viewModel?.allowance?.cards || [];
@@ -916,11 +921,42 @@ const ChoresRoute = () => {
         action: 'Ledger',
       })),
   ].slice(0, 8);
+  const selectedDetailProgress = progressCards.find((card) => (
+    card.student_id === selectedChoresDetailStudentId
+  )) || progressCards[0] || null;
+  const visibleRoutineCards = activeRoutineCards.filter((routine) => (
+    !selectedChoresDetailStudentId
+    || routine.student_ids.length === 0
+    || routine.student_ids.includes(selectedChoresDetailStudentId)
+  ));
+  const visibleRoutineCompletionCount = visibleRoutineCards.reduce(
+    (sum, routine) => sum + Number(routine.completion_count || 0),
+    0
+  );
+  const activeDetailPool = isMonthlyChoresRoute ? monthlyCards : weeklyCards;
+  const detailPoolLabel = isMonthlyChoresRoute ? 'monthly' : 'weekly';
+  const selectedDetailPendingReview = filteredPendingReview.filter((record) => (
+    !selectedChoresDetailStudentId || record.student_id === selectedChoresDetailStudentId
+  ));
+  const activeRouteLabel = isSectionDashboard
+    ? 'Chores overview'
+    : (resolvedDashboardFeaturesById?.[activeChoresFeatureId]?.label || 'Chores');
+  const activeRouteNotice = isDailyRoutinesRoute
+    ? 'Per-student routines and completion history'
+    : isWeeklyChoresRoute
+      ? 'Shared weekly pool and approval queue'
+      : isMonthlyChoresRoute
+        ? 'Shared monthly pool and approval queue'
+        : isAllowanceRoute
+          ? allowancePeriod.period_label || 'Current allowance period'
+          : isRewardsRoute
+            ? `${totalVisibleWalletPoints} household points available`
+            : 'Household chore status at a glance';
 
   const renderRoutineCard = (routine) => (
     <div
       key={routine.id}
-      className="op-surface p-4"
+      className="op-chores-list-row"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -978,7 +1014,7 @@ const ChoresRoute = () => {
   const renderChoreCard = (chore) => (
     <div
       key={chore.id}
-      className="op-surface p-4"
+      className="op-chores-list-row"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -1040,7 +1076,7 @@ const ChoresRoute = () => {
   const renderAllowanceCard = (allowanceCard) => (
     <div
       key={allowanceCard.student_id}
-      className="op-surface p-5"
+      className="op-allowance-ledger-card"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -1157,7 +1193,7 @@ const ChoresRoute = () => {
   const renderRewardCard = (reward) => (
     <div
       key={reward.id}
-      className="op-surface p-5"
+      className="op-reward-catalog-card"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -1247,7 +1283,7 @@ const ChoresRoute = () => {
   const renderRewardRedemptionCard = (rewardRedemption) => (
     <div
       key={rewardRedemption.id}
-      className="op-surface p-5"
+      className="op-reward-request-card"
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
@@ -1338,25 +1374,82 @@ const ChoresRoute = () => {
           <div className="min-w-0 flex-1">
             <p className="flex items-center gap-2 text-[14px] font-label text-white">
               <ListTodo className="h-3.5 w-3.5 text-[#b8adff]" />
-              Chores
-              <span className="text-[10px] font-normal text-[rgba(238,234,248,0.42)]">
-                {isSectionDashboard ? 'Overview' : (resolvedDashboardFeaturesById?.[activeChoresFeatureId]?.label || 'Detail')}
-              </span>
+              {activeRouteLabel}
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-1.5">
-            <Link to={`/dashboard/${dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.WEEKLY_CHORES].path}`} className="op-proto-btn">
-              <Plus className="h-3.5 w-3.5" />
-              Add chore
-            </Link>
-            <Link to={`/dashboard/${dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.ALLOWANCE].path}`} className="op-proto-btn">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              View allowance
-            </Link>
-            <Link to={`/dashboard/${dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.REWARDS].path}`} className="op-proto-btn op-proto-btn-primary">
-              <Gift className="h-3.5 w-3.5" />
-              Rewards
-            </Link>
+            {isSectionDashboard ? (
+              <>
+                <Link to={`/dashboard/${dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.WEEKLY_CHORES].path}`} className="op-proto-btn">
+                  <Plus className="h-3.5 w-3.5" />
+                  Add chore
+                </Link>
+                <Link to={`/dashboard/${dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.ALLOWANCE].path}`} className="op-proto-btn">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  View allowance
+                </Link>
+                <Link to={`/dashboard/${dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.REWARDS].path}`} className="op-proto-btn op-proto-btn-primary">
+                  <Gift className="h-3.5 w-3.5" />
+                  Rewards
+                </Link>
+              </>
+            ) : null}
+            {isDailyRoutinesRoute ? (
+              <button
+                type="button"
+                className="op-proto-btn op-proto-btn-primary"
+                disabled={isRoutineReadOnly}
+                onClick={() => {
+                  setRoutineDraft(createDefaultRoutineTemplateDraft());
+                  setShowRoutineEditor(true);
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add routine
+              </button>
+            ) : null}
+            {(isWeeklyChoresRoute || isMonthlyChoresRoute) ? (
+              <button
+                type="button"
+                className="op-proto-btn op-proto-btn-primary"
+                disabled={isReadOnly}
+                onClick={() => {
+                  setChoreDraft(createDefaultChoreDefinitionDraft(
+                    isMonthlyChoresRoute ? ChoreFrequencyPools.MONTHLY : ChoreFrequencyPools.WEEKLY
+                  ));
+                  setShowChoreEditor(true);
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add chore
+              </button>
+            ) : null}
+            {isAllowanceRoute ? (
+              <>
+                <button type="button" className="op-proto-btn" onClick={() => setShowAllowanceSettings((open) => !open)}>
+                  <Settings2 className="h-3.5 w-3.5" />
+                  {showAllowanceSettings ? 'Close settings' : 'Edit settings'}
+                </button>
+                <button type="button" className="op-proto-btn op-proto-btn-primary" disabled={isReadOnly || syncingAllowance} onClick={handleSyncAllowance}>
+                  {syncingAllowance ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                  Refresh ledger
+                </button>
+              </>
+            ) : null}
+            {isRewardsRoute && rewardTab === 'store' ? (
+              <button
+                type="button"
+                className="op-proto-btn op-proto-btn-primary"
+                disabled={isRewardReadOnly}
+                onClick={() => {
+                  setRewardDraft(createDefaultRewardDraft());
+                  setShowRewardEditor(true);
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add reward
+              </button>
+            ) : null}
           </div>
         </div>
         <div className="op-chores-subbar">
@@ -1382,7 +1475,7 @@ const ChoresRoute = () => {
             })}
           </div>
           <span className="op-chores-notice">
-            Household chore status at a glance
+            {activeRouteNotice}
           </span>
         </div>
       <div className="op-chores-body">
@@ -1590,28 +1683,40 @@ const ChoresRoute = () => {
 
         {isDailyRoutinesRoute ? (
         <SectionCard colors={colors}>
-          <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="op-chores-detail-toolbar">
+            <div className="op-chores-student-tabs">
+              {progressCards.map((progressCard) => (
+                <button
+                  key={progressCard.student_id}
+                  type="button"
+                  className={selectedDetailProgress?.student_id === progressCard.student_id ? 'is-active' : ''}
+                  onClick={() => setSelectedChoresDetailStudentId(progressCard.student_id)}
+                >
+                  <span>{progressCard.student_name}</span>
+                  <small>{progressCard.progress.routine_days_completed}/{progressCard.quotas.required_routine_days} routine days</small>
+                </button>
+              ))}
+            </div>
+            <span className="op-chores-period-label">Current week</span>
+          </div>
+
+          <div className="op-chores-section-head">
             {buildSectionTitle(
               'Daily Routines',
-              'Grouped routine templates stay household-wide by default and can still be narrowed to specific students.',
+              `Templates currently available to ${selectedDetailProgress?.student_name || 'the household'}.`,
               Sparkles,
               colors
             )}
-            <ActionButton
-              disabled={isRoutineReadOnly}
-              onClick={() => {
-                setRoutineDraft(createDefaultRoutineTemplateDraft());
-                setShowRoutineEditor(true);
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              Add Routine
-            </ActionButton>
+            <div className="op-chores-inline-stats">
+              <span><strong>{visibleRoutineCards.length}</strong> templates</span>
+              <span><strong>{visibleRoutineCompletionCount}</strong> completions</span>
+              <span><strong>{selectedDetailProgress?.active_routine_count || 0}</strong> active</span>
+            </div>
           </div>
 
           {showRoutineEditor ? (
             <form
-              className="op-surface mt-6 p-5"
+              className="op-chores-editor"
               onSubmit={handleSaveRoutine}
             >
               <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
@@ -1775,19 +1880,38 @@ const ChoresRoute = () => {
             </form>
           ) : null}
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            {activeRoutineCards.length > 0 ? (
-              activeRoutineCards.map(renderRoutineCard)
+          <div className="op-chores-routine-layout">
+            <div className="op-chores-compact-list">
+            {visibleRoutineCards.length > 0 ? (
+              visibleRoutineCards.map(renderRoutineCard)
             ) : (
-              <div className="lg:col-span-2">
+              <div>
                 <EmptyState
                   colors={colors}
                   icon={Sparkles}
                   title="No daily routines yet"
-                  detail="Create grouped routines like morning or evening checklists without turning every repeated task into a separate chore."
+                  detail={`Create a grouped checklist for ${selectedDetailProgress?.student_name || 'this student'} or assign one household-wide.`}
                 />
               </div>
             )}
+            </div>
+            <aside className="op-chores-detail-rail">
+              <p className="op-chores-rail-title">This week</p>
+              <SummaryCard
+                label="Routine days"
+                value={`${selectedDetailProgress?.progress.routine_days_completed || 0}/${selectedDetailProgress?.quotas.required_routine_days || 0}`}
+                detail="Completed routine days against the saved target."
+              />
+              <SummaryCard
+                label="Pending review"
+                value={selectedDetailProgress?.pending_review_count || 0}
+                detail="Chore submissions waiting for a parent decision."
+              />
+              <Link to={`/dashboard/${dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.REWARDS].path}`} className="op-proto-btn w-full justify-center">
+                <Gift className="h-3.5 w-3.5" />
+                Routine day points
+              </Link>
+            </aside>
           </div>
 
           {archivedRoutineCards.length > 0 ? (
@@ -1803,25 +1927,49 @@ const ChoresRoute = () => {
         </SectionCard>
         ) : null}
 
+        {(isWeeklyChoresRoute || isMonthlyChoresRoute) ? (
+          <div className="op-chores-detail-toolbar">
+            <div className="op-chores-student-tabs">
+              {progressCards.map((progressCard) => (
+                <button
+                  key={progressCard.student_id}
+                  type="button"
+                  className={selectedDetailProgress?.student_id === progressCard.student_id ? 'is-active' : ''}
+                  onClick={() => setSelectedChoresDetailStudentId(progressCard.student_id)}
+                >
+                  <span>{progressCard.student_name}</span>
+                  <small>
+                    {detailPoolLabel === 'monthly'
+                      ? progressCard.progress.monthly_blocks_completed
+                      : progressCard.progress.weekly_blocks_completed}
+                    /
+                    {detailPoolLabel === 'monthly'
+                      ? progressCard.quotas.required_monthly_chore_blocks
+                      : progressCard.quotas.required_weekly_chore_blocks} quota
+                  </small>
+                </button>
+              ))}
+            </div>
+            <div className="op-chores-inline-stats">
+              <span><strong>{activeDetailPool.length}</strong> in pool</span>
+              <span><strong>{selectedDetailPendingReview.length}</strong> pending</span>
+              <span><strong>{selectedDetailProgress?.available_counts?.[detailPoolLabel] || 0}</strong> available</span>
+            </div>
+          </div>
+        ) : null}
+
         {visibleChorePoolSections.map((section) => (
           <SectionCard key={section.pool} colors={colors}>
-            <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="op-chores-section-head">
               {buildSectionTitle(section.title, section.description, ListTodo, colors)}
-              <ActionButton
-                disabled={isReadOnly}
-                onClick={() => {
-                  setChoreDraft(createDefaultChoreDefinitionDraft(section.pool));
-                  setShowChoreEditor(true);
-                }}
-              >
-                <Plus className="h-4 w-4" />
-                Add {section.pool === ChoreFrequencyPools.MONTHLY ? 'Monthly' : 'Weekly'} Chore
-              </ActionButton>
+              <span className="op-chores-period-label">
+                {section.cards.length} active · {section.archivedCards.length} archived
+              </span>
             </div>
 
             {showChoreEditor && choreDraft.frequency_pool === section.pool ? (
               <form
-                className="op-surface mt-6 p-5"
+                className="op-chores-editor"
                 onSubmit={handleSaveChore}
               >
                 <div className="grid gap-4 xl:grid-cols-2">
@@ -1985,11 +2133,11 @@ const ChoresRoute = () => {
               </form>
             ) : null}
 
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="op-chores-compact-list">
               {section.cards.length > 0 ? (
                 section.cards.map(renderChoreCard)
               ) : (
-                <div className="lg:col-span-2">
+                <div>
                   <EmptyState
                     colors={colors}
                     icon={ListTodo}
@@ -2005,7 +2153,7 @@ const ChoresRoute = () => {
                 <p className="op-eyebrow mb-3">
                   Archived {section.title}
                 </p>
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div className="op-chores-compact-list">
                   {section.archivedCards.map(renderChoreCard)}
                 </div>
               </div>
@@ -2013,9 +2161,9 @@ const ChoresRoute = () => {
           </SectionCard>
         ))}
 
-        {isAllowanceRoute ? (
+        {isAllowanceRoute && showAllowanceSettings ? (
         <SectionCard colors={colors}>
-          <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="op-chores-section-head">
             {buildSectionTitle(
               'Quotas And Allowance',
               'Configure claim timing, per-student quota targets, and the allowance policy that turns completed blocks into bookkeeping totals.',
@@ -2378,24 +2526,19 @@ const ChoresRoute = () => {
 
         {isAllowanceRoute ? (
         <SectionCard colors={colors}>
-          <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="op-chores-section-head">
             {buildSectionTitle(
               'Allowance Ledger',
               'Trusted current-period totals, manual parent adjustments, and paid-out bookkeeping live here. Money movement still happens outside the app.',
               Settings2,
               colors
             )}
-            <ActionButton
-              tone="light"
-              disabled={isReadOnly || syncingAllowance}
-              onClick={handleSyncAllowance}
-            >
-              {syncingAllowance ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-              Refresh Ledger
-            </ActionButton>
+            <span className="op-chores-period-label">
+              {allowanceSummary.unpaid_count || 0} unpaid · {allowanceSummary.unsynced_count || 0} need sync
+            </span>
           </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-4">
+          <div className="op-allowance-summary-grid">
             <SummaryCard
               colors={colors}
               label="Period"
@@ -2424,7 +2567,7 @@ const ChoresRoute = () => {
             />
           </div>
 
-          <div className="mt-6 space-y-4">
+          <div className="op-allowance-ledger-list">
             {allowanceCards.length > 0 ? (
               allowanceCards.map(renderAllowanceCard)
             ) : (
@@ -2440,6 +2583,28 @@ const ChoresRoute = () => {
         ) : null}
 
         {isRewardsRoute ? (
+          <div className="op-reward-tabs" role="tablist" aria-label="Reward views">
+            {[
+              { id: 'store', label: 'Reward store', meta: `${activeParentRewardCards.length} active` },
+              { id: 'students', label: 'Student points', meta: `${totalVisibleWalletPoints} available` },
+              { id: 'requests', label: 'Requests', meta: `${openRewardRequestCards.length} open` },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={rewardTab === tab.id}
+                className={rewardTab === tab.id ? 'is-active' : ''}
+                onClick={() => setRewardTab(tab.id)}
+              >
+                <span>{tab.label}</span>
+                <small>{tab.meta}</small>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {isRewardsRoute && rewardTab === 'students' ? (
         <SectionCard colors={colors}>
           <div className="flex flex-wrap items-start justify-between gap-4">
             {buildSectionTitle(
@@ -2651,30 +2816,27 @@ const ChoresRoute = () => {
         </SectionCard>
         ) : null}
 
-        {isRewardsRoute ? (
+        {isRewardsRoute && rewardTab !== 'students' ? (
         <SectionCard colors={colors}>
-          <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="op-chores-section-head">
             {buildSectionTitle(
-              'Reward Store',
-              'Create parent-managed rewards, restock limited inventory, and keep built-in cosmetic placeholders visible without storing final assets or fulfillment secrets.',
+              rewardTab === 'requests' ? 'Reward Requests' : 'Reward Store',
+              rewardTab === 'requests'
+                ? 'Approve, reject, cancel, or fulfill live student requests without changing the trusted redemption flow.'
+                : 'Create parent-managed rewards, restock limited inventory, and keep built-in cosmetic placeholders visible.',
               Gift,
               colors
             )}
-            <ActionButton
-              disabled={isRewardReadOnly}
-              onClick={() => {
-                setRewardDraft(createDefaultRewardDraft());
-                setShowRewardEditor(true);
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              Add Reward
-            </ActionButton>
+            <span className="op-chores-period-label">
+              {rewardTab === 'store'
+                ? `${activeParentRewardCards.length} active rewards`
+                : `${openRewardRequestCards.length} open requests`}
+            </span>
           </div>
 
-          {showRewardEditor ? (
+          {rewardTab === 'store' && showRewardEditor ? (
             <form
-              className="op-surface mt-6 p-5"
+              className="op-chores-editor"
               onSubmit={handleSaveReward}
             >
               <div className="grid gap-4 xl:grid-cols-2">
@@ -2829,7 +2991,8 @@ const ChoresRoute = () => {
             </form>
           ) : null}
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-4">
+          {rewardTab === 'store' ? <>
+          <div className="op-reward-summary-grid">
             <SummaryCard
               colors={colors}
               label="Active Rewards"
@@ -2909,8 +3072,9 @@ const ChoresRoute = () => {
               </div>
             </div>
           ) : null}
+          </> : null}
 
-          <div className="mt-6">
+          {rewardTab === 'requests' ? <div className="op-reward-request-list">
             <p className="op-eyebrow mb-3">
               Redemption Queue
             </p>
@@ -2926,9 +3090,9 @@ const ChoresRoute = () => {
                 />
               )}
             </div>
-          </div>
+          </div> : null}
 
-          {closedRewardRequestCards.length > 0 ? (
+          {rewardTab === 'requests' && closedRewardRequestCards.length > 0 ? (
             <div className="mt-6">
               <p className="op-eyebrow mb-3">
                 Recent Reward History
@@ -2953,13 +3117,13 @@ const ChoresRoute = () => {
             <div
               className="op-pill"
             >
-              {filteredPendingReview.length} pending
+              {selectedDetailPendingReview.length} pending
             </div>
           </div>
 
           <div className="mt-6 space-y-4">
-            {filteredPendingReview.length > 0 ? (
-              filteredPendingReview.map((record) => (
+            {selectedDetailPendingReview.length > 0 ? (
+              selectedDetailPendingReview.map((record) => (
                 <div
                   key={record.id}
                   className="op-surface p-5"
@@ -3048,19 +3212,6 @@ const ChoresRoute = () => {
         </SectionCard>
         ) : null}
 
-        <div className="op-panel-muted px-4 py-3">
-          <div className="flex items-start gap-3">
-            <Clock3 className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#cbb7fb]" />
-            <div>
-              <p className="op-eyebrow">
-                Phase Boundary
-              </p>
-              <p className="op-subtle mt-1 text-[13px] font-body leading-5">
-                This parent surface now covers setup, quota warnings, allowance bookkeeping, point settings, reward catalog management, and trusted reward redemptions. Billing, packaging decisions, school-block point hardening, achievements, and final cosmetic assets remain out of scope.
-              </p>
-            </div>
-          </div>
-        </div>
       </div>
       </div>
     </div>
