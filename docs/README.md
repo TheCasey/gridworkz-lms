@@ -5,15 +5,19 @@ This directory is organized so work can be delegated cleanly.
 Start with these files:
 
 1. [roadmap.md](roadmap.md) for the product-level priority map.
-2. [upgrades/baseline-product-foundation.md](upgrades/baseline-product-foundation.md) for the current product-direction baseline when the task is planning-heavy.
-3. [architecture.md](architecture.md) for the current technical shape of the app.
-4. A focused doc under `features/`, `specs/`, `upgrades/`, or `audits/` for the task at hand.
+2. [upgrades/current-surface-finalization-and-rollout.md](upgrades/current-surface-finalization-and-rollout.md) when the task is about tightening and shipping the current app one surface at a time.
+3. [upgrades/baseline-product-foundation.md](upgrades/baseline-product-foundation.md) for the longer-term product-direction baseline when the task is planning-heavy.
+4. [architecture.md](architecture.md) for the current technical shape of the app.
+5. A focused doc under `features/`, `specs/`, `upgrades/`, or `audits/` for the task at hand.
+
+For current branch release triage, use [support/pre-merge-readiness-checklist.md](support/pre-merge-readiness-checklist.md).
 
 Folder guide:
 
 - [features/](features/README.md): Current product areas and behavior notes.
 - [specs/](specs/README.md): Scoped build docs for new or incomplete features.
 - [upgrades/](upgrades/README.md): Cross-cutting improvements such as tooling, security, performance, or mobile.
+- [support/](support/): Launch, support, and release-readiness runbooks.
 - [audits/](audits/README.md): Point-in-time status checks against the product and codebase.
 - [archive/](archive/README.md): Legacy planning docs that should not drive current decisions.
 

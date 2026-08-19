@@ -3,17 +3,18 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Website blocked</title>
+    <title>Own Path Lockdown blocked site</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="page-shell">
       <section class="panel">
-        <p class="eyebrow">GridWorkz Lockdown</p>
+        <p class="eyebrow">Own Path Lockdown</p>
         <h1>This site is blocked right now</h1>
-        <p class="muted">
+        <p class="muted" id="state-copy">
           Local blocking is active and this destination is not on the website allowlist.
         </p>
+        <p class="caption spacer-top" id="state-next-step"></p>
 
         <article class="info-card spacer-top">
           <strong id="blocked-url">No blocked URL captured yet</strong>
@@ -33,11 +34,23 @@
           </div>
         </section>
 
+        <section class="section">
+          <h2>Own Path resources</h2>
+          <ul class="section-list" id="system-resource-list"></ul>
+          <div class="empty-state" id="system-resource-empty" hidden>
+            No system resources are currently visible.
+          </div>
+        </section>
+
         <div class="cluster">
           <button class="secondary-button" id="view-allowlist" type="button">
             Open allowlist details
           </button>
         </div>
+
+        <p class="caption spacer-top" id="request-access-copy">
+          Request help is deferred in this build and does not unlock access.
+        </p>
       </section>
     </main>
 

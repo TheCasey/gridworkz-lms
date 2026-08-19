@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OwnPath — Homeschool Overview</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --n0:#181828;--n1:#1f1f32;--n2:#26263c;--n3:#2e2e48;--n4:#383858;
+  --vi:#7c6fd4;--vl:#b8adff;--vf:rgba(124,111,212,0.14);
+  --bd:rgba(255,255,255,0.08);--bd2:rgba(255,255,255,0.14);
+  --t1:#eeeaf8;--t2:#c4bedc;--t3:#8f8aaa;--t4:#585674;
+  --amber:#f59e0b;--green:#34d399;--red:#f87171;--blue:#60a5fa;
+}
+html,body{height:100%;background:var(--n0);color:var(--t1);font-family:system-ui,sans-serif}
+body{overflow:hidden}
+.shell{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:190px;background:var(--n0);display:flex;flex-direction:column;flex-shrink:0;border-right:0.5px solid var(--bd)}
+.slogo{padding:14px 16px;border-bottom:0.5px solid var(--bd);display:flex;align-items:center;gap:9px}
+.slogo-icon{width:26px;height:26px;background:var(--vi);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.slogo-text{font-size:12px;font-weight:500;color:var(--t1);letter-spacing:.06em}
+.slogo-sub{font-size:9px;color:var(--t3);margin-top:1px}
+.snav{padding:6px 0;flex:1;overflow-y:auto}
+.nsec{margin-bottom:2px}
+.nsec-hdr{display:flex;align-items:center;cursor:pointer;user-select:none}
+.nsec-lbl{flex:1;font-size:10px;font-weight:500;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;padding:9px 16px 5px}
+.nsec-hdr:hover .nsec-lbl{color:var(--t2)}
+.nsec-chev{padding:9px 12px 5px 0;font-size:12px;color:var(--t4);transition:transform .18s}
+.nsec-chev.open{transform:rotate(90deg)}
+.nsec-items{overflow:hidden;max-height:0;transition:max-height .2s}
+.nsec-items.open{max-height:220px}
+.ni{display:flex;align-items:center;gap:8px;padding:7px 16px;font-size:11px;color:var(--t2);cursor:pointer;transition:all .15s;border-left:2px solid transparent}
+.ni:hover{color:var(--t1);background:rgba(255,255,255,.04)}
+.ni.act{color:var(--vl);border-left-color:var(--vi);background:var(--vf)}
+.ni i{font-size:13px;flex-shrink:0}
+.ni-sa{display:flex;align-items:center;gap:8px;padding:7px 16px;font-size:11px;color:var(--t2);cursor:pointer;border-left:2px solid transparent}
+.ni-sa:hover{color:var(--t1);background:rgba(255,255,255,.04)}
+.bsoon{font-size:8px;background:rgba(124,111,212,.22);color:var(--vl);padding:1px 5px;margin-left:auto}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--n1)}
+.topbar{height:50px;background:var(--n0);border-bottom:0.5px solid var(--bd);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0}
+.tb-title{font-size:14px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:8px}
+.tb-title i{font-size:15px;color:var(--vl)}
+.tb-sub{font-size:10px;color:var(--t3);margin-top:1px}
+.tb-title-wrap{display:flex;flex-direction:column}
+.focus{display:flex;align-items:center;gap:0;border:0.5px solid var(--bd2);background:var(--n0)}
+.focus-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;font-size:11px;cursor:pointer;border:none;background:transparent;color:var(--t3);transition:all .15s}
+.focus-btn:hover{background:var(--n3);color:var(--t1)}
+.focus-btn.act{background:var(--vf);color:var(--vl)}
+.focus-btn i{font-size:13px}
+.top-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;font-size:11px;cursor:pointer;border:0.5px solid var(--bd2);background:transparent;color:var(--t2);transition:all .15s;text-decoration:none}
+.btn:hover{background:var(--n3);color:var(--t1)}
+.btn.pri{background:var(--vi);color:#fff;border-color:var(--vi)}
+.btn.pri:hover{background:#6c60c0}
+.btn i{font-size:13px}
+.content{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.status{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-left:3px solid var(--amber);background:rgba(245,158,11,.08)}
+.status.ok{border-left-color:var(--green);background:rgba(52,211,153,.08)}
+.status-main{flex:1;min-width:0}
+.status-label{font-size:9px;color:var(--t4);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+.status-title{font-size:14px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.status-title .tag{font-size:9px;padding:2px 6px;background:rgba(245,158,11,.16);color:var(--amber);font-weight:500}
+.status-meta{font-size:11px;color:var(--t2);margin-top:4px;line-height:1.4}
+.status-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+.nav-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--bd);flex-shrink:0}
+.nav-card{background:var(--n2);padding:14px 14px 13px;cursor:pointer;transition:background .15s;border-left:3px solid transparent;min-height:82px;text-decoration:none;color:inherit;display:flex;flex-direction:column;justify-content:space-between}
+.nav-card:hover{background:var(--n3)}
+.nav-title{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;font-weight:500;color:var(--t1)}
+.nav-title i{font-size:14px;color:var(--t4)}
+.nav-sub{font-size:10px;color:var(--t3);margin-top:6px;line-height:1.45}
+.nav-meta{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:9px;color:var(--t4);text-transform:uppercase;letter-spacing:.08em}
+.grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(292px,0.95fr);gap:12px;align-items:start}
+.panel{background:var(--n2);border:0.5px solid var(--bd);border-radius:0;overflow:hidden}
+.panel-hdr{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 14px;border-bottom:0.5px solid var(--bd);background:var(--n0)}
+.panel-title{font-size:12px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:8px}
+.panel-title i{font-size:14px;color:var(--vl)}
+.panel-sub{font-size:9px;color:var(--t4);letter-spacing:.08em;text-transform:uppercase}
+.panel-body{padding:12px 14px}
+.stats-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--bd);margin-bottom:12px}
+.stat{background:var(--n2);padding:12px 13px;min-height:82px;border-left:3px solid transparent;display:flex;flex-direction:column;justify-content:space-between}
+.stat.primary{border-left-color:var(--vi)}
+.stat.green{border-left-color:var(--green)}
+.stat.amber{border-left-color:var(--amber)}
+.stat.blue{border-left-color:var(--blue)}
+.stat-val{font-size:20px;font-weight:500;color:var(--t1);display:flex;align-items:baseline;gap:6px;line-height:1}
+.stat-val small{font-size:10px;color:var(--t3);font-weight:400}
+.stat-lbl{font-size:10px;color:var(--t3);line-height:1.35}
+.student-group{border-left:3px solid var(--vi);background:var(--n1);margin-bottom:10px}
+.student-group.evelyn{border-left-color:#0f9e7a}
+.student-top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:0.5px solid var(--bd);background:rgba(255,255,255,.01)}
+.student-name{font-size:12px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:8px}
+.student-name .dot{width:8px;height:8px;display:inline-block}
+.student-meta{font-size:10px;color:var(--t3)}
+.subject-list{display:flex;flex-direction:column}
+.subject-row{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-top:0.5px solid var(--bd);cursor:pointer;transition:background .15s}
+.subject-row:first-child{border-top:none}
+.subject-row:hover{background:var(--n2)}
+.subject-swatch{width:3px;min-height:32px;flex-shrink:0}
+.subject-main{flex:1;min-width:0}
+.subject-title{font-size:12px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.subject-title .pill{font-size:8px;padding:2px 5px;font-weight:500;background:rgba(255,255,255,.06);color:var(--t2);letter-spacing:.04em}
+.subject-title .pill.good{background:rgba(52,211,153,.12);color:var(--green)}
+.subject-title .pill.warn{background:rgba(245,158,11,.12);color:var(--amber)}
+.subject-meta{font-size:10px;color:var(--t3);margin-top:4px;line-height:1.45}
+.subject-right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+.subject-count{font-size:11px;font-weight:500;color:var(--t2)}
+.subject-mini{font-size:9px;color:var(--t4)}
+.filters{display:flex;align-items:center;gap:0;flex-wrap:wrap}
+.filter{padding:4px 9px;font-size:10px;cursor:pointer;border:0.5px solid var(--bd2);background:transparent;color:var(--t3);transition:all .15s}
+.filter:hover{background:var(--n3);color:var(--t1)}
+.filter.act{background:var(--vf);color:var(--vl);border-color:rgba(124,111,212,.4)}
+.feed{display:flex;flex-direction:column;gap:1px;background:var(--bd)}
+.feed-item{background:var(--n1);padding:11px 12px;cursor:pointer;transition:background .15s;border-left:3px solid transparent;display:flex;align-items:flex-start;gap:10px}
+.feed-item:hover{background:var(--n2)}
+.feed-item.comp{border-left-color:var(--green)}
+.feed-item.plan{border-left-color:var(--vi)}
+.feed-item.warn{border-left-color:var(--amber)}
+.feed-item.pub{border-left-color:var(--blue)}
+.feed-icon{width:18px;height:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.feed-icon i{font-size:13px}
+.feed-main{flex:1;min-width:0}
+.feed-title{font-size:11px;font-weight:500;color:var(--t1);line-height:1.35}
+.feed-meta{font-size:10px;color:var(--t3);margin-top:2px;line-height:1.45}
+.feed-time{font-size:9px;color:var(--t4);flex-shrink:0}
+.warning-list{display:flex;flex-direction:column;gap:1px;background:var(--bd)}
+.warning{background:var(--n1);padding:11px 12px;display:flex;align-items:flex-start;gap:10px;cursor:pointer;transition:background .15s;border-left:3px solid var(--amber)}
+.warning:hover{background:var(--n2)}
+.warning.critical{border-left-color:var(--red)}
+.warning-icon{width:18px;height:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.warning-icon i{font-size:13px;color:var(--amber)}
+.warning.critical .warning-icon i{color:var(--red)}
+.warning-main{flex:1;min-width:0}
+.warning-title{font-size:11px;font-weight:500;color:var(--t1);line-height:1.35}
+.warning-meta{font-size:10px;color:var(--t3);margin-top:2px;line-height:1.45}
+.tiny{font-size:9px;color:var(--t4)}
+.section-label{font-size:9px;color:var(--t4);letter-spacing:.1em;text-transform:uppercase;padding-bottom:8px}
+.stack{display:flex;flex-direction:column;gap:12px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width: 1100px){
+  .grid{grid-template-columns:1fr}
+  .nav-strip{grid-template-columns:1fr}
+}
+@media (max-width: 760px){
+  body{overflow:auto}
+  .shell{height:auto;min-height:100vh}
+  .sidebar{display:none}
+  .topbar{height:auto;padding:12px 14px;align-items:flex-start;flex-direction:column}
+  .top-actions{margin-left:0;width:100%}
+  .focus{width:100%;overflow:auto}
+  .content{padding:12px}
+  .split,.stats-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="slogo">
+      <div class="slogo-icon">
+        <svg width="14" height="16" viewBox="0 0 14 16" fill="none" aria-hidden="true">
+          <rect x="3" y="13" width="8" height="2.5" fill="rgba(255,255,255,.92)"/>
+          <rect x="4" y="9.5" width="6" height="2" fill="rgba(255,255,255,.7)"/>
+          <rect x="5" y="6.5" width="4" height="1.8" fill="rgba(255,255,255,.5)"/>
+          <rect x="5.5" y="4" width="3" height="1.5" fill="rgba(255,255,255,.33)"/>
+          <rect x="6" y="1.5" width="2" height="1.5" fill="rgba(255,255,255,.18)"/>
+        </svg>
+      </div>
+      <div><div class="slogo-text">OWN PATH</div><div class="slogo-sub">Parent Portal</div></div>
+    </div>
+    <nav class="snav">
+      <div class="ni-sa"><i class="ti ti-users"></i> Students</div>
+      <div class="nsec">
+        <div class="nsec-hdr">
+          <span class="nsec-lbl">Homeschool</span>
+          <span class="nsec-chev open" id="chev-hs" onclick="toggleSection('hs')"><i class="ti ti-chevron-right"></i></span>
+        </div>
+        <div class="nsec-items open" id="items-hs">
+          <div class="ni act"><i class="ti ti-layout-dashboard"></i> Overview</div>
+          <a class="ni" href="./curriculum.html" style="text-decoration:none"><i class="ti ti-book"></i> Curriculum</a>
+          <a class="ni" href="./weekly-blocking.html" style="text-decoration:none"><i class="ti ti-calendar-week"></i> Weekly Blocking</a>
+          <a class="ni" href="./ownpath_reports.html" style="text-decoration:none"><i class="ti ti-chart-bar"></i> Reports</a>
+        </div>
+      </div>
+      <div class="nsec">
+        <div class="nsec-hdr">
+          <span class="nsec-lbl">Chores</span>
+          <span class="nsec-chev" id="chev-ch" onclick="toggleSection('ch')"><i class="ti ti-chevron-right"></i></span>
+        </div>
+        <div class="nsec-items" id="items-ch">
+          <div class="ni"><i class="ti ti-sun"></i> Daily Routines</div>
+          <div class="ni"><i class="ti ti-list-check"></i> Weekly Chores</div>
+          <div class="ni"><i class="ti ti-calendar"></i> Monthly Chores</div>
+          <div class="ni"><i class="ti ti-coin"></i> Allowance</div>
+          <div class="ni"><i class="ti ti-trophy"></i> Rewards</div>
+        </div>
+      </div>
+      <div class="nsec">
+        <div class="nsec-hdr">
+          <span class="nsec-lbl" style="color:var(--t4)">Lockdown</span>
+          <span class="nsec-chev" id="chev-lk" onclick="toggleSection('lk')"><i class="ti ti-chevron-right"></i></span>
+        </div>
+        <div class="nsec-items" id="items-lk">
+          <div class="ni" style="color:var(--t4)"><i class="ti ti-shield-lock"></i> Lockdown Mode <span class="bsoon">Soon</span></div>
+        </div>
+      </div>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="tb-title-wrap">
+        <div class="tb-title"><i class="ti ti-layout-dashboard"></i> Homeschool Overview</div>
+        <div class="tb-sub" id="topSub">This week is being prepared for publish.</div>
+      </div>
+      <div class="focus" id="focus"></div>
+      <div class="top-actions">
+        <button class="btn" onclick="alert('Add subject prototype placeholder.')"><i class="ti ti-plus"></i> Add subject</button>
+        <a class="btn pri" href="./weekly-blocking.html"><i class="ti ti-calendar-plus"></i> Plan this week</a>
+        <a class="btn" href="./ownpath_reports.html"><i class="ti ti-chart-bar"></i> View reports</a>
+      </div>
+    </div>
+
+    <div class="content">
+      <div id="statusBand"></div>
+
+      <div class="nav-strip">
+        <a class="nav-card" href="./curriculum.html" style="border-left-color:var(--vi)">
+          <div>
+            <div class="nav-title">Curriculum <i class="ti ti-arrow-right"></i></div>
+            <div class="nav-sub">Edit per-student subjects, blocks, and completion rules.</div>
+          </div>
+          <div class="nav-meta"><span>Open subject library</span></div>
+        </a>
+        <a class="nav-card" href="./weekly-blocking.html" style="border-left-color:#0f9e7a">
+          <div>
+            <div class="nav-title">Weekly Blocking <i class="ti ti-arrow-right"></i></div>
+            <div class="nav-sub">Plan the full family week and publish changes from the default week.</div>
+          </div>
+          <div class="nav-meta"><span>Weekly publish flow</span></div>
+        </a>
+        <a class="nav-card" href="./ownpath_reports.html" style="border-left-color:#185fa5">
+          <div>
+            <div class="nav-title">Reports <i class="ti ti-player-play"></i></div>
+            <div class="nav-sub">Review weekly progress, subject history, and printable summaries.</div>
+          </div>
+          <div class="nav-meta"><span>Prototype pending</span></div>
+        </a>
+      </div>
+
+      <div class="grid">
+        <section class="panel">
+          <div class="panel-hdr">
+            <div>
+              <div class="panel-title"><i class="ti ti-stack-2"></i> Active subjects by student</div>
+              <div class="panel-sub" id="subjectSub">All family</div>
+            </div>
+            <div class="tiny" id="subjectCount"></div>
+          </div>
+          <div class="panel-body" id="subjectBody"></div>
+        </section>
+
+        <div class="stack">
+          <section class="panel">
+            <div class="panel-hdr">
+              <div>
+                <div class="panel-title"><i class="ti ti-chart-pie"></i> Quick stats</div>
+                <div class="panel-sub" id="statSub">Week snapshot</div>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="stats-grid" id="stats"></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-hdr">
+              <div>
+                <div class="panel-title"><i class="ti ti-bell-ringing"></i> Attention items</div>
+                <div class="panel-sub">Needs parent review</div>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="warning-list" id="warnings"></div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="split">
+        <section class="panel">
+          <div class="panel-hdr">
+            <div>
+              <div class="panel-title"><i class="ti ti-badge-check"></i> Recent completions</div>
+              <div class="panel-sub">Latest log entries across the family</div>
+            </div>
+            <div class="filters" id="filters"></div>
+          </div>
+          <div class="panel-body">
+            <div class="feed" id="feed"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-hdr">
+            <div>
+              <div class="panel-title"><i class="ti ti-calendar-check"></i> This week</div>
+              <div class="panel-sub">Publish and planning state</div>
+            </div>
+          </div>
+          <div class="panel-body" style="display:flex;flex-direction:column;gap:10px">
+            <div class="status ok" style="margin:0">
+              <div class="status-main">
+                <div class="status-label">Plan status</div>
+                <div class="status-title">Draft ready for review <span class="tag">WAITING</span></div>
+                <div class="status-meta">Default week inherited by all three students. 2 subjects changed after the last publish, 1 subject still needs a block count check.</div>
+              </div>
+            </div>
+            <div class="feed-item pub" onclick="alert('Publish state details placeholder.')">
+              <div class="feed-icon"><i class="ti ti-send"></i></div>
+              <div class="feed-main">
+                <div class="feed-title">Publish window opens tonight at 8:00 PM</div>
+                <div class="feed-meta">If the draft stays unchanged, the week can publish without extra review.</div>
+              </div>
+            </div>
+            <div class="feed-item plan" onclick="alert('Weekly Blocking placeholder.')">
+              <div class="feed-icon"><i class="ti ti-calendar-plus"></i></div>
+              <div class="feed-main">
+                <div class="feed-title">Open Weekly Blocking for the final pass</div>
+                <div class="feed-meta">This page stays summary-first. Detailed week edits live in Weekly Blocking.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+var focusState='all';
+var activityFilter='all';
+var sectionOpen={hs:true,ch:false,lk:false};
+
+var students=[
+  {
+    id:'caleb',
+    name:'Caleb',
+    color:'#7c6fd4',
+    accent:'violet',
+    summary:'6 active subjects',
+    planned:'~23.5h planned',
+    subjects:[
+      {name:'Math 7',color:'#7c6fd4',blocks:'5 blocks/wk',meta:'Beast Academy, review set, one project block pending',count:'4/5',state:'on track',pill:'GOOD',mini:'1 block short of target',status:'good'},
+      {name:'Reading 7',color:'#0f9e7a',blocks:'5 blocks/wk',meta:'Silent reading, vocab work, read-aloud',count:'5/5',state:'published',pill:'LOCKED',mini:'Ready for publish',status:'good'},
+      {name:'Writing',color:'#993556',blocks:'4 blocks/wk',meta:'Timed writing, draft revision, one open project',count:'3/4',state:'needs prep',pill:'REVIEW',mini:'Add one assignment',status:'warn'}
+    ]
+  },
+  {
+    id:'evelyn',
+    name:'Evelyn',
+    color:'#0f9e7a',
+    accent:'green',
+    summary:'5 active subjects',
+    planned:'~18.0h planned',
+    subjects:[
+      {name:'Math 5',color:'#7c6fd4',blocks:'5 blocks/wk',meta:'Beast Academy set and guided review',count:'5/5',state:'published',pill:'LOCKED',mini:'On target',status:'good'},
+      {name:'Piano',color:'#3b8c11',blocks:'5 blocks/wk',meta:'Scale practice, lesson with Mom, practice log',count:'4/5',state:'on track',pill:'GOOD',mini:'1 lesson short',status:'warn'},
+      {name:'PE',color:'#993556',blocks:'5 blocks/wk',meta:'Movement sessions and outdoor activity',count:'5/5',state:'published',pill:'LOCKED',mini:'Complete',status:'good'}
+    ]
+  },
+  {
+    id:'maya',
+    name:'Maya',
+    color:'#ba7517',
+    accent:'amber',
+    summary:'2 active subjects',
+    planned:'~9.0h planned',
+    subjects:[
+      {name:'Reading 3',color:'#0f9e7a',blocks:'4 blocks/wk',meta:'Short daily read and two comprehension blocks',count:'2/4',state:'needs prep',pill:'REVIEW',mini:'Needs a plan',status:'warn'},
+      {name:'Art',color:'#ba7517',blocks:'3 blocks/wk',meta:'Sketchbook practice and one parent-led block',count:'3/3',state:'published',pill:'LOCKED',mini:'Ready to publish',status:'good'}
+    ]
+  }
+];
+
+var activity=[
+  {type:'completed',student:'Caleb',title:'Math 7 - Beast Academy problems',meta:'Logged by student portal at 9:14 AM',time:'14m ago'},
+  {type:'completed',student:'Evelyn',title:'Piano - Scale practice',meta:'Marked complete with timer evidence',time:'47m ago'},
+  {type:'attention',student:'Maya',title:'Reading 3 is short one block',meta:'Parent review needed before publish',time:'1h ago'},
+  {type:'published',student:'Family',title:'Default week copied into Jun 22-28',meta:'Weekly Blocking drafted from the inherited week',time:'Today'},
+  {type:'planning',student:'Caleb',title:'Writing got a new project block',meta:'Added during curriculum planning',time:'Yesterday'}
+];
+
+var warnings=[
+  {kind:'critical',title:'Maya still needs a week plan',meta:'Reading 3 is below target and needs one more block before publish.',student:'Maya'},
+  {kind:'warning',title:'Caleb has an unfinished Writing project',meta:'Project block remains open and should be checked in Weekly Blocking.',student:'Caleb'},
+  {kind:'warning',title:'Publish draft is not final yet',meta:'Two subjects changed after the last saved version.',student:'Family'}
+];
+
+function toggleSection(k){
+  sectionOpen[k]=!sectionOpen[k];
+  var items=document.getElementById('items-'+k);
+  var chev=document.getElementById('chev-'+k);
+  if(sectionOpen[k]){items.classList.add('open');chev.classList.add('open');}
+  else{items.classList.remove('open');chev.classList.remove('open');}
+}
+
+function setFocus(id){
+  focusState=id;
+  render();
+}
+
+function setFilter(id){
+  activityFilter=id;
+  renderActivity();
+}
+
+function popup(el){
+  alert(decodeURIComponent(el.dataset.msg));
+}
+
+function currentStudents(){
+  if(focusState==='all') return students;
+  return students.filter(function(s){return s.id===focusState;});
+}
+
+function renderFocus(){
+  var items=[
+    {id:'all',label:'All family',icon:'ti-users'},
+    {id:'caleb',label:'Caleb',icon:'ti-user'},
+    {id:'evelyn',label:'Evelyn',icon:'ti-user'},
+    {id:'maya',label:'Maya',icon:'ti-user'}
+  ];
+  document.getElementById('focus').innerHTML=items.map(function(item){
+    return '<button class="focus-btn'+(item.id===focusState?' act':'')+'" onclick="setFocus(\''+item.id+'\')"><i class="ti '+item.icon+'"></i>'+item.label+'</button>';
+  }).join('');
+}
+
+function renderStatus(){
+  var focusLabel=focusState==='all'?'All family':students.find(function(s){return s.id===focusState;}).name;
+  var body=document.getElementById('statusBand');
+  body.innerHTML=[
+    '<div class="status">',
+      '<div class="status-main">',
+        '<div class="status-label">This week</div>',
+        '<div class="status-title">Jun 22 - Jun 28 <span class="tag">DRAFT</span></div>',
+        '<div class="status-meta">Focus: <b>'+focusLabel+'</b>. Default week is in place, with 2 edits waiting for final review before publish.</div>',
+      '</div>',
+      '<div class="status-actions">',
+        '<button class="btn" onclick="alert(\'Open publish drawer placeholder.\')"><i class="ti ti-send"></i> Publish draft</button>',
+        '<button class="btn" onclick="alert(\'Reset to default week placeholder.\')"><i class="ti ti-rotate-2"></i> Reset</button>',
+      '</div>',
+    '</div>'
+  ].join('');
+}
+
+function renderStats(){
+  var visible=currentStudents();
+  var subjectCount=0;
+  var weekBlocks=0;
+  var completeCount=0;
+  var warnCount=0;
+  visible.forEach(function(s){
+    subjectCount+=s.subjects.length;
+    s.subjects.forEach(function(sub){
+      weekBlocks+=parseInt(sub.count.split('/')[0],10);
+      if(sub.status==='good') completeCount+=1;
+      if(sub.status==='warn') warnCount+=1;
+    });
+  });
+  if(focusState==='all'){
+    subjectCount=students.reduce(function(acc,s){return acc+s.subjects.length;},0);
+    weekBlocks=students.reduce(function(acc,s){
+      return acc+s.subjects.reduce(function(subAcc,sub){return subAcc+parseInt(sub.count.split('/')[0],10);},0);
+    },0);
+    completeCount=activity.filter(function(item){return item.type==='completed';}).length;
+    warnCount=warnings.length;
+  }
+  var stats=[
+    {cls:'primary',val:subjectCount,label:'Active subjects in view',hint:'Per-student subjects only'},
+    {cls:'green',val:weekBlocks,label:'Blocks already placed',hint:'For the selected focus'},
+    {cls:'amber',val:completeCount,label:'Subjects on track',hint:'Ready or nearly ready'},
+    {cls:'blue',val:warnCount,label:'Attention items',hint:'Needs review before publish'}
+  ];
+  document.getElementById('stats').innerHTML=stats.map(function(stat){
+    return '<div class="stat '+stat.cls+'"><div class="stat-val">'+stat.val+'<small></small></div><div><div class="stat-lbl">'+stat.label+'</div><div class="tiny">'+stat.hint+'</div></div></div>';
+  }).join('');
+  document.getElementById('subjectCount').textContent=subjectCount+' total';
+  document.getElementById('subjectSub').textContent=focusState==='all'?'All family':students.find(function(s){return s.id===focusState;}).name+' only';
+}
+
+function renderSubjects(){
+  var body=document.getElementById('subjectBody');
+  var visible=currentStudents();
+  body.innerHTML=visible.map(function(student){
+    var cls=student.id==='evelyn'?'student-group evelyn':'student-group';
+    var subjectHtml=student.subjects.map(function(sub){
+      var pillCls=sub.status==='good'?'pill good':'pill warn';
+      var icon=sub.status==='good'?'ti-check':'ti-alert-triangle';
+      return [
+        '<div class="subject-row" data-msg="'+encodeURIComponent('Open '+student.name+' - '+sub.name+' subject details placeholder.')+'" onclick="popup(this)">',
+          '<div class="subject-swatch" style="background:'+sub.color+'"></div>',
+          '<div class="subject-main">',
+            '<div class="subject-title">'+sub.name+' <span class="'+pillCls+'"><i class="ti '+icon+'" style="font-size:9px;margin-right:3px"></i>'+sub.pill+'</span></div>',
+            '<div class="subject-meta">'+sub.meta+'</div>',
+          '</div>',
+          '<div class="subject-right">',
+            '<div class="subject-count">'+sub.count+'</div>',
+            '<div class="subject-mini">'+sub.blocks+' · '+sub.state+'</div>',
+          '</div>',
+        '</div>'
+      ].join('');
+    }).join('');
+    return [
+      '<div class="'+cls+'">',
+        '<div class="student-top">',
+          '<div class="student-name"><span class="dot" style="background:'+student.color+'"></span>'+student.name+'</div>',
+          '<div class="student-meta">'+student.summary+' · '+student.planned+'</div>',
+        '</div>',
+        '<div class="subject-list">'+subjectHtml+'</div>',
+      '</div>'
+    ].join('');
+  }).join('');
+}
+
+function renderActivity(){
+  var focusName=focusState==='all'?'Family':students.find(function(s){return s.id===focusState;}).name;
+  document.getElementById('statSub').textContent=focusName+' snapshot';
+  var chips=[
+    {id:'all',label:'All'},
+    {id:'completed',label:'Completed'},
+    {id:'planning',label:'Planning'},
+    {id:'attention',label:'Attention'},
+    {id:'published',label:'Published'}
+  ];
+  document.getElementById('filters').innerHTML=chips.map(function(chip){
+    return '<button class="filter'+(chip.id===activityFilter?' act':'')+'" onclick="setFilter(\''+chip.id+'\')">'+chip.label+'</button>';
+  }).join('');
+  var visible=activity.filter(function(item){
+    var focusOk=focusState==='all' || item.student===students.find(function(s){return s.id===focusState;}).name || item.student==='Family';
+    var filterOk=activityFilter==='all' || item.type===activityFilter;
+    return focusOk && filterOk;
+  });
+  if(!visible.length){
+    document.getElementById('feed').innerHTML='<div class="feed-item"><div class="feed-main"><div class="feed-title">No items match this filter.</div><div class="feed-meta">Try switching focus or choosing a different activity type.</div></div></div>';
+    return;
+  }
+  document.getElementById('feed').innerHTML=visible.map(function(item){
+    var cls='comp';
+    var icon='ti-badge-check';
+    if(item.type==='planning'){cls='plan';icon='ti-calendar-plus';}
+    if(item.type==='attention'){cls='warn';icon='ti-alert-triangle';}
+    if(item.type==='published'){cls='pub';icon='ti-send';}
+    return [
+      '<div class="feed-item '+cls+'" data-msg="'+encodeURIComponent(item.title+'\n'+item.meta)+'" onclick="popup(this)">',
+        '<div class="feed-icon"><i class="ti '+icon+'"></i></div>',
+        '<div class="feed-main">',
+          '<div class="feed-title">'+item.title+'</div>',
+          '<div class="feed-meta">'+item.student+' · '+item.meta+'</div>',
+        '</div>',
+        '<div class="feed-time">'+item.time+'</div>',
+      '</div>'
+    ].join('');
+  }).join('');
+}
+
+function renderWarnings(){
+  var visible=warnings.filter(function(item){
+    return focusState==='all' || item.student===students.find(function(s){return s.id===focusState;}).name || item.student==='Family';
+  });
+  document.getElementById('warnings').innerHTML=visible.map(function(item){
+    var critical=item.kind==='critical'?' critical':'';
+    var icon=item.kind==='critical'?'ti-alert-octagon':'ti-alert-triangle';
+    return [
+      '<div class="warning'+critical+'" data-msg="'+encodeURIComponent(item.title+'\n'+item.meta)+'" onclick="popup(this)">',
+        '<div class="warning-icon"><i class="ti '+icon+'"></i></div>',
+        '<div class="warning-main">',
+          '<div class="warning-title">'+item.title+'</div>',
+          '<div class="warning-meta">'+item.meta+'</div>',
+        '</div>',
+      '</div>'
+    ].join('');
+  }).join('') || '<div class="warning"><div class="warning-main"><div class="warning-title">No attention items for this focus.</div><div class="warning-meta">Everything shown here is currently within range.</div></div></div>';
+}
+
+function render(){
+  renderFocus();
+  renderStatus();
+  renderStats();
+  renderSubjects();
+  renderActivity();
+  renderWarnings();
+}
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OwnPath — Reports</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --n0:#181828;--n1:#1f1f32;--n2:#26263c;--n3:#2e2e48;--n4:#383858;
+  --vi:#7c6fd4;--vl:#b8adff;--vf:rgba(124,111,212,.14);
+  --bd:rgba(255,255,255,.08);--bd2:rgba(255,255,255,.14);
+  --t1:#eeeaf8;--t2:#c4bedc;--t3:#8f8aaa;--t4:#585674;
+  --amber:#f59e0b;--green:#34d399;--red:#f87171;--blue:#60a5fa;
+}
+html,body{height:100%;background:var(--n0);color:var(--t1);font-family:system-ui,sans-serif}
+*::-webkit-scrollbar{width:10px;height:10px}
+*::-webkit-scrollbar-track{background:rgba(255,255,255,.02)}
+*::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border:2px solid transparent;background-clip:padding-box}
+.shell{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:190px;background:var(--n0);display:flex;flex-direction:column;flex-shrink:0;border-right:.5px solid var(--bd)}
+.slogo{padding:14px 16px;border-bottom:.5px solid var(--bd);display:flex;align-items:center;gap:9px}
+.slogo-icon{width:26px;height:26px;background:var(--vi);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.slogo-text{font-size:12px;font-weight:500;color:var(--t1);letter-spacing:.06em}
+.slogo-sub{font-size:9px;color:var(--t3);margin-top:1px}
+.snav{padding:6px 0;flex:1;overflow-y:auto}
+.nsec{margin-bottom:2px}
+.nsec-hdr{display:flex;align-items:center;cursor:pointer;user-select:none}
+.nsec-lbl{flex:1;font-size:10px;font-weight:500;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;padding:9px 16px 5px}
+.nsec-hdr:hover .nsec-lbl{color:var(--t2)}
+.nsec-chev{padding:9px 12px 5px 0;font-size:12px;color:var(--t4);transition:transform .18s}
+.nsec-chev.open{transform:rotate(90deg)}
+.nsec-items{overflow:hidden;max-height:0;transition:max-height .2s}
+.nsec-items.open{max-height:220px}
+.ni{display:flex;align-items:center;gap:8px;padding:7px 16px;font-size:11px;color:var(--t2);cursor:pointer;transition:all .15s;border-left:2px solid transparent}
+.ni:hover{color:var(--t1);background:rgba(255,255,255,.04)}
+.ni.act{color:var(--vl);border-left-color:var(--vi);background:var(--vf)}
+.ni i{font-size:13px;flex-shrink:0}
+.ni-sa{display:flex;align-items:center;gap:8px;padding:7px 16px;font-size:11px;color:var(--t2);cursor:pointer;border-left:2px solid transparent}
+.ni-sa:hover{color:var(--t1);background:rgba(255,255,255,.04)}
+.bsoon{font-size:8px;background:rgba(124,111,212,.22);color:var(--vl);padding:1px 5px;margin-left:auto}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--n1)}
+.topbar{height:50px;background:var(--n0);border-bottom:.5px solid var(--bd);display:flex;align-items:center;padding:0 18px;gap:10px;flex-shrink:0}
+.tb-title{font-size:14px;font-weight:500;color:var(--t1);flex:1}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;font-size:11px;cursor:pointer;border:.5px solid var(--bd2);background:transparent;color:var(--t2);transition:all .15s}
+.btn:hover{background:var(--n3);color:var(--t1)}
+.btn.pri{background:var(--vi);color:#fff;border-color:var(--vi)}
+.btn.pri:hover{background:#6c60c0}
+.btn i{font-size:13px}
+.btn.sm{padding:3px 8px;font-size:10px}
+.toolbar{display:flex;align-items:stretch;gap:12px;padding:10px 16px;background:var(--n0);border-bottom:.5px solid var(--bd);flex-shrink:0}
+.filter-group{display:flex;flex-direction:column;gap:4px;min-width:0}
+.filter-label{font-size:9px;color:var(--t4);letter-spacing:.1em;text-transform:uppercase}
+select{font-size:11px;padding:5px 8px;border:.5px solid var(--bd2);background:var(--n2);color:var(--t2);min-width:0;outline:none}
+select:focus{border-color:rgba(124,111,212,.55)}
+.select-wide{min-width:156px}
+.select-narrow{min-width:112px}
+.week-strip{display:flex;align-items:center;gap:6px;overflow-x:auto;padding-bottom:1px}
+.week-nav-btn{width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:.5px solid var(--bd2);color:var(--t3);transition:all .15s;flex-shrink:0}
+.week-nav-btn:hover{background:var(--n3);color:var(--t1)}
+.week-nav-btn i{font-size:14px}
+.week-chip{padding:4px 10px;font-size:10px;cursor:pointer;border:.5px solid var(--bd2);color:var(--t3);white-space:nowrap;transition:all .15s;position:relative;flex-shrink:0}
+.week-chip:hover{color:var(--t2)}
+.week-chip.act{background:var(--vf);color:var(--vl);border-color:rgba(124,111,212,.4)}
+.week-chip.default{border-style:dashed;color:var(--vl)}
+.week-chip.default.act{background:var(--vf);border-style:dashed}
+.week-chip.modified::after{content:'';position:absolute;top:3px;right:3px;width:4px;height:4px;background:var(--amber)}
+.toolbar-right{margin-left:auto;display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.status-chip{font-size:9px;color:var(--t3);padding:3px 8px;border:0.5px solid var(--bd2);background:rgba(255,255,255,.02);display:flex;align-items:center;gap:5px}
+.status-chip b{font-weight:500;color:var(--t2)}
+.body{flex:1;display:flex;overflow:hidden}
+.report-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.banner{display:flex;align-items:center;gap:8px;padding:8px 12px;margin:14px 16px 0;border-left:3px solid var(--vi);background:var(--vf);font-size:11px;color:var(--vl)}
+.banner i{font-size:14px;flex-shrink:0}
+.banner.warn{border-left-color:var(--amber);background:rgba(245,158,11,.08);color:var(--amber)}
+.summary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--bd);margin:12px 16px 0;flex-shrink:0}
+.sum-card{background:var(--n2);padding:12px 14px 13px;border-left:3px solid transparent;min-width:0}
+.sum-card .value{font-size:20px;font-weight:500;color:var(--t1);line-height:1}
+.sum-card .label{font-size:10px;color:var(--t3);margin-top:5px}
+.sum-card.acc{border-left-color:var(--vi)}
+.sum-card.good{border-left-color:var(--green)}
+.sum-card.warn{border-left-color:var(--amber)}
+.sum-card.bad{border-left-color:var(--red)}
+.content-wrap{display:flex;gap:1px;background:var(--bd);margin:12px 16px 16px;flex:1;overflow:hidden}
+.report-list{flex:1;background:var(--n1);overflow-y:auto;padding:0}
+.student-section{border-bottom:.5px solid var(--bd)}
+.student-head{display:flex;align-items:flex-start;gap:12px;padding:12px 14px 10px;background:var(--n2);border-left:3px solid var(--vi)}
+.student-meta{flex:1;min-width:0}
+.student-name{font-size:13px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.student-sub{font-size:10px;color:var(--t3);margin-top:3px}
+.student-stats{display:flex;gap:14px;flex-wrap:wrap;justify-content:flex-end}
+.mini-stat{display:flex;flex-direction:column;gap:1px;min-width:72px}
+.mini-value{font-size:13px;font-weight:500;color:var(--t1);line-height:1}
+.mini-label{font-size:9px;color:var(--t3)}
+.section-body{padding:0}
+.subject-row{background:var(--n1);border-left:3px solid transparent;border-bottom:.5px solid var(--bd);overflow:hidden}
+.subject-row:hover{background:var(--n2)}
+.subject-row.open{background:var(--n2)}
+.subject-hdr{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;cursor:pointer;user-select:none}
+.subject-hdr:hover{background:rgba(255,255,255,.015)}
+.subject-dot{width:8px;height:8px;flex-shrink:0;margin-top:4px}
+.subject-main{flex:1;min-width:0}
+.subject-title{font-size:12px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.subject-sub{font-size:10px;color:var(--t3);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+.subject-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.count-badge{font-size:10px;padding:2px 7px;background:var(--n3);border:0.5px solid var(--bd2);color:var(--t2)}
+.count-badge.good{color:var(--green)}
+.count-badge.warn{color:var(--amber)}
+.count-badge.bad{color:var(--red)}
+.chev{font-size:12px;color:var(--t4);transition:transform .15s}
+.chev.open{transform:rotate(90deg)}
+.subject-body{display:none;padding:10px 14px 13px;border-top:.5px solid var(--bd)}
+.subject-row.open .subject-body{display:block}
+.block-grid{display:grid;grid-template-columns:1fr;gap:6px}
+.block-item{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;background:var(--n3);border:0.5px solid var(--bd2)}
+.block-item.over{border-left:3px solid var(--amber)}
+.block-item.done{border-left:3px solid var(--green)}
+.block-item.incomplete{border-left:3px solid var(--red)}
+.block-state{width:14px;height:14px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;background:var(--n4);border:0.5px solid var(--bd2);margin-top:1px}
+.block-state i{font-size:10px;color:transparent}
+.block-state.on{background:var(--vi);border-color:var(--vi)}
+.block-state.on i{color:#fff}
+.block-info{flex:1;min-width:0}
+.block-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.block-name{font-size:11px;color:var(--t1);font-weight:500}
+.block-meta{font-size:9px;color:var(--t4)}
+.block-pills{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.pill{font-size:8px;padding:2px 5px;border:0.5px solid var(--bd2);color:var(--t3);background:rgba(255,255,255,.01)}
+.pill.type{background:rgba(124,111,212,.18);color:var(--vl);border-color:rgba(124,111,212,.28)}
+.pill.type.project{background:rgba(245,158,11,.16);color:var(--amber);border-color:rgba(245,158,11,.25)}
+.pill.type.parent{background:rgba(52,211,153,.14);color:var(--green);border-color:rgba(52,211,153,.24)}
+.pill.type.test{background:rgba(248,113,113,.14);color:var(--red);border-color:rgba(248,113,113,.24)}
+.pill.on{background:rgba(52,211,153,.14);color:var(--green);border-color:rgba(52,211,153,.24)}
+.pill.warn{background:rgba(245,158,11,.14);color:var(--amber);border-color:rgba(245,158,11,.22)}
+.block-actions{display:flex;align-items:center;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+.icon-btn{width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:0.5px solid var(--bd2);background:var(--n4);color:var(--t3);transition:all .15s;flex-shrink:0}
+.icon-btn:hover{background:var(--n3);color:var(--t1)}
+.icon-btn.on{color:var(--vl);border-color:rgba(124,111,212,.4);background:var(--vf)}
+.icon-btn.good{color:var(--green)}
+.icon-btn.bad{color:var(--red)}
+.block-detail{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:7px;font-size:10px;color:var(--t3)}
+.block-note{font-size:10px;color:var(--t3);padding-top:1px}
+.empty{padding:18px 14px;color:var(--t3);font-size:11px}
+.summary-panel{width:250px;flex-shrink:0;border-left:.5px solid var(--bd);background:var(--n0);display:flex;flex-direction:column;overflow:hidden}
+.sp-hdr{padding:11px 14px;border-bottom:.5px solid var(--bd);display:flex;align-items:center;gap:8px;justify-content:space-between}
+.sp-title{font-size:11px;font-weight:500;color:var(--t2)}
+.sp-body{padding:12px 14px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.panel-stat{display:flex;flex-direction:column;gap:2px}
+.panel-val{font-size:20px;font-weight:500;color:var(--t1)}
+.panel-lbl{font-size:10px;color:var(--t3)}
+.panel-list{display:flex;flex-direction:column;gap:6px}
+.panel-row{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--t3)}
+.panel-row i{font-size:12px;color:var(--t4)}
+.panel-row strong{color:var(--t2);font-weight:500}
+.panel-box{padding:10px 11px;background:var(--n2);border-left:3px solid var(--vi);border:.5px solid var(--bd)}
+.panel-box.warn{border-left-color:var(--amber)}
+.panel-box.good{border-left-color:var(--green)}
+.panel-box.bad{border-left-color:var(--red)}
+.panel-actions{margin-top:auto;padding:12px 14px;border-top:.5px solid var(--bd);display:flex;flex-direction:column;gap:6px}
+.toast{position:fixed;right:16px;bottom:16px;background:var(--n0);border:0.5px solid var(--bd2);padding:9px 11px;font-size:11px;color:var(--t2);display:none;align-items:center;gap:7px;box-shadow:0 8px 24px rgba(0,0,0,.28)}
+.toast.show{display:flex}
+@media print{
+  .sidebar,.topbar,.toolbar,.summary-panel,.toast{display:none!important}
+  .shell,.main,.body,.report-area,.report-list{height:auto;overflow:visible}
+  .content-wrap,.summary-grid{margin:0}
+  body{background:#fff;color:#000}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="sidebar">
+    <div class="slogo">
+      <div class="slogo-icon">
+        <svg width="14" height="16" viewBox="0 0 14 16" fill="none" aria-hidden="true">
+          <rect x="3" y="13" width="8" height="2.5" fill="rgba(255,255,255,.92)"/>
+          <rect x="4" y="9.5" width="6" height="2" fill="rgba(255,255,255,.7)"/>
+          <rect x="5" y="6.5" width="4" height="1.8" fill="rgba(255,255,255,.5)"/>
+          <rect x="5.5" y="4" width="3" height="1.5" fill="rgba(255,255,255,.33)"/>
+          <rect x="6" y="1.5" width="2" height="1.5" fill="rgba(255,255,255,.18)"/>
+        </svg>
+      </div>
+      <div><div class="slogo-text">OWN PATH</div><div class="slogo-sub">Parent Portal</div></div>
+    </div>
+    <nav class="snav">
+      <div class="ni-sa"><i class="ti ti-users"></i> Students</div>
+      <div class="nsec">
+        <div class="nsec-hdr">
+          <span class="nsec-lbl" onclick="alert('Homeschool overview')">Homeschool</span>
+          <span class="nsec-chev open" id="chev-hs" onclick="toggleSec('hs')"><i class="ti ti-chevron-right"></i></span>
+        </div>
+        <div class="nsec-items open" id="items-hs">
+          <div class="ni" onclick="alert('Curriculum')"><i class="ti ti-book"></i> Curriculum</div>
+          <div class="ni" onclick="alert('Weekly Blocking')"><i class="ti ti-calendar-week"></i> Weekly Blocking</div>
+          <div class="ni act"><i class="ti ti-chart-bar"></i> Reports</div>
+        </div>
+      </div>
+      <div class="nsec">
+        <div class="nsec-hdr">
+          <span class="nsec-lbl" onclick="alert('Chores overview')">Chores</span>
+          <span class="nsec-chev" id="chev-ch" onclick="toggleSec('ch')"><i class="ti ti-chevron-right"></i></span>
+        </div>
+        <div class="nsec-items" id="items-ch">
+          <div class="ni"><i class="ti ti-sun"></i> Daily Routines</div>
+          <div class="ni"><i class="ti ti-list-check"></i> Weekly Chores</div>
+          <div class="ni"><i class="ti ti-calendar"></i> Monthly Chores</div>
+          <div class="ni"><i class="ti ti-coin"></i> Allowance</div>
+          <div class="ni"><i class="ti ti-trophy"></i> Rewards</div>
+        </div>
+      </div>
+      <div class="nsec">
+        <div class="nsec-hdr">
+          <span class="nsec-lbl" style="color:var(--t4)">Lockdown</span>
+          <span class="nsec-chev" id="chev-lk" onclick="toggleSec('lk')"><i class="ti ti-chevron-right"></i></span>
+        </div>
+        <div class="nsec-items" id="items-lk">
+          <div class="ni" style="color:var(--t4)"><i class="ti ti-shield-lock"></i> Lockdown Mode <span class="bsoon">Soon</span></div>
+        </div>
+      </div>
+    </nav>
+  </div>
+  <div class="main">
+    <div class="topbar">
+      <span class="tb-title">Reports</span>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <button class="btn" onclick="printReport()"><i class="ti ti-printer"></i> Print report</button>
+        <button class="btn pri" onclick="saveRecord()"><i class="ti ti-device-floppy"></i> Save record</button>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="filter-group">
+        <div class="filter-label">Student</div>
+        <select id="studentFilter" class="select-wide" onchange="setFilter('student', this.value)"></select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">School year</div>
+        <select id="yearFilter" class="select-narrow" onchange="setFilter('year', this.value)"></select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Quarter</div>
+        <select id="quarterFilter" class="select-narrow" onchange="setFilter('quarter', this.value)"></select>
+      </div>
+      <div class="filter-group" style="min-width:0;flex:1">
+        <div class="filter-label">Week</div>
+        <div class="week-strip" id="weekStrip"></div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Subject</div>
+        <select id="subjectFilter" class="select-wide" onchange="setFilter('subject', this.value)"></select>
+      </div>
+      <div class="toolbar-right">
+        <div class="status-chip"><i class="ti ti-calendar-week"></i> Snapshot <b id="snapshotLabel"></b></div>
+        <div class="status-chip"><i class="ti ti-report"></i> Record <b id="recordLabel">Draft</b></div>
+      </div>
+    </div>
+
+    <div class="body">
+      <div class="report-area">
+        <div class="banner" id="modeBanner"><i class="ti ti-badge"></i><span></span></div>
+        <div class="summary-grid" id="summaryGrid"></div>
+        <div class="content-wrap">
+          <div class="report-list" id="reportList"></div>
+        </div>
+      </div>
+      <aside class="summary-panel">
+        <div class="sp-hdr">
+          <span class="sp-title">Compliance</span>
+          <span style="font-size:9px;color:var(--t4);text-transform:uppercase;letter-spacing:.08em" id="complianceLabel">Review</span>
+        </div>
+        <div class="sp-body" id="sidePanel"></div>
+        <div class="panel-actions">
+          <button class="btn sm" onclick="toggleFocus()"><i class="ti ti-adjustments"></i> Toggle focus mode</button>
+          <button class="btn sm" onclick="expandAll()"><i class="ti ti-fold-down"></i> Expand all subjects</button>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"><i class="ti ti-circle-check"></i><span id="toastText"></span></div>
+
+<script>
+var WEEKS=[
+  {key:'default',label:'Default week',isDefault:true},
+  {key:'w-jun15',label:'Jun 15-21'},
+  {key:'w-jun22',label:'Jun 22-28',isCurrent:true},
+  {key:'w-jun29',label:'Jun 29-Jul 5'},
+  {key:'w-jul6',label:'Jul 6-12'},
+  {key:'w-jul13',label:'Jul 13-19'}
+];
+var FILTERS={student:'all',week:'w-jun22',year:'2025-2026',quarter:'Q2',subject:'all'};
+var weekOffset=0;
+var expanded={};
+var saved=false;
+var focusMode=false;
+var data={
+  students:[
+    {
+      id:'caleb',name:'Caleb',color:'#7c6fd4',grade:'7th',hoursTarget:19.5,
+      reports:{
+        'w-jun22':{
+          blocksAssigned:28,blocksCompleted:24,hoursLogged:17.5,reflections:5,evidence:7,
+          notes:'Two blocks are still waiting on evidence. One parent override was used to clear a missed project block.',
+          subjects:[
+            {id:'math',name:'Math 7',color:'#7c6fd4',assigned:7,completed:6,hours:5.0,reflections:2,evidence:2,blocks:[
+              {id:'m1',name:'Beast Academy practice',type:'STD',planned:2,done:true,hours:1.5,evidence:true,override:false,note:'Finished early with no issues.'},
+              {id:'m2',name:'Fractions review',type:'STD',planned:1,done:true,hours:0.75,evidence:false,override:false,note:'Completed, but photo still needed.'},
+              {id:'m3',name:'Geometry challenge project',type:'PROJ',planned:2,done:false,hours:1.25,evidence:false,override:true,note:'Parent override accepted after a late start.'},
+              {id:'m4',name:'Unit quiz',type:'TEST',planned:1,done:true,hours:0.5,evidence:true,override:false,note:'Quiz uploaded to report record.'},
+              {id:'m5',name:'Khan Academy stretch',type:'STD',planned:1,done:true,hours:1.0,evidence:true,override:false,note:'Strong independent completion.'}
+            ]},
+            {id:'read',name:'Reading 7',color:'#0f9e7a',assigned:5,completed:5,hours:2.5,reflections:1,evidence:1,blocks:[
+              {id:'r1',name:'Silent reading',type:'STD',planned:2,done:true,hours:1.0,evidence:false,override:false,note:'No evidence needed.'},
+              {id:'r2',name:'Vocabulary set',type:'STD',planned:1,done:true,hours:0.5,evidence:true,override:false,note:'Evidence attached as worksheet photo.'},
+              {id:'r3',name:'Book discussion',type:'P.LED',planned:1,done:true,hours:0.5,evidence:false,override:false,note:'Reflection captured in summary.'},
+              {id:'r4',name:'Reading log',type:'STD',planned:1,done:true,hours:0.5,evidence:false,override:false,note:'Logged by student from portal.'}
+            ]},
+            {id:'write',name:'Writing',color:'#993556',assigned:4,completed:3,hours:3.0,reflections:1,evidence:1,blocks:[
+              {id:'w1',name:'Draft paragraph',type:'STD',planned:1,done:true,hours:0.75,evidence:true,override:false,note:'Completed and attached.'},
+              {id:'w2',name:'Revision pass',type:'STD',planned:1,done:false,hours:0.5,evidence:false,override:false,note:'Still incomplete.'},
+              {id:'w3',name:'Short story sprint',type:'PROJ',planned:1,done:true,hours:1.5,evidence:false,override:false,note:'Needs a follow-up reflection.'},
+              {id:'w4',name:'Voice journal',type:'P.LED',planned:1,done:true,hours:0.25,evidence:true,override:false,note:'Audio note attached as evidence.'}
+            ]},
+            {id:'span',name:'Spanish',color:'#ba7517',assigned:4,completed:3,hours:2.0,reflections:1,evidence:1,blocks:[
+              {id:'s1',name:'Duolingo session',type:'STD',planned:1,done:true,hours:0.5,evidence:false,override:false,note:'Quick independent work.'},
+              {id:'s2',name:'Vocabulary quiz',type:'TEST',planned:1,done:true,hours:0.5,evidence:true,override:false,note:'Quiz uploaded.'},
+              {id:'s3',name:'Conversation practice',type:'P.LED',planned:1,done:false,hours:0.5,evidence:false,override:false,note:'Waiting on make-up.'},
+              {id:'s4',name:'Culture notebook',type:'STD',planned:1,done:true,hours:0.5,evidence:false,override:false,note:'Completed with reflection.'}
+            ]},
+            {id:'chess',name:'Chess',color:'#185fa5',assigned:4,completed:4,hours:1.0,reflections:0,evidence:2,blocks:[
+              {id:'c1',name:'Puzzle set',type:'STD',planned:1,done:true,hours:0.25,evidence:true,override:false,note:'Evidence attached.'},
+              {id:'c2',name:'Rapid game',type:'STD',planned:1,done:true,hours:0.25,evidence:false,override:false,note:'Completed in app.'},
+              {id:'c3',name:'Strategy lesson',type:'STD',planned:1,done:true,hours:0.25,evidence:true,override:false,note:'Screenshot saved.'},
+              {id:'c4',name:'Endgame practice',type:'STD',planned:1,done:true,hours:0.25,evidence:false,override:false,note:'No evidence required.'}
+            ]}
+          ]
+        }
+      }
+    },
+    {
+      id:'evelyn',name:'Evelyn',color:'#0f9e7a',grade:'5th',hoursTarget:15.5,
+      reports:{
+        'w-jun22':{
+          blocksAssigned:22,blocksCompleted:22,hoursLogged:14.2,reflections:4,evidence:6,
+          notes:'Fully complete week. No compliance warnings.',
+          subjects:[
+            {id:'math',name:'Math 5',color:'#7c6fd4',assigned:6,completed:6,hours:4.5,reflections:1,evidence:2,blocks:[
+              {id:'em1',name:'Lessons A-B',type:'STD',planned:2,done:true,hours:1.5,evidence:true,override:false,note:'Strong work.'},
+              {id:'em2',name:'Facts review',type:'STD',planned:1,done:true,hours:0.5,evidence:false,override:false,note:'Completed from memory.'},
+              {id:'em3',name:'Math notebook',type:'P.LED',planned:1,done:true,hours:0.5,evidence:true,override:false,note:'Notebook photo attached.'},
+              {id:'em4',name:'Lesson check',type:'TEST',planned:1,done:true,hours:1.0,evidence:false,override:false,note:'No issue.'},
+              {id:'em5',name:'Extra practice',type:'STD',planned:1,done:true,hours:1.0,evidence:false,override:false,note:'Completed early.'}
+            ]},
+            {id:'read',name:'Reading 5',color:'#0f9e7a',assigned:5,completed:5,hours:2.5,reflections:1,evidence:1,blocks:[
+              {id:'er1',name:'Chapter book reading',type:'STD',planned:2,done:true,hours:1.0,evidence:false,override:false,note:'Independent reading met plan.'},
+              {id:'er2',name:'Book talk',type:'P.LED',planned:1,done:true,hours:0.5,evidence:true,override:false,note:'Recorded summary attached.'},
+              {id:'er3',name:'Reading log',type:'STD',planned:1,done:true,hours:0.5,evidence:false,override:false,note:'Logged daily.'},
+              {id:'er4',name:'Fluency practice',type:'STD',planned:1,done:true,hours:0.5,evidence:false,override:false,note:'Completed.'}
+            ]},
+            {id:'art',name:'3D Design',color:'#d85a30',assigned:4,completed:4,hours:2.5,reflections:1,evidence:2,blocks:[
+              {id:'ea1',name:'CG lesson',type:'STD',planned:1,done:true,hours:0.5,evidence:true,override:false,note:'Rendered screenshot attached.'},
+              {id:'ea2',name:'Model blockout',type:'PROJ',planned:1,done:true,hours:1.0,evidence:true,override:false,note:'Project milestone captured.'},
+              {id:'ea3',name:'Parent review',type:'P.LED',planned:1,done:true,hours:0.5,evidence:false,override:false,note:'Reviewed verbally.'},
+              {id:'ea4',name:'Texture pass',type:'STD',planned:1,done:true,hours:0.5,evidence:false,override:false,note:'Finished on time.'}
+            ]},
+            {id:'music',name:'Piano',color:'#3b8c11',assigned:4,completed:4,hours:2.2,reflections:1,evidence:1,blocks:[
+              {id:'ep1',name:'Scales',type:'STD',planned:1,done:true,hours:0.5,evidence:false,override:false,note:'Good tempo.'},
+              {id:'ep2',name:'Lesson with Mom',type:'P.LED',planned:1,done:true,hours:0.5,evidence:true,override:false,note:'Short clip attached.'},
+              {id:'ep3',name:'Piece practice',type:'STD',planned:1,done:true,hours:0.6,evidence:false,override:false,note:'All complete.'},
+              {id:'ep4',name:'Performance review',type:'TEST',planned:1,done:true,hours:0.6,evidence:false,override:false,note:'Ready to file.'}
+            ]},
+            {id:'pe',name:'PE',color:'#993556',assigned:3,completed:3,hours:2.5,reflections:0,evidence:0,blocks:[
+              {id:'ep5',name:'Bike ride',type:'STD',planned:1,done:true,hours:1.0,evidence:false,override:false,note:'Completed outdoors.'},
+              {id:'ep6',name:'Trampoline session',type:'STD',planned:1,done:true,hours:0.75,evidence:false,override:false,note:'No evidence required.'},
+              {id:'ep7',name:'Stretch routine',type:'STD',planned:1,done:true,hours:0.75,evidence:false,override:false,note:'Completed as scheduled.'}
+            ]}
+          ]
+        }
+      }
+    },
+    {
+      id:'sami',name:'Sami',color:'#ba7517',grade:'3rd',hoursTarget:12.0,
+      reports:{
+        'w-jun22':{
+          blocksAssigned:18,blocksCompleted:15,hoursLogged:9.1,reflections:2,evidence:3,
+          notes:'Three incomplete blocks are holding the week open. Parent review is needed before saving the record.',
+          subjects:[
+            {id:'math',name:'Math 3',color:'#7c6fd4',assigned:5,completed:4,hours:2.5,reflections:1,evidence:1,blocks:[
+              {id:'sm1',name:'Number work',type:'STD',planned:2,done:true,hours:1.0,evidence:true,override:false,note:'Photo attached.'},
+              {id:'sm2',name:'Facts practice',type:'STD',planned:1,done:true,hours:0.5,evidence:false,override:false,note:'Completed.'},
+              {id:'sm3',name:'Math game',type:'STD',planned:1,done:false,hours:0.5,evidence:false,override:true,note:'Parent override applied for partial credit.'},
+              {id:'sm4',name:'Mini test',type:'TEST',planned:1,done:true,hours:0.5,evidence:false,override:false,note:'No concerns.'}
+            ]},
+            {id:'read',name:'Reading 3',color:'#0f9e7a',assigned:4,completed:4,hours:1.8,reflections:1,evidence:1,blocks:[
+              {id:'sr1',name:'Read aloud',type:'P.LED',planned:1,done:true,hours:0.5,evidence:true,override:false,note:'Recorded clip attached.'},
+              {id:'sr2',name:'Independent reading',type:'STD',planned:2,done:true,hours:0.8,evidence:false,override:false,note:'Completed.'},
+              {id:'sr3',name:'Reading response',type:'STD',planned:1,done:true,hours:0.5,evidence:false,override:false,note:'Reflection captured.'}
+            ]},
+            {id:'art',name:'Art',color:'#d85a30',assigned:3,completed:2,hours:1.2,reflections:0,evidence:1,blocks:[
+              {id:'sa1',name:'Sketch page',type:'STD',planned:1,done:true,hours:0.5,evidence:true,override:false,note:'Image attached.'},
+              {id:'sa2',name:'Color study',type:'STD',planned:1,done:false,hours:0.4,evidence:false,override:false,note:'Not finished yet.'},
+              {id:'sa3',name:'Clay project',type:'PROJ',planned:1,done:true,hours:0.3,evidence:false,override:false,note:'Completed.'}
+            ]},
+            {id:'music',name:'Recorder',color:'#3b8c11',assigned:3,completed:3,hours:1.3,reflections:0,evidence:0,blocks:[
+              {id:'sp1',name:'Warm-up',type:'STD',planned:1,done:true,hours:0.4,evidence:false,override:false,note:'Fine.'},
+              {id:'sp2',name:'Song practice',type:'STD',planned:1,done:true,hours:0.5,evidence:false,override:false,note:'Completed.'},
+              {id:'sp3',name:'Performance check',type:'TEST',planned:1,done:true,hours:0.4,evidence:false,override:false,note:'Ready.'}
+            ]},
+            {id:'life',name:'Life Skills',color:'#185fa5',assigned:3,completed:2,hours:2.3,reflections:0,evidence:0,blocks:[
+              {id:'sl1',name:'Kitchen help',type:'P.LED',planned:1,done:true,hours:0.8,evidence:false,override:false,note:'Completed with parent.'},
+              {id:'sl2',name:'Tidying project',type:'STD',planned:1,done:false,hours:0.7,evidence:false,override:false,note:'Incomplete.'},
+              {id:'sl3',name:'Simple chore log',type:'STD',planned:1,done:true,hours:0.8,evidence:false,override:false,note:'Logged.'}
+            ]}
+          ]
+        }
+      }
+    }
+  ]
+};
+
+function toggleSec(key){
+  var items=document.getElementById('items-'+key);
+  var chev=document.getElementById('chev-'+key);
+  var open=items.classList.toggle('open');
+  chev.classList.toggle('open',open);
+}
+
+function toggleFocus(){
+  focusMode=!focusMode;
+  document.querySelector('.summary-panel').style.display=focusMode?'none':'flex';
+  showToast(focusMode?'Focus mode on':'Focus mode off');
+}
+
+function expandAll(){
+  getSubjects().forEach(function(s){expanded[s.key]=true;});
+  render();
+}
+
+function setFilter(key,val){
+  FILTERS[key]=val;
+  if(key==='student' || key==='subject'){expanded={};}
+  render();
+}
+
+function changeWeek(key){
+  FILTERS.week=key;
+  render();
+}
+
+function shiftWeeks(dir){
+  weekOffset=Math.max(0,Math.min(WEEKS.length-5,weekOffset+dir));
+  renderWeekStrip();
+}
+
+function printReport(){window.print();showToast('Print preview opened');}
+
+function saveRecord(){
+  saved=true;
+  document.getElementById('recordLabel').textContent='Saved';
+  showToast('Report record saved in this prototype');
+  render();
+}
+
+function toggleBlock(block){
+  block.done=!block.done;
+  if(!block.done){block.override=true}
+  render();
+}
+
+function toggleEvidence(block){
+  block.evidence=!block.evidence;
+  render();
+}
+
+function toggleOverride(block){
+  block.override=!block.override;
+  render();
+}
+
+function showToast(text){
+  var t=document.getElementById('toast');
+  document.getElementById('toastText').textContent=text;
+  t.classList.add('show');
+  clearTimeout(showToast._timer);
+  showToast._timer=setTimeout(function(){t.classList.remove('show')},1600);
+}
+
+function getWeekLabel(){
+  var w=WEEKS.find(function(x){return x.key===FILTERS.week})||WEEKS[0];
+  return w.label;
+}
+
+function getSubjects(){
+  var subjects=[];
+  data.students.forEach(function(student){
+    if(FILTERS.student!=='all' && FILTERS.student!==student.id) return;
+    var report=student.reports[FILTERS.week];
+    if(!report) return;
+    report.subjects.forEach(function(subject){
+      if(FILTERS.subject!=='all' && FILTERS.subject!==subject.id) return;
+      subjects.push({student:student,report:report,subject:subject,key:student.id+'-'+subject.id});
+    });
+  });
+  return subjects;
+}
+
+function getVisibleStudents(){
+  return data.students.filter(function(student){return FILTERS.student==='all' || FILTERS.student===student.id;})
+    .filter(function(student){return !!student.reports[FILTERS.week];});
+}
+
+function deriveSubject(subject){
+  var derived={assigned:0,completed:0,hours:0,evidence:0,overrides:0,open:0,reflections:subject.reflections||0};
+  subject.blocks.forEach(function(block){
+    derived.assigned+=1;
+    if(block.done) derived.completed+=1; else derived.open+=1;
+    derived.hours+=block.hours||0;
+    if(block.evidence) derived.evidence+=1;
+    if(block.override) derived.overrides+=1;
+  });
+  return derived;
+}
+
+function deriveReport(report){
+  var derived={assigned:0,completed:0,hours:0,reflections:0,evidence:0,overrides:0,open:0,completion:0};
+  report.subjects.forEach(function(subject){
+    var s=deriveSubject(subject);
+    derived.assigned+=s.assigned;
+    derived.completed+=s.completed;
+    derived.hours+=s.hours;
+    derived.reflections+=s.reflections;
+    derived.evidence+=s.evidence;
+    derived.overrides+=s.overrides;
+    derived.open+=s.open;
+  });
+  derived.completion=derived.assigned?Math.round(derived.completed/derived.assigned*100):0;
+  return derived;
+}
+
+function getMetrics(){
+  var assigned=0,completed=0,hours=0,reflections=0,evidence=0,overrides=0,open=0;
+  getVisibleStudents().forEach(function(student){
+    var report=student.reports[FILTERS.week];
+    var reportTotals=deriveReport(report);
+    assigned+=reportTotals.assigned;
+    completed+=reportTotals.completed;
+    hours+=reportTotals.hours;
+    reflections+=reportTotals.reflections;
+    evidence+=reportTotals.evidence;
+    report.subjects.forEach(function(subject){
+      if(FILTERS.subject!=='all' && FILTERS.subject!==subject.id) return;
+      var subjectTotals=deriveSubject(subject);
+      open+=subjectTotals.open;
+      overrides+=subjectTotals.overrides;
+    });
+  });
+  return {assigned:assigned,completed:completed,hours:hours,reflections:reflections,evidence:evidence,overrides:overrides,open:open,completion:assigned?Math.round(completed/assigned*100):0};
+}
+
+function getSubjectKey(id){
+  var map={math:'Math',read:'Reading',write:'Writing',span:'Spanish',chess:'Chess',art:'3D Design',music:'Music',pe:'PE',life:'Life Skills'};
+  return map[id]||id;
+}
+
+function blockTypeClass(type){
+  if(type==='PROJ') return 'project';
+  if(type==='P.LED') return 'parent';
+  if(type==='TEST') return 'test';
+  return '';
+}
+
+function renderWeekStrip(){
+  var visible=WEEKS.slice(weekOffset,weekOffset+5);
+  var html='';
+  html+='<div class="week-nav-btn" onclick="shiftWeeks(-1)"><i class="ti ti-chevron-left"></i></div>';
+  visible.forEach(function(w){
+    var cls='week-chip'+(w.isDefault?' default':'')+(w.key===FILTERS.week?' act':'');
+    html+='<div class="'+cls+'" onclick="changeWeek(\''+w.key+'\')">'+(w.isCurrent?'<i class="ti ti-circle-dot" style="font-size:10px;margin-right:3px;color:var(--green)"></i>':'')+w.label+'</div>';
+  });
+  html+='<div class="week-nav-btn" onclick="shiftWeeks(1)"><i class="ti ti-chevron-right"></i></div>';
+  document.getElementById('weekStrip').innerHTML=html;
+}
+
+function renderFilters(){
+  var studentSel=document.getElementById('studentFilter');
+  var yearSel=document.getElementById('yearFilter');
+  var quarterSel=document.getElementById('quarterFilter');
+  var subjectSel=document.getElementById('subjectFilter');
+  studentSel.innerHTML='<option value="all">All students</option>'+data.students.map(function(s){return '<option value="'+s.id+'">'+s.name+'</option>';}).join('');
+  yearSel.innerHTML=['2025-2026','2024-2025'].map(function(y){return '<option value="'+y+'">'+y+'</option>';}).join('');
+  quarterSel.innerHTML=['Q1','Q2','Q3','Q4'].map(function(q){return '<option value="'+q+'">'+q+'</option>';}).join('');
+  var subjectOptions=[{value:'all',label:'All subjects'}];
+  var seen={};
+  data.students.forEach(function(student){
+    var report=student.reports[FILTERS.week];
+    if(!report) return;
+    report.subjects.forEach(function(subject){
+      if(seen[subject.id]) return;
+      seen[subject.id]=true;
+      subjectOptions.push({value:subject.id,label:getSubjectKey(subject.id)});
+    });
+  });
+  subjectSel.innerHTML=subjectOptions.map(function(o){return '<option value="'+o.value+'">'+o.label+'</option>';}).join('');
+  if(!subjectOptions.some(function(o){return o.value===FILTERS.subject;})) FILTERS.subject='all';
+  studentSel.value=FILTERS.student;
+  yearSel.value=FILTERS.year;
+  quarterSel.value=FILTERS.quarter;
+  subjectSel.value=FILTERS.subject;
+}
+
+function renderSummary(){
+  var m=getMetrics();
+  document.getElementById('summaryGrid').innerHTML=
+    '<div class="sum-card acc"><div class="value">'+m.assigned+'</div><div class="label">blocks assigned</div></div>'+
+    '<div class="sum-card good"><div class="value">'+m.completed+'</div><div class="label">blocks completed</div></div>'+
+    '<div class="sum-card acc"><div class="value">'+m.hours.toFixed(1)+'</div><div class="label">hours logged</div></div>'+
+    '<div class="sum-card '+(m.completion>=90?'good':m.completion>=75?'warn':'bad')+'"><div class="value">'+m.completion+'%</div><div class="label">completion</div></div>'+
+    '<div class="sum-card warn"><div class="value">'+m.reflections+'/'+m.evidence+'</div><div class="label">reflections / evidence</div></div>';
+  var modeText=(FILTERS.student==='all'?'All students':'Student '+getStudentName(FILTERS.student))+' - '+getWeekLabel()+', '+FILTERS.year+' '+FILTERS.quarter;
+  document.getElementById('snapshotLabel').textContent=FILTERS.week==='default'?'Default':'Week';
+  document.getElementById('modeBanner').innerHTML='<i class="ti ti-badge"></i><span><b>'+modeText+'</b> weekly accountability view. Parents define the week; students run the day.</span>';
+  document.getElementById('complianceLabel').textContent=m.open===0?'Ready':'Review';
+}
+
+function getStudentName(id){
+  var s=data.students.find(function(x){return x.id===id});
+  return s?s.name:'';
+}
+
+function getProgressClass(value){
+  if(value>=90) return 'good';
+  if(value>=75) return 'warn';
+  return 'bad';
+}
+
+function renderList(){
+  var students=getVisibleStudents();
+  var html='';
+  if(!students.length){
+    html='<div class="empty">No report data matches the current filters.</div>';
+  } else {
+    students.forEach(function(student){
+      var report=student.reports[FILTERS.week];
+      if(!report) return;
+      var reportSubjects=report.subjects.filter(function(subject){return FILTERS.subject==='all' || FILTERS.subject===subject.id;});
+      var reportTotals=deriveReport(report);
+      var completion=reportTotals.completion;
+      html+='<section class="student-section">';
+      html+='<div class="student-head" style="border-left-color:'+student.color+'">';
+      html+='<div class="student-meta">';
+      html+='<div class="student-name">'+student.name+' <span class="count-badge">'+student.grade+'</span> <span class="count-badge '+getProgressClass(completion)+'">'+completion+'%</span></div>';
+      html+='<div class="student-sub">'+FILTERS.year+' · '+FILTERS.quarter+' · '+getWeekLabel()+' · '+report.notes+'</div>';
+      html+='</div>';
+      html+='<div class="student-stats">';
+      html+='<div class="mini-stat"><div class="mini-value">'+reportTotals.completed+'/'+reportTotals.assigned+'</div><div class="mini-label">blocks</div></div>';
+      html+='<div class="mini-stat"><div class="mini-value">'+reportTotals.hours.toFixed(1)+'</div><div class="mini-label">hours</div></div>';
+      html+='<div class="mini-stat"><div class="mini-value">'+reportTotals.reflections+'</div><div class="mini-label">reflections</div></div>';
+      html+='<div class="mini-stat"><div class="mini-value">'+reportTotals.evidence+'</div><div class="mini-label">evidence</div></div>';
+      html+='</div></div>';
+      if(!reportSubjects.length){
+        html+='<div class="empty">No subjects match the subject filter for this student.</div>';
+      } else {
+        reportSubjects.forEach(function(subject){
+          var key=student.id+'-'+subject.id;
+          var open=!!expanded[key];
+          var totals=deriveSubject(subject);
+          var pct=Math.round(totals.completed/totals.assigned*100);
+          html+='<div class="subject-row'+(open?' open':'')+'" style="border-left-color:'+subject.color+'">';
+          html+='<div class="subject-hdr" onclick="toggleSubject(\''+key+'\')">';
+          html+='<div class="subject-dot" style="background:'+subject.color+'"></div>';
+          html+='<div class="subject-main">';
+          html+='<div class="subject-title">'+subject.name+' <span class="count-badge '+getProgressClass(pct)+'">'+totals.completed+'/'+totals.assigned+'</span></div>';
+          html+='<div class="subject-sub">';
+          html+='<span>'+totals.hours.toFixed(1)+'h logged</span>';
+          html+='<span>'+totals.reflections+' reflections</span>';
+          html+='<span>'+totals.evidence+' evidence items</span>';
+          html+='</div></div>';
+          html+='<div class="subject-right"><span class="count-badge">'+pct+'%</span><i class="ti ti-chevron-right chev'+(open?' open':'')+'"></i></div>';
+          html+='</div>';
+          html+='<div class="subject-body">';
+          html+='<div class="block-grid">';
+          subject.blocks.forEach(function(block){
+            var rowClass=block.override?'over':(block.done?'done':'incomplete');
+            html+='<div class="block-item '+rowClass+'">';
+            html+='<div class="block-state '+(block.done?'on':'')+'" onclick="toggleBlock(findBlock(\''+key+'\',\''+block.id+'\'));event.stopPropagation()"><i class="ti ti-check"></i></div>';
+            html+='<div class="block-info">';
+            html+='<div class="block-top">';
+            html+='<span class="block-name">'+block.name+'</span>';
+            html+='<span class="block-meta">'+block.planned+' planned · '+block.hours.toFixed(2)+'h logged</span>';
+            html+='</div>';
+            html+='<div class="block-pills">';
+            html+='<span class="pill type '+blockTypeClass(block.type)+'">'+block.type+'</span>';
+            html+='<span class="pill '+(block.done?'on':'warn')+'">'+(block.done?'Complete':'Incomplete')+'</span>';
+            html+='<span class="pill '+(block.override?'on':'')+'">'+(block.override?'Parent override':'No override')+'</span>';
+            html+='<span class="pill '+(block.evidence?'on':'')+'">'+(block.evidence?'Evidence attached':'Evidence missing')+'</span>';
+            html+='</div>';
+            html+='<div class="block-detail"><span class="block-note">'+block.note+'</span></div>';
+            html+='</div>';
+            html+='<div class="block-actions">';
+            html+='<button class="icon-btn '+(block.done?'on':'')+'" onclick="toggleBlock(findBlock(\''+key+'\',\''+block.id+'\'));event.stopPropagation()" title="Toggle complete"><i class="ti ti-circle-check"></i></button>';
+            html+='<button class="icon-btn '+(block.override?'on':'')+'" onclick="toggleOverride(findBlock(\''+key+'\',\''+block.id+'\'));event.stopPropagation()" title="Parent override"><i class="ti ti-shield-check"></i></button>';
+            html+='<button class="icon-btn '+(block.evidence?'on':'')+'" onclick="toggleEvidence(findBlock(\''+key+'\',\''+block.id+'\'));event.stopPropagation()" title="Evidence attached"><i class="ti ti-paperclip"></i></button>';
+            html+='</div>';
+            html+='</div>';
+          });
+          html+='</div></div>';
+        });
+      }
+      html+='</section>';
+    });
+  }
+  document.getElementById('reportList').innerHTML=html;
+}
+
+function renderSidePanel(){
+  var m=getMetrics();
+  var students=getVisibleStudents();
+  var html='';
+  html+='<div class="panel-box '+(m.open===0?'good':'warn')+'">';
+  html+='<div class="panel-stat"><div class="panel-val">'+m.completion+'%</div><div class="panel-lbl">overall completion for filtered view</div></div>';
+  html+='</div>';
+  html+='<div class="panel-box">';
+  html+='<div class="panel-stat"><div class="panel-val">'+m.open+'</div><div class="panel-lbl">open blocks still needing attention</div></div>';
+  html+='</div>';
+  html+='<div class="panel-list">';
+  html+='<div class="panel-row"><i class="ti ti-users"></i> <strong>'+students.length+'</strong> students visible</div>';
+  html+='<div class="panel-row"><i class="ti ti-file-text"></i> <strong>'+m.assigned+'</strong> blocks in snapshot</div>';
+  html+='<div class="panel-row"><i class="ti ti-paperclip"></i> <strong>'+m.evidence+'</strong> blocks with evidence</div>';
+  html+='<div class="panel-row"><i class="ti ti-shield-check"></i> <strong>'+m.overrides+'</strong> parent overrides</div>';
+  html+='</div>';
+  html+='<div class="panel-box '+(m.open===0?'good':'bad')+'">';
+  html+='<div class="panel-stat"><div class="panel-val">'+(m.open===0?'Ready':'Hold')+'</div><div class="panel-lbl">'+(m.open===0?'Snapshot can be saved as a record.':'Resolve open blocks before filing.')+'</div></div>';
+  html+='</div>';
+  html+='<div class="panel-list">';
+  students.forEach(function(student){
+    var report=student.reports[FILTERS.week];
+    if(!report) return;
+    var totals=deriveReport(report);
+    html+='<div class="panel-row"><i class="ti ti-badge"></i> '+student.name+' <strong>'+totals.completed+'/'+totals.assigned+'</strong></div>';
+  });
+  html+='</div>';
+  document.getElementById('sidePanel').innerHTML=html;
+}
+
+function toggleSubject(key){
+  expanded[key]=!expanded[key];
+  render();
+}
+
+function findBlock(key, blockId){
+  var parts=key.split('-');
+  var student=data.students.find(function(s){return s.id===parts[0]});
+  if(!student) return null;
+  var report=student.reports[FILTERS.week];
+  if(!report) return null;
+  var subject=report.subjects.find(function(sub){return key===student.id+'-'+sub.id});
+  if(!subject) return null;
+  return subject.blocks.find(function(block){return block.id===blockId})||null;
+}
+
+function getMetricLabel(){
+  var week=WEEKS.find(function(w){return w.key===FILTERS.week});
+  return week?week.label:'';
+}
+
+function render(){
+  renderFilters();
+  renderWeekStrip();
+  renderSummary();
+  renderList();
+  renderSidePanel();
+  document.getElementById('recordLabel').textContent=saved?'Saved':'Draft';
+}
+
+function init(){
+  data.students.forEach(function(student){
+    var report=student.reports[FILTERS.week];
+    if(report){
+      report.subjects.forEach(function(subject){
+        expanded[student.id+'-'+subject.id]=subject.assigned>4;
+      });
+    }
+  });
+  render();
+}
+
+init();
+</script>
+</body>
+</html>

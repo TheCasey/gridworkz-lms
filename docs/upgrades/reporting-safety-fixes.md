@@ -162,6 +162,16 @@ The script writes `/tmp/gridworkz-reporting-validation-fixture.json` unless `--o
 
 Manual follow-up is required before treating reporting as beta-ready: seed the fixture into an emulator or staging project, sign in as the fixture parent, save current-week official records, print one live and one saved report, open the student portal routes, and verify previous-week rollover writes a report and archives the published weekly plan.
 
+For a broader private-beta smoke fixture that can write disposable emulator or staging documents for reports, student portal, chores/rewards, operator console, and curriculum destructive QA, use:
+
+```bash
+node scripts/seed-private-beta-smoke-fixtures.mjs --dry-run
+# with local Auth and Firestore emulators running:
+node scripts/seed-private-beta-smoke-fixtures.mjs --write --target emulator
+# with local Auth and Functions emulators running after fixture write:
+node scripts/smoke-private-beta-callables.mjs --run --target emulator
+```
+
 ## Related Docs
 
 - [../features/reporting-and-rollover.md](../features/reporting-and-rollover.md)

@@ -9,7 +9,7 @@ The parent dashboard is the authenticated control surface for the app. It owns:
 - student overview
 - live weekly activity
 - student creation
-- route-backed shell navigation to students, curriculum, reports, settings, and Lockdown
+- route-backed shell navigation to students, curriculum, reports, settings, Lockdown, and chores/rewards
 - manual completion and rollover-related state
 - shared shell state for premium visibility and shell slots
 
@@ -20,6 +20,7 @@ The parent dashboard is the authenticated control surface for the app. It owns:
 - `src/components/AddStudentModal.jsx`
 - `src/constants/dashboardFeatures.js`
 - `src/pages/Lockdown.jsx`
+- `src/pages/dashboard/ChoresRoute.jsx`
 
 ## Current Behavior
 
@@ -36,13 +37,14 @@ The parent dashboard is the authenticated control surface for the app. It owns:
 - Multi-student households must choose a student explicitly before generating a trusted pairing code.
 - Lockdown-entitled parents can generate short-lived trusted enrollment material, review the current derived policy state, and manage approved off-hours resources per student from the dashboard.
 - Downgrades preserve saved Lockdown setup in read-only mode while disabling trusted pairing and edits until the Lockdown plan is restored.
+- Routes chores/rewards through `/dashboard/chores` with Free daily routine access and paid Core/Lockdown access for chore pools, allowance, points, rewards, and redemptions.
 
 ## Open Gaps
 
 - This page still coordinates a meaningful amount of shell orchestration even after hook extraction.
 - Weekly rollover is run from the client.
 - The first weekly-plan review/publish bridge exists, but persisted curriculum templates, assignment management, project views, worksheet runtime, and direct-edit weekly planning surfaces are not implemented yet.
-- Projects, billing, chores, and other future modules still need to be added on top of the shared shell contract.
+- Projects, billing, and other future modules still need to be added on top of the shared shell contract. Chores/rewards already use it.
 - Kiosk mode and broader Lockdown hardening remain follow-on scope outside the current parent dashboard launch surface.
 
 ## Related Planning
@@ -50,3 +52,4 @@ The parent dashboard is the authenticated control surface for the app. It owns:
 - [../upgrades/baseline-product-foundation.md](../upgrades/baseline-product-foundation.md)
 - [../specs/weekly-planning-and-review-flow.md](../specs/weekly-planning-and-review-flow.md)
 - [../specs/projects-and-assessment-model.md](../specs/projects-and-assessment-model.md)
+- [../specs/chores-and-rewards-module.md](../specs/chores-and-rewards-module.md)

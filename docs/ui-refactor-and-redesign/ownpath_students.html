@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OwnPath — Students</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --n0:#181828;--n1:#1f1f32;--n2:#26263c;--n3:#2e2e48;--n4:#383858;
+  --vi:#7c6fd4;--vl:#b8adff;--vf:rgba(124,111,212,.14);
+  --bd:rgba(255,255,255,.08);--bd2:rgba(255,255,255,.14);
+  --t1:#eeeaf8;--t2:#c4bedc;--t3:#8f8aaa;--t4:#585674;
+  --amber:#f59e0b;--green:#34d399;--red:#f87171;--blue:#60a5fa;
+  --rose:#f472b6;--teal:#22d3ee;
+}
+html,body{height:100%;background:var(--n0);color:var(--t1);font-family:system-ui,sans-serif}
+body{overflow:hidden}
+.shell{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:190px;background:var(--n0);display:flex;flex-direction:column;flex-shrink:0;border-right:0.5px solid var(--bd)}
+.slogo{padding:14px 16px;border-bottom:0.5px solid var(--bd);display:flex;align-items:center;gap:9px}
+.slogo-icon{width:26px;height:26px;background:var(--vi);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.slogo-text{font-size:12px;font-weight:500;color:var(--t1);letter-spacing:.06em}
+.slogo-sub{font-size:9px;color:var(--t3);margin-top:1px}
+.snav{padding:6px 0;flex:1;overflow-y:auto}
+.nsec{margin-bottom:2px}
+.nsec-hdr{display:flex;align-items:center;cursor:pointer;user-select:none}
+.nsec-lbl{flex:1;font-size:10px;font-weight:500;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;padding:9px 16px 5px}
+.nsec-hdr:hover .nsec-lbl{color:var(--t2)}
+.nsec-chev{padding:9px 12px 5px 0;font-size:12px;color:var(--t4);transition:transform .18s}
+.nsec-chev.open{transform:rotate(90deg)}
+.nsec-items{overflow:hidden;max-height:0;transition:max-height .2s}
+.nsec-items.open{max-height:220px}
+.ni{display:flex;align-items:center;gap:8px;padding:7px 16px;font-size:11px;color:var(--t2);cursor:pointer;transition:all .15s;border-left:2px solid transparent}
+.ni:hover{color:var(--t1);background:rgba(255,255,255,.04)}
+.ni.act{color:var(--vl);border-left-color:var(--vi);background:var(--vf)}
+.ni i{font-size:13px;flex-shrink:0}
+.ni-sa{display:flex;align-items:center;gap:8px;padding:7px 16px;font-size:11px;color:var(--t2);cursor:pointer;border-left:2px solid transparent}
+.ni-sa:hover{color:var(--t1);background:rgba(255,255,255,.04)}
+.bsoon{font-size:8px;background:rgba(124,111,212,.22);color:var(--vl);padding:1px 5px;margin-left:auto}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--n1)}
+.topbar{height:50px;background:var(--n0);border-bottom:0.5px solid var(--bd);display:flex;align-items:center;padding:0 18px;gap:10px;flex-shrink:0}
+.tb-title{font-size:14px;font-weight:500;color:var(--t1)}
+.tb-sub{font-size:10px;color:var(--t4);margin-left:4px}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;font-size:11px;cursor:pointer;border:0.5px solid var(--bd2);background:transparent;color:var(--t2);transition:all .15s}
+.btn:hover{background:var(--n3);color:var(--t1)}
+.btn.pri{background:var(--vi);color:#fff;border-color:var(--vi)}
+.btn.pri:hover{background:#6c60c0}
+.btn.sm{padding:3px 8px;font-size:10px}
+.btn.warn{border-color:rgba(245,158,11,.34);color:var(--amber);background:rgba(245,158,11,.08)}
+.btn.warn:hover{background:rgba(245,158,11,.16)}
+.btn.red{border-color:rgba(248,113,113,.32);color:var(--red);background:rgba(248,113,113,.08)}
+.btn.red:hover{background:rgba(248,113,113,.16)}
+.btn.green{border-color:rgba(52,211,153,.28);color:var(--green);background:rgba(52,211,153,.08)}
+.btn.green:hover{background:rgba(52,211,153,.16)}
+.btn i{font-size:13px}
+.usage{margin-left:auto;display:flex;align-items:center;gap:10px;min-width:240px;justify-content:flex-end}
+.meter{width:110px;height:8px;background:var(--n3);border:0.5px solid var(--bd2);overflow:hidden}
+.meter-fill{height:100%;background:var(--vi);width:0%}
+.usage-meta{display:flex;flex-direction:column;gap:1px;align-items:flex-end}
+.usage-meta strong{font-size:11px;font-weight:500;color:var(--t1)}
+.usage-meta span{font-size:9px;color:var(--t4)}
+.content{flex:1;display:flex;overflow:hidden}
+.list-pane{width:340px;flex-shrink:0;border-right:0.5px solid var(--bd);display:flex;flex-direction:column;overflow:hidden}
+.pane-head{padding:12px 14px 10px;border-bottom:0.5px solid var(--bd);background:var(--n0);display:flex;align-items:center;gap:8px}
+.pane-title{font-size:12px;font-weight:500;color:var(--t1);flex:1}
+.pane-meta{font-size:9px;color:var(--t4);letter-spacing:.08em;text-transform:uppercase}
+.search{width:100%;background:var(--n3);border:0.5px solid var(--bd2);color:var(--t1);font-size:11px;padding:6px 8px}
+.search::placeholder{color:var(--t4)}
+.group{padding:10px 10px 8px;display:flex;align-items:center;justify-content:space-between;color:var(--t4);font-size:9px;letter-spacing:.08em;text-transform:uppercase}
+.group small{color:var(--t4)}
+.student-list{flex:1;overflow-y:auto;padding-bottom:8px}
+.student-row{display:grid;grid-template-columns:10px 1fr auto;gap:10px;padding:10px 12px;border-bottom:0.5px solid var(--bd);background:var(--n1);cursor:pointer;transition:background .15s}
+.student-row:hover{background:var(--n2)}
+.student-row.sel{background:var(--n2)}
+.student-row.archived{opacity:.62}
+.row-accent{width:3px;background:transparent}
+.row-main{min-width:0}
+.row-top{display:flex;align-items:center;gap:8px;margin-bottom:4px;min-width:0}
+.avatar{width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:#fff;flex-shrink:0}
+.student-name{font-size:12px;font-weight:500;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badges{display:flex;gap:4px;flex-wrap:wrap}
+.pill{font-size:8px;padding:2px 5px;font-weight:500;letter-spacing:.03em;background:var(--n3);color:var(--t3)}
+.pill.active{background:rgba(52,211,153,.15);color:var(--green)}
+.pill.archived{background:rgba(248,113,113,.12);color:var(--red)}
+.pill.mode-pin{background:rgba(124,111,212,.16);color:var(--vl)}
+.pill.mode-pass{background:rgba(96,165,250,.14);color:var(--blue)}
+.row-meta{font-size:10px;color:var(--t3);margin-top:4px;line-height:1.45}
+.row-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.seat{font-size:10px;color:var(--t2)}
+.seat.used{color:var(--amber)}
+.mini-link{font-size:8px;color:var(--t4);max-width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+.detail-pane{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.detail-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:0.5px solid var(--bd);background:var(--n0);flex-shrink:0}
+.detail-title{display:flex;flex-direction:column;gap:2px;min-width:0}
+.detail-title h1{font-size:14px;font-weight:500;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.detail-title p{font-size:10px;color:var(--t4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.status-tag{font-size:9px;padding:2px 6px;background:rgba(255,255,255,.04);color:var(--t2);border:0.5px solid var(--bd2)}
+.status-tag.active{background:rgba(52,211,153,.12);color:var(--green);border-color:rgba(52,211,153,.22)}
+.status-tag.archived{background:rgba(248,113,113,.08);color:var(--red);border-color:rgba(248,113,113,.22)}
+.detail-body{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:1px;background:var(--bd);flex:1;overflow:hidden}
+.panel{background:var(--n1);overflow-y:auto;display:flex;flex-direction:column}
+.panel .section{padding:14px 16px;border-bottom:0.5px solid var(--bd)}
+.section-hdr{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.section-title{font-size:11px;font-weight:500;color:var(--t2);letter-spacing:.08em;text-transform:uppercase}
+.section-note{font-size:9px;color:var(--t4)}
+.accent-bar{border-left:3px solid var(--vi)}
+.accent-bar.green{border-left-color:var(--green)}
+.accent-bar.amber{border-left-color:var(--amber)}
+.accent-bar.blue{border-left-color:var(--blue)}
+.field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field.full{grid-column:1 / -1}
+.lbl{font-size:9px;color:var(--t4);letter-spacing:.08em;text-transform:uppercase}
+.inp,.sel,.ta{background:var(--n3);border:0.5px solid var(--bd2);color:var(--t1);font-size:11px;padding:6px 8px;width:100%}
+.inp:focus,.sel:focus,.ta:focus{outline:none;border-color:var(--vi)}
+.ta{min-height:74px;resize:none;line-height:1.5}
+.hint{font-size:9px;color:var(--t4);line-height:1.5}
+.seg{display:flex;gap:3px}
+.seg-btn{flex:1;padding:5px 4px;font-size:10px;cursor:pointer;border:0.5px solid var(--bd2);background:transparent;color:var(--t3);text-align:center;transition:all .15s;white-space:nowrap}
+.seg-btn.act{border-color:var(--vi);background:var(--vf);color:var(--vl)}
+.seg-btn:hover:not(.act){background:var(--n3);color:var(--t2)}
+.avatar-row{display:flex;align-items:center;gap:10px}
+.avatar-lg{width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:#fff;flex-shrink:0}
+.color-picks{display:flex;gap:6px;flex-wrap:wrap}
+.swatch{width:16px;height:16px;border:0.5px solid rgba(255,255,255,.12);cursor:pointer;position:relative}
+.swatch.sel::after{content:'';position:absolute;inset:3px;border:0.5px solid rgba(255,255,255,.9)}
+.credential-box,.link-box,.usage-box{background:var(--n2);border:0.5px solid var(--bd);padding:11px 12px;display:flex;flex-direction:column;gap:9px}
+.credential-top,.link-top{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.credential-meta{font-size:10px;color:var(--t3);line-height:1.45}
+.secret{font-size:13px;font-weight:500;color:var(--t1);letter-spacing:.03em;word-break:break-word}
+.secret.mask{letter-spacing:.18em}
+.inline{display:flex;gap:6px;flex-wrap:wrap}
+.link-field{font-size:10px;color:var(--vl);background:rgba(124,111,212,.08);border:0.5px solid rgba(124,111,212,.24);padding:6px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.usage-box{gap:10px}
+.usage-bar{height:8px;background:var(--n3);border:0.5px solid var(--bd2);overflow:hidden}
+.usage-fill{height:100%;background:var(--vi)}
+.usage-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:10px;color:var(--t3)}
+.usage-row strong{font-size:18px;color:var(--t1);font-weight:500}
+.usage-row .muted{color:var(--t4)}
+.bottom-actions{padding:12px 16px;border-top:0.5px solid var(--bd);background:var(--n0);display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0}
+.archive-banner{display:flex;align-items:flex-start;gap:8px;padding:9px 10px;background:rgba(248,113,113,.07);border-left:3px solid var(--red);font-size:10px;color:var(--t2);line-height:1.45}
+.archive-banner i{font-size:13px;color:var(--red);flex-shrink:0;margin-top:1px}
+.mini-stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--bd)}
+.mini-stat{background:var(--n2);padding:11px 12px;border-left:3px solid transparent}
+.mini-stat .num{font-size:19px;font-weight:500;color:var(--t1)}
+.mini-stat .lab{font-size:9px;color:var(--t4);margin-top:2px;letter-spacing:.08em;text-transform:uppercase}
+.mini-stat.violet{border-left-color:var(--vi)}
+.mini-stat.green{border-left-color:var(--green)}
+.mini-stat.amber{border-left-color:var(--amber)}
+.toast{position:fixed;right:16px;bottom:16px;z-index:60;background:var(--n0);border:0.5px solid var(--bd2);padding:9px 11px;font-size:10px;color:var(--t2);box-shadow:0 10px 24px rgba(0,0,0,.22);opacity:0;transform:translateY(8px);pointer-events:none;transition:all .18s}
+.toast.show{opacity:1;transform:translateY(0)}
+
+/* Modal */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.58);display:none;align-items:center;justify-content:center;z-index:50}
+.modal-bg.open{display:flex}
+.modal{width:min(520px,calc(100vw - 28px));background:var(--n1);border:0.5px solid var(--bd2);display:flex;flex-direction:column;max-height:calc(100vh - 28px);overflow:hidden}
+.modal-hdr{padding:13px 15px;border-bottom:0.5px solid var(--bd);display:flex;align-items:center;gap:8px}
+.modal-title{font-size:13px;font-weight:500;color:var(--t1);flex:1}
+.modal-body{padding:14px 15px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.modal-foot{padding:12px 15px;border-top:0.5px solid var(--bd);display:flex;gap:6px;justify-content:flex-end}
+.modal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.modal-grid .full{grid-column:1 / -1}
+.fake-select{display:flex;gap:4px}
+
+@media (max-width: 980px){
+  body{overflow:auto}
+  .shell{height:auto;min-height:100vh;flex-direction:column}
+  .sidebar{width:auto;border-right:none;border-bottom:0.5px solid var(--bd)}
+  .content{flex-direction:column}
+  .list-pane{width:auto;border-right:none;border-bottom:0.5px solid var(--bd);max-height:48vh}
+  .detail-body{grid-template-columns:1fr}
+  .usage{min-width:0}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="sidebar">
+    <div class="slogo">
+      <div class="slogo-icon">
+        <svg width="14" height="16" viewBox="0 0 14 16" fill="none" aria-hidden="true">
+          <rect x="3" y="13" width="8" height="2.5" fill="rgba(255,255,255,.92)"/>
+          <rect x="4" y="9.5" width="6" height="2" fill="rgba(255,255,255,.7)"/>
+          <rect x="5" y="6.5" width="4" height="1.8" fill="rgba(255,255,255,.5)"/>
+          <rect x="5.5" y="4" width="3" height="1.5" fill="rgba(255,255,255,.33)"/>
+          <rect x="6" y="1.5" width="2" height="1.5" fill="rgba(255,255,255,.18)"/>
+        </svg>
+      </div>
+      <div><div class="slogo-text">OWN PATH</div><div class="slogo-sub">Parent Portal</div></div>
+    </div>
+    <nav class="snav">
+      <div class="ni-sa act"><i class="ti ti-users"></i> Students</div>
+      <div class="nsec">
+        <div class="nsec-hdr">
+          <span class="nsec-lbl">Homeschool</span>
+          <span class="nsec-chev open"><i class="ti ti-chevron-right"></i></span>
+        </div>
+        <div class="nsec-items open">
+          <div class="ni"><i class="ti ti-book"></i> Curriculum</div>
+          <div class="ni"><i class="ti ti-calendar-week"></i> Weekly Blocking</div>
+          <div class="ni"><i class="ti ti-chart-bar"></i> Reports</div>
+        </div>
+      </div>
+      <div class="nsec">
+        <div class="nsec-hdr">
+          <span class="nsec-lbl">Chores</span>
+          <span class="nsec-chev"><i class="ti ti-chevron-right"></i></span>
+        </div>
+        <div class="nsec-items">
+          <div class="ni"><i class="ti ti-sun"></i> Daily Routines</div>
+          <div class="ni"><i class="ti ti-list-check"></i> Weekly Chores</div>
+          <div class="ni"><i class="ti ti-calendar"></i> Monthly Chores</div>
+          <div class="ni"><i class="ti ti-coin"></i> Allowance</div>
+          <div class="ni"><i class="ti ti-trophy"></i> Rewards</div>
+        </div>
+      </div>
+      <div class="nsec">
+        <div class="nsec-hdr">
+          <span class="nsec-lbl" style="color:var(--t4)">Lockdown</span>
+          <span class="nsec-chev"><i class="ti ti-chevron-right"></i></span>
+        </div>
+        <div class="nsec-items">
+          <div class="ni" style="color:var(--t4)"><i class="ti ti-shield-lock"></i> Lockdown Mode <span class="bsoon">Soon</span></div>
+        </div>
+      </div>
+    </nav>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <div class="tb-title">Students <span class="tb-sub">parent-managed portal access</span></div>
+      </div>
+      <div class="usage">
+        <div class="usage-meta">
+          <strong id="seatLabel">3 of 4 seats used</strong>
+          <span id="seatSub">1 archived, 3 active</span>
+        </div>
+        <div class="meter" aria-hidden="true"><div class="meter-fill" id="seatMeter"></div></div>
+        <button class="btn pri" onclick="openAddModal()"><i class="ti ti-user-plus"></i> Add student</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <aside class="list-pane">
+        <div class="pane-head">
+          <div class="pane-title">Roster</div>
+          <div class="pane-meta" id="listCount">4 students</div>
+        </div>
+        <div style="padding:10px 12px 0">
+          <input id="search" class="search" placeholder="Search students..." oninput="renderAll()">
+        </div>
+        <div class="student-list" id="studentList"></div>
+      </aside>
+
+      <section class="detail-pane">
+        <div class="detail-head">
+          <div class="avatar" id="detailAvatar">C</div>
+          <div class="detail-title">
+            <h1 id="detailName">Caleb</h1>
+            <p id="detailMeta">Grade 7 · active portal access</p>
+          </div>
+          <div class="status">
+            <span class="status-tag" id="detailPlan">Counts toward plan</span>
+            <span class="status-tag active" id="detailState">Active</span>
+          </div>
+        </div>
+
+        <div class="detail-body">
+          <div class="panel">
+            <div class="section accent-bar" id="summarySection">
+              <div class="section-hdr">
+                <div class="section-title">Student summary</div>
+                <div class="section-note" id="summaryNote">edit core profile fields</div>
+              </div>
+              <div class="mini-stat-grid">
+                <div class="mini-stat violet"><div class="num" id="statSubjects">6</div><div class="lab">subjects</div></div>
+                <div class="mini-stat green"><div class="num" id="statProgress">18</div><div class="lab">weekly blocks</div></div>
+                <div class="mini-stat amber"><div class="num" id="statAccess">PIN</div><div class="lab">credential</div></div>
+              </div>
+            </div>
+
+            <div class="section accent-bar blue">
+              <div class="section-hdr">
+                <div class="section-title">Profile</div>
+                <div class="section-note">name, grade, avatar, and color</div>
+              </div>
+              <div class="field-grid">
+                <label class="field full">
+                  <span class="lbl">Student name</span>
+                  <input class="inp" id="nameInput" oninput="updateDraft('name', this.value)">
+                </label>
+                <label class="field">
+                  <span class="lbl">Grade level</span>
+                  <input class="inp" id="gradeInput" placeholder="Optional" oninput="updateDraft('grade', this.value)">
+                </label>
+                <label class="field">
+                  <span class="lbl">Avatar initials</span>
+                  <input class="inp" id="initialsInput" maxlength="2" oninput="updateDraft('initials', this.value.toUpperCase())">
+                </label>
+                <label class="field full">
+                  <span class="lbl">Accent color</span>
+                  <div class="color-picks" id="colorPicks"></div>
+                </label>
+                <label class="field full">
+                  <span class="lbl">Student notes</span>
+                  <textarea class="ta" id="notesInput" placeholder="Optional notes for the parent setup" oninput="updateDraft('notes', this.value)"></textarea>
+                </label>
+              </div>
+            </div>
+
+            <div class="section accent-bar green">
+              <div class="section-hdr">
+                <div class="section-title">Portal access</div>
+                <div class="section-note">each child uses one credential mode</div>
+              </div>
+              <div class="credential-box">
+                <div class="fake-select seg" role="tablist" aria-label="Credential mode">
+                  <button class="seg-btn" id="pinBtn" onclick="setMode('pin')">PIN</button>
+                  <button class="seg-btn" id="passBtn" onclick="setMode('password')">Password</button>
+                </div>
+                <div id="credentialHelp" class="credential-meta"></div>
+                <div id="credentialSecret" class="secret"></div>
+                <div class="inline" id="credentialActions"></div>
+              </div>
+            </div>
+
+            <div class="section accent-bar amber">
+              <div class="section-hdr">
+                <div class="section-title">Portal link</div>
+                <div class="section-note">preview, copy, regenerate</div>
+              </div>
+              <div class="link-box">
+                <div class="link-top">
+                  <span class="credential-meta">Student portal preview</span>
+                  <span class="pill" id="linkSlug">/student/caleb-7k2p</span>
+                </div>
+                <div class="link-field" id="linkField"></div>
+                <div class="inline">
+                  <button class="btn sm" onclick="copyLink()"><i class="ti ti-copy"></i> Copy link</button>
+                  <button class="btn sm" onclick="regenerateLink()"><i class="ti ti-shuffle"></i> Regenerate</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="section accent-bar">
+              <div class="section-hdr">
+                <div class="section-title">Status</div>
+                <div class="section-note">active and archived states</div>
+              </div>
+              <div id="archiveBanner"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="section accent-bar">
+              <div class="section-hdr">
+                <div class="section-title">Plan usage</div>
+                <div class="section-note">visual reference only</div>
+              </div>
+              <div class="usage-box">
+                <div class="usage-row">
+                  <div>
+                    <strong id="planUsed">3</strong> <span class="muted">of</span> <strong id="planLimit">4</strong>
+                  </div>
+                  <div id="planText">active seats</div>
+                </div>
+                <div class="usage-bar"><div class="usage-fill" id="planFill"></div></div>
+                <div class="hint">Archived students stay in the roster but do not count toward active-seat usage.</div>
+              </div>
+            </div>
+
+            <div class="section accent-bar blue">
+              <div class="section-hdr">
+                <div class="section-title">Actions</div>
+                <div class="section-note">prototype controls</div>
+              </div>
+              <div class="inline">
+                <button class="btn warn" id="archiveBtn" onclick="toggleArchive()"><i class="ti ti-archive"></i> Archive</button>
+                <button class="btn green" onclick="resetCredential()"><i class="ti ti-refresh"></i> Reset credential</button>
+              </div>
+              <div class="hint" id="actionHint"></div>
+            </div>
+
+            <div class="section accent-bar">
+              <div class="section-hdr">
+                <div class="section-title">Setup summary</div>
+                <div class="section-note">compact preview for parents</div>
+              </div>
+              <div class="credential-box" style="gap:7px">
+                <div class="credential-meta" id="summaryLine1"></div>
+                <div class="credential-meta" id="summaryLine2"></div>
+                <div class="credential-meta" id="summaryLine3"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bottom-actions">
+          <button class="btn" onclick="openAddModal()"><i class="ti ti-user-plus"></i> Add another</button>
+          <button class="btn" onclick="saveDraft()"><i class="ti ti-device-floppy"></i> Save changes</button>
+          <button class="btn red" onclick="confirmDeleteSelected()"><i class="ti ti-trash"></i> Remove student</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalBg" onclick="closeModal(event)">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-hdr">
+      <div class="modal-title" id="modalTitle">Add student</div>
+      <button class="btn sm" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="archive-banner">
+        <i class="ti ti-info-circle"></i>
+        <div>
+          New students start active. Parents choose the portal credential mode during setup, then can refine the profile later.
+        </div>
+      </div>
+      <div class="modal-grid">
+        <label class="field full">
+          <span class="lbl">Student name</span>
+          <input class="inp" id="modalName" placeholder="e.g. Nora">
+        </label>
+        <label class="field">
+          <span class="lbl">Grade level</span>
+          <input class="inp" id="modalGrade" placeholder="Optional">
+        </label>
+        <label class="field">
+          <span class="lbl">Avatar initials</span>
+          <input class="inp" id="modalInitials" placeholder="NR" maxlength="2">
+        </label>
+        <label class="field full">
+          <span class="lbl">Accent color</span>
+          <div class="color-picks" id="modalColorPicks"></div>
+        </label>
+        <label class="field full">
+          <span class="lbl">Credential mode</span>
+          <div class="seg">
+            <button class="seg-btn act" id="modalPinBtn" onclick="setModalMode('pin')">PIN</button>
+            <button class="seg-btn" id="modalPassBtn" onclick="setModalMode('password')">Password</button>
+          </div>
+        </label>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn pri" onclick="createStudent()"><i class="ti ti-user-plus"></i> Add student</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var COLORS=['#7c6fd4','#0f9e7a','#d85a30','#ba7517','#185fa5','#993556','#22c55e','#8b5cf6'];
+var CREDIT_MODES={pin:'PIN',password:'Password'};
+var LIMIT=4;
+var modalMode='pin';
+var currentId='caleb';
+var draftColor='#7c6fd4';
+
+var STUDENTS=[
+  {id:'caleb',name:'Caleb',initials:'C',grade:'7',color:'#7c6fd4',mode:'pin',pin:'4182',password:'',slug:'caleb-7k2p',active:true,subjects:6,blocks:18,notes:'Older student using a short PIN for quick access at the study table.'},
+  {id:'evelyn',name:'Evelyn',initials:'E',grade:'5',color:'#0f9e7a',mode:'password',pin:'',password:'maple-pond-17',slug:'evelyn-k9x4',active:true,subjects:5,blocks:15,notes:'Uses a password because she types it reliably on the family iPad.'},
+  {id:'mateo',name:'Mateo',initials:'M',grade:'2',color:'#ba7517',mode:'pin',pin:'9046',password:'',slug:'mateo-r3m8',active:true,subjects:4,blocks:11,notes:'Youngest active student. PIN keeps sign-in lightweight.'},
+  {id:'juno',name:'Juno',initials:'J',grade:'8',color:'#993556',mode:'password',pin:'',password:'cedar-window-41',slug:'juno-z7c1',active:false,subjects:3,blocks:8,notes:'Archived while the family pauses this account for the semester.'}
+];
+
+function qs(sel){return document.querySelector(sel)}
+function byId(id){return document.getElementById(id)}
+function activeStudents(){return STUDENTS.filter(function(s){return s.active})}
+function archivedStudents(){return STUDENTS.filter(function(s){return !s.active})}
+function currentStudent(){return STUDENTS.find(function(s){return s.id===currentId})||STUDENTS[0]}
+function seatUsage(){return activeStudents().length}
+function randomChoice(arr){return arr[Math.floor(Math.random()*arr.length)]}
+function randDigits(len){var out='';for(var i=0;i<len;i++)out+=Math.floor(Math.random()*10);return out}
+function randToken(){return Math.random().toString(36).slice(2,6)}
+function slugify(name){return name.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')}
+function colorName(color){var idx=COLORS.indexOf(color);return idx>=0?'swatch '+(idx===0?'sel':''):'swatch'}
+function fmtMode(mode){return mode==='pin'?'PIN':'Password'}
+function makePassword(){return randomChoice(['amber','maple','river','cedar','willow','lunar','copper'])+'-'+randomChoice(['path','stone','trail','gate','field','bridge'])+'-'+randDigits(2)}
+
+function showToast(msg){
+  var t=byId('toast');
+  t.textContent=msg;
+  t.classList.add('show');
+  clearTimeout(showToast.timer);
+  showToast.timer=setTimeout(function(){t.classList.remove('show')},1600);
+}
+
+function syncDraftFromStudent(){
+  var s=currentStudent();
+  byId('nameInput').value=s.name;
+  byId('gradeInput').value=s.grade||'';
+  byId('initialsInput').value=s.initials;
+  byId('notesInput').value=s.notes||'';
+  draftColor=s.color;
+  renderColorPicks('colorPicks',draftColor,function(color){draftColor=color;currentStudent().color=color;renderAll();});
+  setMode(s.mode,true);
+}
+
+function renderColorPicks(target,selected,onPick){
+  var h='';
+  COLORS.forEach(function(color){
+    var cls='swatch'+(color===selected?' sel':'');
+    h+='<button class="'+cls+'" style="background:'+color+'" data-target="'+target+'" data-color="'+color+'" onclick="pickColor(this.dataset.target,this.dataset.color)"></button>';
+  });
+  byId(target).innerHTML=h;
+  window[target+'Pick']=onPick;
+}
+
+function pickColor(target,color){
+  if(target==='colorPicks'){draftColor=color; currentStudent().color=color; renderAll();}
+  if(target==='modalColorPicks'){draftColor=color; renderModalColors(color);}
+}
+
+function renderModalColors(selected){
+  var h='';
+  COLORS.forEach(function(color){
+    h+='<button class="swatch'+(selected===color?' sel':'')+'" style="background:'+color+'" data-target="modalColorPicks" data-color="'+color+'" onclick="pickColor(this.dataset.target,this.dataset.color)"></button>';
+  });
+  byId('modalColorPicks').innerHTML=h;
+}
+
+function updateDraft(key,val){
+  var s=currentStudent();
+  s[key]=val;
+  if(key==='name'){
+    byId('linkSlug').textContent='/student/'+slugify(val)+'-'+s.slug.split('-').pop();
+  }
+  renderAll(false);
+}
+
+function setMode(mode,silent){
+  var s=currentStudent();
+  s.mode=mode;
+  byId('pinBtn').classList.toggle('act',mode==='pin');
+  byId('passBtn').classList.toggle('act',mode==='password');
+  byId('statAccess').textContent=fmtMode(mode);
+  if(mode==='pin'){
+    byId('credentialHelp').textContent='Use a 4-6 digit PIN. Keep it short enough for a child to type without friction.';
+    byId('credentialSecret').textContent=s.pin||'0000';
+    byId('credentialSecret').classList.remove('mask');
+    byId('credentialActions').innerHTML='<button class="btn sm" onclick="copyCredential()"><i class="ti ti-copy"></i> Copy PIN</button><button class="btn sm" onclick="resetCredential()"><i class="ti ti-refresh"></i> Regenerate PIN</button>';
+    byId('summaryLine2').textContent='PIN length hint: 4-6 digits.';
+    byId('summaryLine3').textContent='Resetting the PIN keeps the student on the same portal link.';
+  }else{
+    byId('credentialHelp').textContent='Use a password when the child can type reliably or the household wants stronger access.';
+    byId('credentialSecret').textContent=s.password||'river-stone-17';
+    byId('credentialSecret').classList.add('mask');
+    byId('credentialActions').innerHTML='<button class="btn sm" onclick="copyCredential()"><i class="ti ti-copy"></i> Copy password</button><button class="btn sm" onclick="resetCredential()"><i class="ti ti-refresh"></i> Reset password</button>';
+    byId('summaryLine2').textContent='Password reset creates a fresh temporary secret.';
+    byId('summaryLine3').textContent='The portal link stays stable unless you regenerate it.';
+  }
+  if(!silent) renderAll(false);
+}
+
+function toggleArchive(){
+  var s=currentStudent();
+  s.active=!s.active;
+  if(s.active && seatUsage()>LIMIT){
+    showToast('Seat limit reached, but this prototype still allows the change for review.');
+  }
+  if(!s.active){
+    var next=activeStudents().find(function(st){return st.id!==s.id})||STUDENTS[0];
+    currentId=next.id;
+  }
+  renderAll();
+  showToast(s.active?'Student restored to active roster':'Student archived');
+}
+
+function resetCredential(){
+  var s=currentStudent();
+  if(s.mode==='pin'){
+    s.pin=randDigits(4);
+    byId('credentialSecret').textContent=s.pin;
+    byId('summaryLine1').textContent='Current PIN refreshed.';
+    showToast('PIN regenerated');
+  }else{
+    s.password=makePassword();
+    byId('credentialSecret').textContent=s.password;
+    showToast('Password reset');
+  }
+  renderAll(false);
+}
+
+function copyText(text,label){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){showToast(label+' copied');});
+  }else{
+    showToast(label+' copy unavailable');
+  }
+}
+
+function copyLink(){
+  copyText(linkFor(currentStudent()),'Portal link');
+}
+
+function copyCredential(){
+  var s=currentStudent();
+  copyText(s.mode==='pin'?(s.pin||'0000'):(s.password||'river-stone-17'),fmtMode(s.mode));
+}
+
+function regenerateLink(){
+  var s=currentStudent();
+  s.slug=slugify(s.name)+'-'+randToken();
+  byId('linkSlug').textContent='/student/'+s.slug;
+  renderAll(false);
+  showToast('Portal link regenerated');
+}
+
+function linkFor(s){
+  return 'https://app.ownpath.local/student/'+s.slug;
+}
+
+function archiveCount(){
+  return archivedStudents().length;
+}
+
+function renderList(){
+  var q=(byId('search').value||'').trim().toLowerCase();
+  var h='';
+  var vis=STUDENTS.filter(function(s){
+    return !q || [s.name,s.grade||'',s.mode,s.slug].join(' ').toLowerCase().indexOf(q)>=0;
+  });
+  document.getElementById('listCount').textContent=vis.length+' students';
+  var act=vis.filter(function(s){return s.active});
+  var arch=vis.filter(function(s){return !s.active});
+  if(act.length){
+    h+='<div class="group">Active <small>'+act.length+'</small></div>';
+    act.forEach(function(s){h+=studentRow(s)});
+  }
+  if(arch.length){
+    h+='<div class="group">Archived <small>'+arch.length+'</small></div>';
+    arch.forEach(function(s){h+=studentRow(s)});
+  }
+  byId('studentList').innerHTML=h || '<div class="group">No matches</div>';
+}
+
+function studentRow(s){
+  var modeLabel=s.mode==='pin'?'PIN':'Password';
+  var status=s.active?'active':'archived';
+  var seat = s.active?'<span class="seat used">counts</span>':'<span class="seat">paused</span>';
+  return '<div class="student-row '+(s.active?'':'archived')+(s.id===currentId?' sel':'')+'" data-id="'+s.id+'" onclick="selectStudent(this.dataset.id)">'
+    +'<div class="row-accent" style="background:'+s.color+'"></div>'
+    +'<div class="row-main">'
+      +'<div class="row-top"><div class="avatar" style="background:'+s.color+'">'+s.initials+'</div><div class="student-name">'+s.name+'</div></div>'
+      +'<div class="badges"><span class="pill '+(s.active?'active':'archived')+'">'+status.toUpperCase()+'</span><span class="pill mode-'+s.mode+'">'+modeLabel+'</span>'+(s.grade?'<span class="pill">Grade '+s.grade+'</span>':'<span class="pill">Grade optional</span>')+'</div>'
+      +'<div class="row-meta">'+(s.active?'portal ready':'archived roster entry')+' · /student/'+s.slug+'</div>'
+    +'</div>'
+    +'<div class="row-right">'+seat+'<div class="mini-link">'+s.slug+'</div></div>'
+  +'</div>';
+}
+
+function renderDetail(){
+  var s=currentStudent();
+  byId('detailAvatar').textContent=s.initials;
+  byId('detailAvatar').style.background=s.color;
+  byId('detailName').textContent=s.name;
+  byId('detailMeta').textContent=(s.grade?('Grade '+s.grade+' · '):'Grade optional · ')+(s.active?'active portal access':'archived student');
+  byId('detailState').textContent=s.active?'Active':'Archived';
+  byId('detailState').className='status-tag '+(s.active?'active':'archived');
+  byId('detailPlan').textContent=s.active?'Counts toward plan':'Inactive in roster';
+  byId('summarySection').style.borderLeftColor=s.color;
+  byId('summaryNote').textContent=s.active?'edit core profile fields':'restored students return to seat usage';
+  byId('statSubjects').textContent=s.subjects;
+  byId('statProgress').textContent=s.blocks;
+  byId('statAccess').textContent=fmtMode(s.mode);
+  byId('linkSlug').textContent='/student/'+s.slug;
+  byId('linkField').textContent=linkFor(s);
+  byId('planUsed').textContent=seatUsage();
+  byId('planLimit').textContent=LIMIT;
+  byId('planText').textContent='active seats';
+  byId('planFill').style.width=Math.min(100,seatUsage()/LIMIT*100)+'%';
+  byId('seatLabel').textContent=seatUsage()+' of '+LIMIT+' seats used';
+  byId('seatSub').textContent=archiveCount()+' archived, '+seatUsage()+' active';
+  byId('seatMeter').style.width=Math.min(100,seatUsage()/LIMIT*100)+'%';
+  byId('actionHint').textContent=s.active?'Archive moves the student to the roster history while keeping portal settings available.':'Unarchive returns the student to the active roster and counts them back toward the seat usage indicator.';
+  byId('archiveBtn').innerHTML='<i class="ti ti-'+(s.active?'archive':'archive-off')+'"></i> '+(s.active?'Archive':'Unarchive');
+  byId('archiveBtn').className='btn '+(s.active?'warn':'green');
+  byId('archiveBanner').innerHTML=s.active?'<div class="archive-banner"><i class="ti ti-circle-check"></i><div>Active students can sign in with the selected credential mode. Archived students stay visible here for cleanup or reactivation.</div></div>':'<div class="archive-banner"><i class="ti ti-archive"></i><div>This student is archived. Their portal link and credential settings are preserved for a quick restore.</div></div>';
+  byId('summaryLine1').textContent='Portal slug: '+s.slug;
+  renderColorPicks('colorPicks',s.color,function(color){s.color=color;draftColor=color;renderAll(false);});
+  setMode(s.mode,true);
+  byId('nameInput').value=s.name;
+  byId('gradeInput').value=s.grade||'';
+  byId('initialsInput').value=s.initials;
+  byId('notesInput').value=s.notes||'';
+  byId('credentialSecret').textContent=s.mode==='pin'?(s.pin||'0000'):(s.password||'river-stone-17');
+  byId('credentialSecret').className='secret'+(s.mode==='password'?' mask':'');
+}
+
+function renderAll(updateDrafts){
+  if(updateDrafts!==false) syncDraftFromStudent();
+  renderList();
+  renderDetail();
+}
+
+function selectStudent(id){
+  currentId=id;
+  renderAll();
+}
+
+function saveDraft(){
+  var s=currentStudent();
+  s.name=byId('nameInput').value.trim()||s.name;
+  s.grade=byId('gradeInput').value.trim();
+  s.initials=(byId('initialsInput').value.trim()||s.initials).slice(0,2).toUpperCase();
+  s.notes=byId('notesInput').value.trim();
+  s.color=draftColor||s.color;
+  if(!s.pin && s.mode==='pin') s.pin=randDigits(4);
+  if(!s.password && s.mode==='password') s.password=makePassword();
+  s.slug=slugify(s.name)+'-'+s.slug.split('-').pop();
+  renderAll();
+  showToast('Student saved');
+}
+
+function confirmDeleteSelected(){
+  var s=currentStudent();
+  if(STUDENTS.length===1){
+    showToast('At least one student must remain in the roster.');
+    return;
+  }
+  var idx=STUDENTS.findIndex(function(st){return st.id===s.id});
+  STUDENTS.splice(idx,1);
+  currentId=(STUDENTS[0]||{}).id;
+  renderAll();
+  showToast('Student removed');
+}
+
+function openAddModal(){
+  modalMode='pin';
+  draftColor=COLORS[0];
+  byId('modalName').value='';
+  byId('modalGrade').value='';
+  byId('modalInitials').value='';
+  renderModalColors(draftColor);
+  byId('modalPinBtn').classList.add('act');
+  byId('modalPassBtn').classList.remove('act');
+  byId('modalBg').classList.add('open');
+}
+
+function closeModal(evt){
+  if(evt && evt.target!==evt.currentTarget) return;
+  byId('modalBg').classList.remove('open');
+}
+
+function setModalMode(mode){
+  modalMode=mode;
+  byId('modalPinBtn').classList.toggle('act',mode==='pin');
+  byId('modalPassBtn').classList.toggle('act',mode==='password');
+}
+
+function createStudent(){
+  var name=byId('modalName').value.trim();
+  if(!name){showToast('Add a student name');return}
+  var initials=(byId('modalInitials').value.trim()||name.slice(0,2)).slice(0,2).toUpperCase();
+  var grade=byId('modalGrade').value.trim();
+  var color=draftColor||COLORS[0];
+  var slug=slugify(name)+'-'+randToken();
+  var student={id:slug.replace(/-/g,''),name:name,initials:initials,grade:grade,color:color,mode:modalMode,pin:modalMode==='pin'?randDigits(4):'',password:modalMode==='password'?makePassword():'',slug:slug,active:true,subjects:0,blocks:0,notes:''};
+  STUDENTS.unshift(student);
+  currentId=student.id;
+  closeModal();
+  renderAll();
+  showToast('Student added');
+}
+
+byId('search').addEventListener('input',renderList);
+renderAll();
+</script>
+</body>
+</html>

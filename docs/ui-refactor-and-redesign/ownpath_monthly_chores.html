@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>OwnPath — Monthly Chores</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--n0:#181828;--n1:#1f1f32;--n2:#26263c;--n3:#2e2e48;--n4:#383858;--vi:#7c6fd4;--vl:#b8adff;--vf:rgba(124,111,212,0.14);--bd:rgba(255,255,255,0.08);--bd2:rgba(255,255,255,0.14);--t1:#eeeaf8;--t2:#c4bedc;--t3:#8f8aaa;--t4:#585674;--amber:#f59e0b;--green:#34d399;--red:#f87171;--blue:#60a5fa;}
+body{background:var(--n0);color:var(--t1);font-family:system-ui,sans-serif;margin:0}
+.shell{display:flex;flex-direction:column;height:580px;overflow:hidden;border:0.5px solid var(--bd2);background:var(--n1)}
+.topbar{height:50px;background:var(--n0);border-bottom:0.5px solid var(--bd);display:flex;align-items:center;padding:0 16px;gap:8px;flex-shrink:0}
+.tb-title{font-size:14px;font-weight:500;color:var(--t1);flex:1}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;font-size:11px;cursor:pointer;border:0.5px solid var(--bd2);background:transparent;color:var(--t2);transition:all .15s}
+.btn:hover{background:var(--n3);color:var(--t1)}
+.btn.pri{background:var(--vi);color:#fff;border-color:var(--vi)}
+.btn.pri:hover{background:#6c60c0}
+.btn.sm{padding:3px 8px;font-size:10px}
+.btn i{font-size:13px}
+.month-bar{height:36px;background:var(--n0);border-bottom:0.5px solid var(--bd);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0}
+.mnav-btn{width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:0.5px solid var(--bd2);color:var(--t3);transition:all .15s;flex-shrink:0}
+.mnav-btn:hover{background:var(--n3);color:var(--t1)}
+.mnav-btn.dis{opacity:.3;pointer-events:none}
+.mnav-btn i{font-size:12px}
+.month-lbl{font-size:11px;font-weight:500;min-width:150px;text-align:center}
+.month-lbl.past{color:var(--amber)}
+.month-lbl.cur{color:var(--t2)}
+.bar-right{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:10px;color:var(--t3)}
+.body{flex:1;display:flex;overflow:hidden}
+.pool{width:348px;flex-shrink:0;border-right:0.5px solid var(--bd);display:flex;flex-direction:column;overflow:hidden}
+.pool-hdr{padding:8px 14px;border-bottom:0.5px solid var(--bd);display:flex;align-items:center;gap:8px;background:var(--n0);flex-shrink:0}
+.pool-hdr-lbl{font-size:11px;font-weight:500;color:var(--t2);flex:1}
+.pool-list{flex:1;overflow-y:auto}
+.chore-row{display:flex;align-items:flex-start;gap:0;border-bottom:0.5px solid var(--bd);border-left:3px solid transparent;cursor:pointer;transition:background .15s}
+.chore-row:hover{background:var(--n2)}
+.chore-row.sel{background:var(--n2);border-left-color:var(--vi)}
+.cr-main{flex:1;padding:9px 12px;min-width:0}
+.cr-name{font-size:12px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.cr-meta{font-size:10px;color:var(--t3);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+.cr-meta span{display:flex;align-items:center;gap:3px}
+.cr-meta i{font-size:11px}
+.cr-badges{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap}
+.badge{font-size:8px;padding:2px 5px;font-weight:500;letter-spacing:.03em;white-space:nowrap}
+.b-avail{background:rgba(52,211,153,.15);color:var(--green)}
+.b-claimed{background:rgba(96,165,250,.15);color:var(--blue)}
+.b-done{background:rgba(124,111,212,.2);color:var(--vl)}
+.b-cool{background:rgba(245,158,11,.15);color:var(--amber)}
+.b-pend{background:rgba(248,113,113,.15);color:var(--red)}
+.b-allow{background:rgba(52,211,153,.1);color:var(--green);border:0.5px solid rgba(52,211,153,.3)}
+.b-photo{background:rgba(96,165,250,.1);color:var(--blue);border:0.5px solid rgba(96,165,250,.3)}
+.b-appr{background:rgba(245,158,11,.1);color:var(--amber);border:0.5px solid rgba(245,158,11,.3)}
+.cr-acts{display:flex;flex-direction:column;gap:0;padding:6px 4px;flex-shrink:0}
+.cr-act{width:22px;height:22px;display:flex;align-items:center;justify-content:center;color:var(--t4);cursor:pointer;transition:all .15s}
+.cr-act:hover{color:var(--t1);background:var(--n4)}
+.cr-act i{font-size:11px}
+.add-chore{display:flex;align-items:center;gap:6px;padding:9px 14px;color:var(--t4);font-size:10px;cursor:pointer;transition:all .15s;border-left:3px solid transparent}
+.add-chore:hover{color:var(--vl);background:var(--n2);border-left-color:var(--vi)}
+.add-chore i{font-size:12px}
+.activity{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.act-tabs{display:flex;background:var(--n0);border-bottom:0.5px solid var(--bd);flex-shrink:0}
+.act-tab{padding:8px 14px;font-size:11px;cursor:pointer;color:var(--t3);border-bottom:2px solid transparent;display:flex;flex-direction:column;align-items:flex-start;transition:all .15s}
+.act-tab:hover{color:var(--t2)}
+.act-tab.act{color:var(--vl);border-bottom-color:var(--vi)}
+.act-tab-name{font-size:11px;font-weight:500}
+.act-tab-sub{font-size:9px;color:var(--t4);margin-top:1px}
+.act-tab.act .act-tab-sub{color:var(--t3)}
+.act-body{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.act-empty{padding:20px;font-size:11px;color:var(--t4);text-align:center}
+.act-banner{display:flex;align-items:center;gap:8px;padding:7px 10px;border-left:3px solid var(--vi);background:var(--vf);font-size:10px;color:var(--vl)}
+.act-banner i{font-size:12px;flex-shrink:0}
+.act-section-lbl{font-size:9px;color:var(--t4);letter-spacing:.08em;text-transform:uppercase;padding:4px 0 2px}
+.act-row{background:var(--n2);border-left:3px solid transparent;padding:8px 10px;display:flex;align-items:flex-start;gap:8px}
+.ar-info{flex:1;min-width:0}
+.ar-name{font-size:11px;font-weight:500;color:var(--t1)}
+.ar-meta{font-size:10px;color:var(--t3);margin-top:2px}
+.ar-acts{display:flex;gap:4px;flex-shrink:0;margin-top:1px}
+.ar-btn{font-size:9px;padding:2px 7px;cursor:pointer;border:0.5px solid var(--bd2);background:transparent;color:var(--t3);transition:all .15s;white-space:nowrap}
+.ar-btn:hover{background:var(--n3);color:var(--t1)}
+.ar-btn.app{border-color:rgba(52,211,153,.4);color:var(--green);background:rgba(52,211,153,.08)}
+.ar-btn.app:hover{background:rgba(52,211,153,.18)}
+.ar-btn.rej{border-color:rgba(248,113,113,.3);color:var(--red);background:rgba(248,113,113,.07)}
+.ar-btn.rej:hover{background:rgba(248,113,113,.15)}
+.sp-stat-row{display:flex;gap:8px}
+.sp-stat{flex:1;display:flex;flex-direction:column;gap:2px;padding:8px 10px;background:var(--n2)}
+.sp-stat-val{font-size:18px;font-weight:500;color:var(--t1)}
+.sp-stat-lbl{font-size:9px;color:var(--t3)}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:100}
+.modal-bg.open{display:flex}
+.modal{background:var(--n1);border:0.5px solid var(--bd2);padding:16px;width:340px;display:flex;flex-direction:column;gap:10px;max-height:90vh;overflow-y:auto}
+.modal-title{font-size:13px;font-weight:500;color:var(--t1)}
+.mlbl{font-size:10px;color:var(--t3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px}
+.minput{background:var(--n3);border:0.5px solid var(--bd2);color:var(--t1);font-size:11px;padding:6px 8px;width:100%}
+.minput::placeholder{color:var(--t4)}
+.mrow2{display:flex;gap:8px}
+.mrow2>div{flex:1}
+.mtoggle-row{display:flex;align-items:center;gap:8px;padding:6px 0}
+.mtoggle-lbl{font-size:11px;color:var(--t2);flex:1}
+.toggle{width:32px;height:17px;background:var(--n4);border:0.5px solid var(--bd2);cursor:pointer;position:relative;transition:background .15s;flex-shrink:0}
+.toggle.on{background:var(--vi)}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:11px;height:11px;background:var(--t3);transition:all .15s}
+.toggle.on::after{left:17px;background:#fff}
+.mbtns{display:flex;gap:6px;justify-content:flex-end;margin-top:4px}
+.pts-badge{font-size:9px;padding:1px 5px;background:rgba(124,111,212,.2);color:var(--vl);font-weight:500}
+</style></head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <span class="tb-title">Monthly Chores</span>
+    <div style="margin-left:auto;display:flex;gap:6px">
+      <button class="btn sm pri" onclick="openModal()"><i class="ti ti-plus"></i> Add chore</button>
+    </div>
+  </div>
+  <div class="month-bar">
+    <div class="mnav-btn" id="prevBtn" onclick="shiftMonth(-1)"><i class="ti ti-chevron-left"></i></div>
+    <div class="month-lbl cur" id="monthLbl">July 2026 (current)</div>
+    <div class="mnav-btn" id="nextBtn" onclick="shiftMonth(1)"><i class="ti ti-chevron-right"></i></div>
+    <div class="bar-right" id="barRight"></div>
+  </div>
+  <div class="body">
+    <div class="pool">
+      <div class="pool-hdr">
+        <span class="pool-hdr-lbl">Monthly pool</span>
+        <span style="font-size:10px;color:var(--t3)" id="poolCount"></span>
+      </div>
+      <div class="pool-list" id="poolList"></div>
+    </div>
+    <div class="activity">
+      <div class="act-tabs" id="actTabs"></div>
+      <div class="act-body" id="actBody"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <div class="modal-title">Add monthly chore</div>
+    <div><div class="mlbl">Name</div><input class="minput" id="mName" placeholder="e.g. Deep clean pantry"/></div>
+    <div><div class="mlbl">Instructions (optional)</div><input class="minput" id="mInstr" placeholder="e.g. Toss expired items, wipe shelves, regroup bins"/></div>
+    <div class="mrow2">
+      <div><div class="mlbl">Point value</div><input class="minput" id="mPts" type="number" placeholder="120" min="0"/></div>
+      <div><div class="mlbl">Est. minutes</div><input class="minput" id="mMins" type="number" placeholder="45" min="1"/></div>
+    </div>
+    <div><div class="mlbl">Cooldown (days until available again)</div><input class="minput" id="mCool" type="number" placeholder="21" min="1"/></div>
+    <div class="mtoggle-row"><span class="mtoggle-lbl"><i class="ti ti-coin" style="font-size:12px;color:var(--green);vertical-align:-1px"></i> Counts toward allowance</span><div class="toggle on" id="tAllow" onclick="this.classList.toggle('on')"></div></div>
+    <div class="mtoggle-row"><span class="mtoggle-lbl"><i class="ti ti-camera" style="font-size:12px;color:var(--blue);vertical-align:-1px"></i> Photo required on completion</span><div class="toggle" id="tPhoto" onclick="this.classList.toggle('on')"></div></div>
+    <div class="mtoggle-row"><span class="mtoggle-lbl"><i class="ti ti-circle-check" style="font-size:12px;color:var(--amber);vertical-align:-1px"></i> Requires parent approval</span><div class="toggle" id="tAppr" onclick="this.classList.toggle('on')"></div></div>
+    <div class="mbtns">
+      <button class="btn sm" onclick="closeModal()">Cancel</button>
+      <button class="btn sm pri" onclick="addChore()">Add chore</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var monthOffset=0;
+var selChore=null;
+var curStudent='Caleb';
+
+var STUDENTS={
+  Caleb:{color:'#7c6fd4',monthlyQuota:2},
+  Evelyn:{color:'#0f9e7a',monthlyQuota:2},
+  'Dummy 2':{color:'#ba7517',monthlyQuota:1}
+};
+
+var CHORES=[
+  {id:'m1',name:'Deep clean pantry',instr:'Toss expired items, wipe shelves, regroup bins',pts:120,mins:45,cooldown:30,allowance:true,photo:true,approvalRequired:true},
+  {id:'m2',name:'Wash windows downstairs',instr:'Inside glass, tracks, sills',pts:95,mins:40,cooldown:30,allowance:true,photo:false,approvalRequired:false},
+  {id:'m3',name:'Rotate seasonal clothes',instr:'Pull next month clothes, store outgrown items',pts:110,mins:35,cooldown:28,allowance:true,photo:true,approvalRequired:true},
+  {id:'m4',name:'Garage sweep + organize',instr:'Sweep floor, return tools, flatten boxes',pts:130,mins:50,cooldown:30,allowance:true,photo:false,approvalRequired:false},
+  {id:'m5',name:'Clean baseboards',instr:'Main hallway and living room',pts:85,mins:30,cooldown:30,allowance:false,photo:false,approvalRequired:false},
+  {id:'m6',name:'Donation bin sort',instr:'Pair items, bag donations, label keep pile',pts:90,mins:35,cooldown:21,allowance:true,photo:false,approvalRequired:true},
+  {id:'m7',name:'Vacuum couch + cushions',instr:'Under cushions and crevices',pts:70,mins:20,cooldown:21,allowance:false,photo:false,approvalRequired:false},
+  {id:'m8',name:'Backyard tool wipe-down',instr:'Hose dirt off, dry, return to rack',pts:80,mins:25,cooldown:21,allowance:true,photo:true,approvalRequired:false}
+];
+
+var ACTIVITY={
+  0:{
+    'm1':{status:'pending_approval',student:'Caleb',claimedAt:'Jul 02',completedAt:'Jul 03',pendingApproval:true},
+    'm2':{status:'claimed',student:'Evelyn',claimedAt:'Jul 04',completedAt:null,pendingApproval:false},
+    'm3':{status:'completed',student:'Dummy 2',claimedAt:'Jul 01',completedAt:'Jul 01',pendingApproval:false},
+    'm4':{status:'cooldown',unlocksOn:'Jul 18'},
+    'm5':{status:'available'},
+    'm6':{status:'available'},
+    'm7':{status:'completed',student:'Caleb',claimedAt:'Jul 02',completedAt:'Jul 02',pendingApproval:false},
+    'm8':{status:'cooldown',unlocksOn:'Jul 11'}
+  },
+  '-1':{
+    'm1':{status:'completed',student:'Evelyn',claimedAt:'Jun 07',completedAt:'Jun 09',pendingApproval:false},
+    'm2':{status:'completed',student:'Caleb',claimedAt:'Jun 12',completedAt:'Jun 12',pendingApproval:false},
+    'm3':{status:'completed',student:'Dummy 2',claimedAt:'Jun 03',completedAt:'Jun 05',pendingApproval:false},
+    'm4':{status:'completed',student:'Caleb',claimedAt:'Jun 19',completedAt:'Jun 20',pendingApproval:false},
+    'm5':{status:'available'},
+    'm6':{status:'pending_approval',student:'Evelyn',claimedAt:'Jun 28',completedAt:'Jun 29',pendingApproval:true},
+    'm7':{status:'completed',student:'Caleb',claimedAt:'Jun 10',completedAt:'Jun 10',pendingApproval:false},
+    'm8':{status:'available'}
+  },
+  '-2':{
+    'm1':{status:'completed',student:'Caleb',claimedAt:'May 05',completedAt:'May 06',pendingApproval:false},
+    'm2':{status:'available'},
+    'm3':{status:'completed',student:'Evelyn',claimedAt:'May 17',completedAt:'May 18',pendingApproval:false},
+    'm4':{status:'available'},
+    'm5':{status:'completed',student:'Dummy 2',claimedAt:'May 21',completedAt:'May 21',pendingApproval:false},
+    'm6':{status:'available'},
+    'm7':{status:'completed',student:'Caleb',claimedAt:'May 02',completedAt:'May 02',pendingApproval:false},
+    'm8':{status:'completed',student:'Evelyn',claimedAt:'May 23',completedAt:'May 24',pendingApproval:false}
+  },
+  1:{
+    'm1':{status:'cooldown',unlocksOn:'Aug 02'},
+    'm2':{status:'available'},
+    'm3':{status:'available'},
+    'm4':{status:'available'},
+    'm5':{status:'available'},
+    'm6':{status:'available'},
+    'm7':{status:'cooldown',unlocksOn:'Aug 04'},
+    'm8':{status:'available'}
+  }
+};
+
+var MONTH_META={
+  0:{label:'July 2026 (current)',reset:'Aug 1',quotaHint:'Month closes in 28 days'},
+  '-1':{label:'June 2026',reset:'Jul 1',quotaHint:'Closed month'},
+  '-2':{label:'May 2026',reset:'Jun 1',quotaHint:'Closed month'},
+  1:{label:'August 2026',reset:'Sep 1',quotaHint:'Preview month'}
+};
+
+function getActivity(){return ACTIVITY[String(monthOffset)]||{};}
+
+function choreStatus(cid){
+  var a=getActivity();
+  return a[cid]||{status:'available'};
+}
+
+function statusBadge(st){
+  if(st.status==='available')return '<span class="badge b-avail">AVAILABLE</span>';
+  if(st.status==='cooldown')return '<span class="badge b-cool">UNAVAILABLE UNTIL '+st.unlocksOn.toUpperCase()+'</span>';
+  if(st.status==='claimed')return '<span class="badge b-claimed">CLAIMED · '+st.student+'</span>';
+  if(st.status==='completed')return '<span class="badge b-done">DONE · '+st.student+'</span>';
+  if(st.status==='pending_approval')return '<span class="badge b-pend">PENDING APPROVAL · '+st.student+'</span>';
+  return '';
+}
+
+function accentColor(st){
+  if(st.status==='available')return 'transparent';
+  if(st.status==='cooldown')return 'var(--amber)';
+  if(st.status==='claimed')return 'var(--blue)';
+  if(st.status==='completed')return 'var(--green)';
+  if(st.status==='pending_approval')return 'var(--red)';
+  return 'transparent';
+}
+
+function renderMonthBar(){
+  var meta=MONTH_META[String(monthOffset)]||{label:'Month '+monthOffset,reset:'Next month',quotaHint:''};
+  var lbl=document.getElementById('monthLbl');
+  lbl.textContent=meta.label;
+  lbl.className='month-lbl'+(monthOffset<0?' past':' cur');
+  document.getElementById('prevBtn').className='mnav-btn'+(monthOffset<=-2?' dis':'');
+  document.getElementById('nextBtn').className='mnav-btn'+(monthOffset>=1?' dis':'');
+
+  var a=getActivity();
+  var completed=Object.values(a).filter(function(x){return x.status==='completed';}).length;
+  var pending=Object.values(a).filter(function(x){return x.status==='pending_approval';}).length;
+  var available=Object.values(a).filter(function(x){return x.status==='available';}).length;
+  var right='<span>'+completed+'/'+CHORES.length+' completed this month</span>';
+  right+=' · <span>'+available+' open in pool</span>';
+  if(pending>0)right+=' · <span style="color:var(--red)"><i class="ti ti-circle-dot" style="font-size:10px"></i> '+pending+' pending approval</span>';
+  right+=' · <span>resets '+meta.reset+'</span>';
+  document.getElementById('barRight').innerHTML=right;
+}
+
+function renderPool(){
+  var a=getActivity();
+  var avail=0,claimed=0,pending=0,cooldown=0;
+  CHORES.forEach(function(c){
+    var s=choreStatus(c.id);
+    if(s.status==='available')avail++;
+    if(s.status==='claimed')claimed++;
+    if(s.status==='pending_approval')pending++;
+    if(s.status==='cooldown')cooldown++;
+  });
+  document.getElementById('poolCount').textContent=CHORES.length+' chores · '+avail+' available · '+cooldown+' cooling down';
+
+  var h='';
+  CHORES.forEach(function(c){
+    var st=choreStatus(c.id);
+    var sel=selChore===c.id;
+    h+='<div class="chore-row'+(sel?' sel':'')+'" onclick="selectChore(\''+c.id+'\')" style="border-left-color:'+accentColor(st)+'">'
+      +'<div class="cr-main">'
+      +'<div class="cr-name">'+c.name+' <span class="pts-badge">'+c.pts+' pts</span></div>'
+      +'<div class="cr-meta">'
+      +'<span><i class="ti ti-clock"></i>'+c.mins+'m</span>'
+      +'<span><i class="ti ti-calendar-time"></i>'+c.cooldown+'d cooldown</span>'
+      +'</div>'
+      +'<div class="cr-badges">'+statusBadge(st)
+      +(c.allowance?'<span class="badge b-allow">ALLOWANCE</span>':'')
+      +(c.photo?'<span class="badge b-photo">PHOTO REQ</span>':'')
+      +(c.approvalRequired?'<span class="badge b-appr">APPROVAL REQ</span>':'')
+      +'</div>'
+      +'</div>'
+      +'<div class="cr-acts">'
+      +'<div class="cr-act" title="Edit" onclick="event.stopPropagation();alert(\'Edit: '+c.name+'\')"><i class="ti ti-edit"></i></div>'
+      +'<div class="cr-act" title="Delete" onclick="event.stopPropagation();deleteChore(\''+c.id+'\')"><i class="ti ti-trash"></i></div>'
+      +'</div>'
+      +'</div>';
+  });
+  h+='<div class="add-chore" onclick="openModal()"><i class="ti ti-plus"></i> Add chore to monthly pool</div>';
+  document.getElementById('poolList').innerHTML=h;
+}
+
+function renderTabs(){
+  var h='';
+  Object.keys(STUDENTS).forEach(function(name){
+    var a=getActivity();
+    var mine=Object.values(a).filter(function(x){return x.student===name;});
+    var completed=mine.filter(function(x){return x.status==='completed';}).length;
+    var pending=mine.filter(function(x){return x.status==='pending_approval';}).length;
+    var claimed=mine.filter(function(x){return x.status==='claimed';}).length;
+    var quota=STUDENTS[name].monthlyQuota;
+    var sub=completed+'/'+quota+' quota';
+    if(claimed)sub+=' · '+claimed+' claimed';
+    if(pending)sub+=' · '+pending+' pending';
+    h+='<div class="act-tab'+(name===curStudent?' act':'')+'" onclick="switchStudent(\''+name+'\')">'
+      +'<span class="act-tab-name">'+name+'</span>'
+      +'<span class="act-tab-sub">'+sub+'</span>'
+      +'</div>';
+  });
+  document.getElementById('actTabs').innerHTML=h;
+}
+
+function renderActivity(){
+  var a=getActivity();
+  var mine=Object.entries(a).filter(function(e){return e[1].student===curStudent;});
+  var quota=STUDENTS[curStudent].monthlyQuota;
+
+  var doneItems=mine.filter(function(e){return e[1].status==='completed';});
+  var pendItems=mine.filter(function(e){return e[1].status==='pending_approval';});
+  var claimItems=mine.filter(function(e){return e[1].status==='claimed';});
+
+  var credited=doneItems.length;
+  var totalProgress=doneItems.length+pendItems.length;
+  var quotaColor=credited>=quota?'var(--green)':'var(--amber)';
+
+  var avail=0,claimed=0,pending=0,cooling=0,allowancePool=0;
+  CHORES.forEach(function(c){
+    var st=choreStatus(c.id);
+    if(st.status==='available')avail++;
+    if(st.status==='claimed')claimed++;
+    if(st.status==='pending_approval')pending++;
+    if(st.status==='cooldown')cooling++;
+    if(c.allowance)allowancePool++;
+  });
+
+  var meta=MONTH_META[String(monthOffset)]||{reset:'Next month',quotaHint:''};
+  var h='<div class="act-banner"><i class="ti ti-calendar-month"></i> Shared monthly pool: '+avail+' available, '+claimed+' claimed, '+pending+' awaiting review, '+cooling+' cooling down. '+allowancePool+' chores count toward allowance. '+meta.quotaHint+'.</div>';
+  h+='<div class="sp-stat-row">'
+    +'<div class="sp-stat"><div class="sp-stat-val" style="color:'+quotaColor+'">'+credited+'/'+quota+'</div><div class="sp-stat-lbl">monthly quota credited</div></div>'
+    +'<div class="sp-stat"><div class="sp-stat-val">'+totalProgress+'</div><div class="sp-stat-lbl">completed or pending</div></div>'
+    +'<div class="sp-stat"><div class="sp-stat-val" style="color:'+(claimItems.length>0?'var(--blue)':'var(--t4)')+'">'+claimItems.length+'</div><div class="sp-stat-lbl">in progress</div></div>'
+    +'</div>';
+
+  if(pendItems.length>0){
+    h+='<div class="act-section-lbl">Pending approval</div>';
+    pendItems.forEach(function(e){
+      var cid=e[0],entry=e[1];
+      var chore=CHORES.find(function(c){return c.id===cid;});
+      if(!chore)return;
+      h+='<div class="act-row" style="border-left-color:var(--red)">'
+        +'<div class="ar-info"><div class="ar-name">'+chore.name+'</div>'
+        +'<div class="ar-meta">Claimed '+entry.claimedAt+' · Completed '+entry.completedAt+(chore.photo?' · Photo submitted':'')+' · Credits once approved</div>'
+        +'</div>'
+        +'<div class="ar-acts">'
+        +'<div class="ar-btn app" onclick="approveChore(\''+cid+'\')"><i class="ti ti-check"></i> Approve</div>'
+        +'<div class="ar-btn rej" onclick="rejectChore(\''+cid+'\')"><i class="ti ti-x"></i></div>'
+        +'</div></div>';
+    });
+  }
+
+  if(claimItems.length>0){
+    h+='<div class="act-section-lbl">In progress</div>';
+    claimItems.forEach(function(e){
+      var cid=e[0],entry=e[1];
+      var chore=CHORES.find(function(c){return c.id===cid;});
+      if(!chore)return;
+      h+='<div class="act-row" style="border-left-color:var(--blue)">'
+        +'<div class="ar-info"><div class="ar-name">'+chore.name+'</div>'
+        +'<div class="ar-meta">Claimed '+entry.claimedAt+' · '+chore.mins+'m est. · Due before '+meta.reset+'</div>'
+        +'</div>'
+        +'<div class="ar-acts"><div class="ar-btn" onclick="alert(\'Unclaim for '+curStudent+'\')">Unclaim</div></div>'
+        +'</div>';
+    });
+  }
+
+  if(doneItems.length>0){
+    h+='<div class="act-section-lbl">Completed this month</div>';
+    doneItems.forEach(function(e){
+      var cid=e[0],entry=e[1];
+      var chore=CHORES.find(function(c){return c.id===cid;});
+      if(!chore)return;
+      h+='<div class="act-row" style="border-left-color:var(--green)">'
+        +'<div class="ar-info"><div class="ar-name">'+chore.name+' <span class="pts-badge">+'+chore.pts+' pts</span></div>'
+        +'<div class="ar-meta">Claimed '+entry.claimedAt+' · Completed '+entry.completedAt+'</div>'
+        +'</div></div>';
+    });
+  }
+
+  if(mine.length===0){
+    h+='<div class="act-empty"><i class="ti ti-calendar-month" style="font-size:24px;display:block;margin-bottom:8px;color:var(--t4)"></i>No monthly chore activity yet</div>';
+  }
+
+  document.getElementById('actBody').innerHTML=h;
+}
+
+function approveChore(cid){
+  var a=getActivity();
+  if(a[cid])a[cid].status='completed';
+  render();
+}
+
+function rejectChore(cid){
+  var a=getActivity();
+  if(a[cid]){
+    a[cid].status='available';
+    delete a[cid].student;
+    delete a[cid].claimedAt;
+    delete a[cid].completedAt;
+    a[cid].pendingApproval=false;
+  }
+  render();
+}
+
+function selectChore(id){selChore=id;render();}
+function switchStudent(name){curStudent=name;render();}
+function shiftMonth(d){monthOffset=Math.max(-2,Math.min(1,monthOffset+d));selChore=null;render();}
+function deleteChore(id){CHORES=CHORES.filter(function(c){return c.id!==id;});if(selChore===id)selChore=null;render();}
+
+function openModal(){
+  document.getElementById('mName').value='';
+  document.getElementById('mInstr').value='';
+  document.getElementById('mPts').value='';
+  document.getElementById('mMins').value='';
+  document.getElementById('mCool').value='';
+  document.getElementById('tAllow').className='toggle on';
+  document.getElementById('tPhoto').className='toggle';
+  document.getElementById('tAppr').className='toggle';
+  document.getElementById('modalBg').classList.add('open');
+}
+
+function closeModal(){document.getElementById('modalBg').classList.remove('open');}
+
+function addChore(){
+  var name=document.getElementById('mName').value.trim();
+  if(!name)return;
+  CHORES.push({
+    id:'m'+Date.now(),
+    name:name,
+    instr:document.getElementById('mInstr').value.trim(),
+    pts:parseInt(document.getElementById('mPts').value)||90,
+    mins:parseInt(document.getElementById('mMins').value)||30,
+    cooldown:parseInt(document.getElementById('mCool').value)||21,
+    allowance:document.getElementById('tAllow').classList.contains('on'),
+    photo:document.getElementById('tPhoto').classList.contains('on'),
+    approvalRequired:document.getElementById('tAppr').classList.contains('on')
+  });
+  closeModal();
+  render();
+}
+
+document.getElementById('modalBg').addEventListener('click',function(e){if(e.target===this)closeModal();});
+
+function render(){
+  renderMonthBar();
+  renderPool();
+  renderTabs();
+  renderActivity();
+}
+
+render();
+</script>
+</body></html>

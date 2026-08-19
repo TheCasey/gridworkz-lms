@@ -1,14 +1,20 @@
 # Public Marketing Site And Landing Page
 
-Last updated: 2026-05-11
+Last updated: 2026-05-26
 
-Status: Draft
+Status: Implemented; public homepage workflow complete, live paid-checkout rollout still separate
 
 ## Goal
 
 Define the first public-facing Own Path marketing site so the root experience can explain the product clearly, reduce buyer hesitation, and route visitors into signup, login, or pricing without dropping cold traffic directly onto an auth wall.
 
 This doc is intentionally focused on the first homepage and pricing experience, not on a full long-term content-marketing system.
+
+## Implementation Status
+
+The public marketing workflow completed Phase 4 on 2026-05-12. Current scope includes a real public root route, product story sections, pricing and FAQ anchors, conversion paths, and responsive launch QA. Keep this spec as the source of truth for public-site intent, but do not treat the old draft status as an open implementation blocker.
+
+The remaining launch caveat is operational: paid checkout should not be presented as live self-serve billing until Stripe live-mode products, prices, secrets, and webhook smoke validation are complete.
 
 ## Why This Exists
 

@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>GridWorkz Lockdown Setup</title>
+    <title>Own Path Lockdown setup</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body class="options-shell">
     <main class="page-shell">
       <section class="panel">
-        <p class="eyebrow">GridWorkz Lockdown</p>
+        <p class="eyebrow">Own Path Lockdown</p>
         <h1>Trusted device pairing</h1>
         <p class="muted">
-          Paste the trusted enrollment code from the parent Lockdown panel. The extension exchanges it once for a device credential, then reads policy through the secure device endpoint.
+          Paste the trusted enrollment code from the parent dashboard. The extension exchanges it once for a device credential, then reads policy through the secure device endpoint.
         </p>
 
         <div class="section">
@@ -37,14 +37,30 @@
 
         <div class="cluster">
           <button class="primary-button" id="save-button" type="button">Save pairing</button>
-          <button class="secondary-button" id="clear-button" type="button">Clear pairing</button>
+          <button class="secondary-button" id="clear-button" type="button">Clear older local pairing</button>
           <button class="secondary-button" id="popup-button" type="button">Back to popup</button>
+        </div>
+
+        <div class="section" id="recovery-section" hidden>
+          <h2>Parent recovery</h2>
+          <div class="form-stack">
+            <div class="field-group">
+              <label for="recovery-code">Parent recovery code</label>
+              <textarea id="recovery-code" placeholder="Paste the parent recovery code for this exact device"></textarea>
+              <p class="field-help">
+                A paired browser can clear its local device pairing only after the parent dashboard issues a one-time recovery code for this device.
+              </p>
+            </div>
+          </div>
+          <div class="cluster">
+            <button class="secondary-button" id="recovery-button" type="button">Clear with parent code</button>
+          </div>
         </div>
 
         <p class="status-message" id="status-message"></p>
 
         <div class="note">
-          Legacy PoC Firestore pairing codes are no longer used for secure sync. If this browser still has one saved, clear it here and pair again with a trusted enrollment code.
+          Paired devices are parent-managed. Older pairing formats can still be cleared locally and replaced with a trusted enrollment code.
         </div>
       </section>
     </main>

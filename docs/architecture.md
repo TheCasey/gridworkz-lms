@@ -1,6 +1,6 @@
 # GridWorkz Architecture
 
-Last updated: 2026-05-22
+Last updated: 2026-05-26
 
 ## Stack
 
@@ -35,6 +35,8 @@ Key files:
 - `src/pages/OpsEntitlements.jsx`: operator-only entitlement inspection and support override console
 - `src/pages/Settings.jsx`: school year and weekly reset settings
 - `src/pages/StudentPortal.jsx`: student experience, timer flow, and block completion
+- `src/pages/dashboard/ChoresRoute.jsx`: parent chores/rewards setup, paid/free UI gating, allowance/points/reward review
+- `src/hooks/useStudentChores.js`: PIN-verified trusted student chore/reward state and mutations
 
 ## Data Model
 
@@ -79,6 +81,7 @@ Important modeling details:
 - `lockdownPolicies/{parentId}` now survives only as a compatibility snapshot and migration boundary; it is not the active runtime trust boundary for paired browsers.
 - `lockdownEnrollmentSessions` stores short-lived server-owned trusted pairing tickets issued from `/dashboard/lockdown`.
 - `lockdownDevices` stores server-owned device bindings plus opaque credentials consumed by credential-authenticated policy reads.
+- `routineTemplates`, `routineCompletions`, `choreDefinitions`, `choreClaims`, `choreCompletions`, `choreSettings`, `allowancePeriods`, `rewardSettings`, `pointLedgerEntries`, `studentPointWallets`, `rewardCatalogItems`, and `rewardRedemptions` back the implemented chores/rewards module.
 
 ## Core Behaviors
 
@@ -122,6 +125,15 @@ Important modeling details:
 - Device policy is derived from published weekly-plan state, timer context, school-time rules, and student-bound off-hours windows.
 - The extension keeps the last good policy cached locally so restart and temporary sync failure do not drop enforcement.
 
+### Chores and rewards
+
+- `/dashboard/chores` is route-backed through the shared dashboard feature registry.
+- Free accounts can create, edit, archive, and complete grouped daily routines only.
+- Core/Pro and Lockdown include the full paid module: chore pools, weekly/monthly chores, allowance tracking, points, reward-store behavior, redemptions, achievements, and related placeholder cosmetics.
+- Downgrade behavior is non-destructive: saved paid records remain parent-readable, but new paid setup, allowance sync, point changes, chore review, and reward/redemption mutations are blocked by UI state and trusted callable entitlement checks.
+- Student chores/rewards access uses PIN-verified trusted callables. The student-safe response is scoped to the active student; Free responses omit chore pools, allowance, wallets, rewards, and redemptions.
+- School-block point awards remain deferred until school completion moves to a trusted server-owned flow.
+
 ## Security Posture
 
 - Parent profile access is owner-scoped.
@@ -133,13 +145,16 @@ Important modeling details:
 - New student creates and new active-subject creates now run through trusted callable functions instead of direct Firestore client creates.
 - Active Lockdown pairing and sync no longer rely on public Firestore reads or raw Firebase web config. `lockdownEnrollmentSessions` and `lockdownDevices` are server-owned only, and paired browsers sync through trusted Cloud Function endpoints.
 - `lockdownPolicies/{parentId}` still allows a public compatibility snapshot read, but that path is now migration-boundary history rather than the active device-policy trust boundary.
+- Chores/rewards collection writes are denied in Firestore rules and served through trusted callables. Parent reads are owner-scoped; public student portal reads cannot enumerate household chore/reward state.
 
 This is sufficient for the current browser-extension launch path, but the broader student portal and public compatibility surfaces are not a hardened long-term posture.
 
 ## Platform Gaps
 
 - Stripe-backed billing sync, the trusted entitlement document, and the operator entitlement console now exist in sandbox mode, but live-mode payment rollout and seeded operator validation are still pending.
-- The route-backed dashboard shell and premium gating boundaries are now in place, but future premium modules such as projects, chores, or billing still need to be built onto that shared contract.
+- The route-backed dashboard shell and premium gating boundaries are now in place. Projects and any later paid surfaces should continue building on that shared contract; chores/rewards already do.
+- Chores/rewards browser and callable smoke still need a seeded Firebase/staging household before production launch confidence. Local state-model scripts cover privacy, entitlements, cooldowns, allowance, points, and redemptions, but not a live callable runtime.
+- Longer-term student-session hardening remains open because the module still relies on PIN-verified public student slug context.
 - The weekly-plan compatibility bridge is live, but persisted curriculum template management, assignment management, richer projects, worksheet runtime, and full compliance reporting are still future work.
 - The browser-extension track is now live on the trusted device contract. Follow-on Lockdown scope is kiosk mode, broader rollout hardening, and eventual retirement of compatibility-only snapshot paths.
 - Broader student-flow hardening still remains outside the Lockdown launch scope, especially around public reads and unauthenticated timer or submission behavior.
@@ -157,4 +172,5 @@ This is sufficient for the current browser-extension launch path, but the broade
 - Product baseline planning: [upgrades/baseline-product-foundation.md](upgrades/baseline-product-foundation.md)
 - Current status audit: [audits/baseline-plan-audit-2026-05-04.md](audits/baseline-plan-audit-2026-05-04.md)
 - Feature docs: [features/README.md](features/README.md)
+- Implemented chores and rewards module: [specs/chores-and-rewards-module.md](specs/chores-and-rewards-module.md)
 - Upgrade docs: [upgrades/README.md](upgrades/README.md)

@@ -10,6 +10,14 @@ import { app } from '../firebase/firebaseConfig';
 import { createTrustedSubject } from '../firebase/trustedOperations';
 import { buildEntitlementUsageSummary } from '../utils/entitlementUtils';
 
+const getUniqueStudentIds = (subjectData = {}) => (
+  Array.from(new Set(
+    (Array.isArray(subjectData.student_ids) ? subjectData.student_ids : [subjectData.student_id])
+      .map((studentId) => (typeof studentId === 'string' ? studentId.trim() : ''))
+      .filter(Boolean)
+  ))
+);
+
 export const useSubjectMutations = ({
   canAddCurriculumItem = true,
   currentUser = null,
@@ -42,7 +50,26 @@ export const useSubjectMutations = ({
         await updateDoc(doc(db, 'subjects', editingSubject.id), subjectData);
       } else {
         const { parent_id, updated_at, ...createPayload } = subjectData;
-        await createTrustedSubject(createPayload);
+        const studentIds = getUniqueStudentIds(createPayload);
+
+        if (
+          curriculumLimitCheck
+          && !curriculumLimitCheck.isUnlimited
+          && studentIds.length > (curriculumLimitCheck.remaining ?? 0)
+        ) {
+          alert(
+            `${subjectLimitMessage} Creating this subject for ${studentIds.length} students would create ${studentIds.length} active subject records. ${curriculumLimitCheck?.upgradeCopy || ''}`
+          );
+          return false;
+        }
+
+        for (const studentId of studentIds) {
+          await createTrustedSubject({
+            ...createPayload,
+            student_id: studentId,
+            student_ids: [studentId],
+          });
+        }
       }
 
       return true;
@@ -57,7 +84,7 @@ export const useSubjectMutations = ({
 
       return false;
     }
-  }, [canAddCurriculumItem, currentUser, db, limitAlertMessage]);
+  }, [canAddCurriculumItem, currentUser, curriculumLimitCheck, db, limitAlertMessage, subjectLimitMessage]);
 
   const deleteSubject = useCallback(async (subjectId) => {
     if (!window.confirm('Are you sure you want to delete this subject?')) {

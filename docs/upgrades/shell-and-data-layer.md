@@ -1,6 +1,6 @@
 # Shell And Data Layer
 
-Last updated: 2026-05-06
+Last updated: 2026-05-26
 
 Status: Complete
 
@@ -15,6 +15,7 @@ Delivered outcomes:
 - student, settings, subject, report, activity, and rollover orchestration now compose hook boundaries instead of living inline in the largest page files
 - premium shell gating is structural, and Lockdown now lives as its own route-backed module
 - the student portal now evaluates subject visibility, timer start, and submission access through one reusable access-policy layer
+- chores/rewards subsequently landed on the same shell and entitlement contract at `/dashboard/chores`
 
 Follow-on work such as security hardening, reporting/evidence improvements, live-mode billing rollout, or future modules should continue in their dedicated docs rather than reopening this completed upgrade.
 
@@ -32,7 +33,7 @@ Current pressure points:
 
 - subscriptions and entitlements need consistent nav visibility, locked states, and action gating
 - the Lockdown PoC should become a plan-gated module instead of staying embedded in the student overview page
-- future modules such as chores, projects, billing, device management, or compliance workflows should be able to land as additional sections instead of expanding one switch statement
+- future modules such as projects, billing, device management, or compliance workflows should be able to land as additional sections instead of expanding one switch statement
 - the mobile plan already recommends structured hooks and cleaner navigation boundaries
 - a future UI refresh should be able to swap shell chrome without rewriting feature logic
 
@@ -403,21 +404,23 @@ Tasks:
 
 Exit criteria:
 
-- a future chores module can block lesson access by extending one policy layer instead of rewriting the portal
+- a future prerequisite module, including any chore-completion gate, can block lesson access by extending one policy layer instead of rewriting the portal
 
 Trusted backend enforcement for entitlements, create limits, and Lockdown writes is already complete through the subscriptions-and-entitlements workflow. Treat that live backend path as a dependency for this upgrade, not as another phase inside it.
 
 ## How Future Features Should Plug In
 
-### Example: chores
+### Implemented example: chores
 
-Target integration shape:
+The chores/rewards module now follows this shape:
 
-1. Add a `chores` feature module and route
-2. Add `useChores` domain hooks
-3. Add an entitlement gate if chores are plan-limited
-4. Add a student-access policy rule such as `requiresCompletedChores`
-5. Render locked or blocked states from shared shell and policy contracts
+1. Add a `chores` feature module and route.
+2. Add chore-specific domain hooks.
+3. Add entitlement gates for Free routine-only access and paid chores/rewards behavior.
+4. Keep student chore/reward state behind PIN-verified trusted callables.
+5. Render locked or blocked states from shared shell and policy contracts.
+
+A future rule such as `requiresCompletedChores` should still plug into the existing student-access policy layer instead of hardcoding chore checks directly into school-work rendering.
 
 What should not happen:
 

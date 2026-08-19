@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--n0:#181828;--n1:#1f1f32;--n2:#26263c;--n3:#2e2e48;--n4:#383858;--vi:#7c6fd4;--vl:#b8adff;--vf:rgba(124,111,212,0.14);--bd:rgba(255,255,255,0.08);--bd2:rgba(255,255,255,0.14);--t1:#eeeaf8;--t2:#c4bedc;--t3:#8f8aaa;--t4:#585674;--amber:#f59e0b;--green:#34d399;--red:#f87171;--blue:#60a5fa;}
+body{background:var(--n1);color:var(--t1);font-family:system-ui,sans-serif;margin:0}
+.shell{display:flex;flex-direction:column;height:600px;overflow:hidden;border:0.5px solid var(--bd2);position:relative}
+.topbar{height:50px;background:var(--n0);border-bottom:0.5px solid var(--bd);display:flex;align-items:center;padding:0 16px;gap:8px;flex-shrink:0}
+.tb-title{font-size:14px;font-weight:500;color:var(--t1);flex:1}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;font-size:11px;cursor:pointer;border:0.5px solid var(--bd2);background:transparent;color:var(--t2);transition:all .15s}
+.btn:hover{background:var(--n3);color:var(--t1)}
+.btn.pri{background:var(--vi);color:#fff;border-color:var(--vi)}
+.btn.pri:hover{background:#6c60c0}
+.btn.sm{padding:3px 8px;font-size:10px}
+.btn.green{border-color:rgba(52,211,153,.4);color:var(--green);background:rgba(52,211,153,.08)}
+.btn.green:hover{background:rgba(52,211,153,.18)}
+.btn i{font-size:12px}
+.period-bar{height:36px;background:var(--n0);border-bottom:0.5px solid var(--bd);display:flex;align-items:center;padding:0 16px;gap:8px;flex-shrink:0}
+.wnav-btn{width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:0.5px solid var(--bd2);color:var(--t3);transition:all .15s;flex-shrink:0}
+.wnav-btn:hover{background:var(--n3);color:var(--t1)}
+.wnav-btn.dis{opacity:.3;pointer-events:none}
+.wnav-btn i{font-size:12px}
+.period-lbl{font-size:11px;font-weight:500;color:var(--t2);min-width:150px;text-align:center}
+.period-lbl.past{color:var(--amber)}
+.period-right{margin-left:auto;font-size:10px;color:var(--t3);display:flex;align-items:center;gap:10px}
+.body{flex:1;display:flex;overflow:hidden;position:relative}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.cards-row{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--bd);flex-shrink:0;border-bottom:0.5px solid var(--bd)}
+.stu-card{background:var(--n0);padding:11px 13px;cursor:pointer;border-left:3px solid transparent;border-bottom:2px solid transparent;transition:background .15s}
+.stu-card:hover{background:var(--n2)}
+.stu-card.sel{background:var(--n2);border-bottom-color:var(--vi)}
+.sc-top{display:flex;align-items:center;gap:7px;margin-bottom:7px}
+.sc-dot{width:7px;height:7px;flex-shrink:0}
+.sc-name{font-size:12px;font-weight:500;color:var(--t1);flex:1}
+.sc-policy{font-size:8px;padding:1px 4px;background:var(--n3);color:var(--t3)}
+.sc-earned{font-size:19px;font-weight:500;margin-bottom:1px}
+.sc-target{font-size:10px;color:var(--t3)}
+.sc-bar-wrap{height:3px;background:var(--n4);margin:6px 0 5px}
+.sc-bar{height:3px;transition:width .3s}
+.sc-badges{display:flex;gap:3px;flex-wrap:wrap;margin-top:5px}
+.badge{font-size:8px;padding:2px 5px;font-weight:500;letter-spacing:.03em}
+.b-paid{background:rgba(52,211,153,.15);color:var(--green)}
+.b-unpaid{background:rgba(245,158,11,.13);color:var(--amber)}
+.b-short{background:rgba(248,113,113,.13);color:var(--red)}
+.ledger-area{flex:1;overflow-y:auto;padding:11px 13px;display:flex;flex-direction:column;gap:9px}
+.ledger-hdr{display:flex;align-items:center;gap:8px}
+.ledger-title{font-size:12px;font-weight:500;color:var(--t1);flex:1}
+.section-lbl{font-size:9px;color:var(--t4);letter-spacing:.08em;text-transform:uppercase;padding:2px 0}
+.ledger-table{background:var(--n2);border:0.5px solid var(--bd)}
+.lt-row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:0.5px solid var(--bd);font-size:11px}
+.lt-row:last-child{border-bottom:none}
+.lt-row.total{background:var(--n3);font-weight:500}
+.lt-row.bounty{border-left:3px solid var(--amber)}
+.lt-row.adj{border-left:3px solid var(--blue)}
+.lt-label{flex:1;color:var(--t2)}
+.lt-sub{font-size:9px;color:var(--t3);margin-top:1px}
+.lt-amount{font-weight:500;color:var(--t1);flex-shrink:0;min-width:48px;text-align:right}
+.lt-amount.pos{color:var(--green)}
+.lt-amount.neg{color:var(--red)}
+.lt-amount.dim{color:var(--t4)}
+.lt-edit{width:20px;height:20px;display:flex;align-items:center;justify-content:center;color:var(--t4);cursor:pointer;transition:all .15s;flex-shrink:0}
+.lt-edit:hover{color:var(--t1);background:var(--n4)}
+.lt-edit i{font-size:11px}
+.pay-row{display:flex;align-items:center;gap:10px;padding:10px;background:var(--n2);border:0.5px solid var(--bd)}
+.pay-total{flex:1}
+.pay-total-val{font-size:18px;font-weight:500}
+.pay-total-lbl{font-size:10px;color:var(--t3)}
+
+/* Slide-in settings panel */
+.settings-overlay{position:absolute;inset:0;background:rgba(0,0,0,0);pointer-events:none;transition:background .2s;z-index:10}
+.settings-overlay.open{background:rgba(0,0,0,.4);pointer-events:all}
+.settings-panel{position:absolute;top:0;right:0;bottom:0;width:250px;background:var(--n0);border-left:0.5px solid var(--bd2);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .22s;z-index:11}
+.settings-panel.open{transform:translateX(0)}
+.sp-hdr{padding:11px 13px;border-bottom:0.5px solid var(--bd);display:flex;align-items:center;gap:7px;flex-shrink:0}
+.sp-hdr-title{font-size:12px;font-weight:500;color:var(--t1);flex:1}
+.sp-close{width:22px;height:22px;display:flex;align-items:center;justify-content:center;color:var(--t4);cursor:pointer;transition:all .15s}
+.sp-close:hover{color:var(--t1);background:var(--n3)}
+.sp-close i{font-size:13px}
+.sp-body{flex:1;overflow-y:auto;padding:12px 13px;display:flex;flex-direction:column;gap:11px}
+.sp-field{display:flex;flex-direction:column;gap:4px}
+.sp-lbl{font-size:9px;color:var(--t4);letter-spacing:.08em;text-transform:uppercase}
+.sp-input{background:var(--n3);border:0.5px solid var(--bd2);color:var(--t1);font-size:11px;padding:5px 7px;width:100%}
+.sp-input:focus{outline:none;border-color:var(--vi)}
+.sp-div{height:0.5px;background:var(--bd)}
+.seg{display:flex;gap:3px}
+.seg-btn{flex:1;padding:5px 4px;font-size:10px;cursor:pointer;border:0.5px solid var(--bd2);background:transparent;color:var(--t3);text-align:center;transition:all .15s;white-space:nowrap}
+.seg-btn.act{border-color:var(--vi);background:var(--vf);color:var(--vl)}
+.seg-btn:hover:not(.act){background:var(--n3);color:var(--t2)}
+.sp-footer{padding:11px 13px;border-top:0.5px solid var(--bd);display:flex;gap:6px;flex-shrink:0}
+.sp-unsaved{font-size:9px;color:var(--amber);display:flex;align-items:center;gap:4px;padding:5px 8px;background:rgba(245,158,11,.08);border-left:2px solid var(--amber);margin-bottom:6px;display:none}
+
+/* Modals */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
+.modal-bg.open{display:flex}
+.modal{background:var(--n1);border:0.5px solid var(--bd2);padding:16px;width:280px;display:flex;flex-direction:column;gap:10px}
+.modal-title{font-size:13px;font-weight:500;color:var(--t1)}
+.mlbl{font-size:10px;color:var(--t3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px}
+.minput{background:var(--n3);border:0.5px solid var(--bd2);color:var(--t1);font-size:11px;padding:6px 8px;width:100%}
+.minput::placeholder{color:var(--t4)}
+.mbtns{display:flex;gap:6px;justify-content:flex-end;margin-top:2px}
+</style></head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <span class="tb-title">Allowance</span>
+  </div>
+  <div class="period-bar">
+    <div class="wnav-btn" id="prevBtn" onclick="shiftPeriod(-1)"><i class="ti ti-chevron-left"></i></div>
+    <div class="period-lbl" id="periodLbl"></div>
+    <div class="wnav-btn" id="nextBtn" onclick="shiftPeriod(1)"><i class="ti ti-chevron-right"></i></div>
+    <div class="period-right" id="periodRight"></div>
+  </div>
+  <div class="body">
+    <div class="main">
+      <div class="cards-row" id="cardsRow"></div>
+      <div class="ledger-area" id="ledgerArea"></div>
+    </div>
+
+    <!-- Settings overlay + panel -->
+    <div class="settings-overlay" id="settingsOverlay" onclick="closeSettings()"></div>
+    <div class="settings-panel" id="settingsPanel">
+      <div class="sp-hdr">
+        <span class="sp-hdr-title" id="spTitle">Settings</span>
+        <div class="sp-close" onclick="closeSettings()"><i class="ti ti-x"></i></div>
+      </div>
+      <div class="sp-body" id="spBody"></div>
+      <div class="sp-footer">
+        <button class="btn sm" style="flex:1;justify-content:center" onclick="closeSettings()">Cancel</button>
+        <button class="btn sm pri" style="flex:1;justify-content:center" onclick="saveSettings()"><i class="ti ti-device-floppy"></i> Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Adjustment modal -->
+<div class="modal-bg" id="adjModal">
+  <div class="modal">
+    <div class="modal-title">Parent adjustment</div>
+    <div><div class="mlbl">Amount (use − for deduction)</div><input class="minput" id="adjAmt" placeholder="e.g. 2.00 or -1.00"/></div>
+    <div><div class="mlbl">Note</div><input class="minput" id="adjNote" placeholder="e.g. Bonus for helping with dinner"/></div>
+    <div class="mbtns">
+      <button class="btn sm" onclick="closeAdj()">Cancel</button>
+      <button class="btn sm pri" onclick="saveAdj()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pay modal -->
+<div class="modal-bg" id="payModal">
+  <div class="modal">
+    <div class="modal-title" id="payTitle">Record payment</div>
+    <div style="font-size:11px;color:var(--t3);line-height:1.6">This records that you've paid the allowance outside the app (cash, bank transfer, etc). The ledger will show this period as paid.</div>
+    <div style="font-size:20px;font-weight:500;color:var(--green)" id="payAmt"></div>
+    <div class="mbtns">
+      <button class="btn sm" onclick="closePay()">Cancel</button>
+      <button class="btn sm green" onclick="confirmPay()"><i class="ti ti-check"></i> Mark as paid</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var periodOffset=0;
+var selStudent='Caleb';
+var settingsOpen=false;
+var draftSettings={};
+
+var STUDENTS={
+  Caleb:{color:'#7c6fd4',weeklyAmount:10,policy:'proportional',weeklyTarget:3,monthlyTarget:1,payPeriod:'weekly',
+    periods:{0:{weeklyDone:2,monthlyDone:1,bounties:[{name:'Deep clean garage',amt:5},{name:'Wash car',amt:3}],adjustment:{amt:1,note:'Bonus for helping with dinner'},paid:false},'-1':{weeklyDone:3,monthlyDone:1,bounties:[{name:'Wash car',amt:3}],adjustment:null,paid:true},'-2':{weeklyDone:1,monthlyDone:0,bounties:[],adjustment:{amt:-2,note:'Deduction: broken window'},paid:true}}},
+  Evelyn:{color:'#0f9e7a',weeklyAmount:8,policy:'all-or-nothing',weeklyTarget:3,monthlyTarget:1,payPeriod:'biweekly',
+    periods:{0:{weeklyDone:3,monthlyDone:1,bounties:[],adjustment:null,paid:false},'-1':{weeklyDone:3,monthlyDone:1,bounties:[{name:'Organize pantry',amt:4}],adjustment:null,paid:true},'-2':{weeklyDone:2,monthlyDone:0,bounties:[],adjustment:null,paid:true}}},
+  'Dummy 2':{color:'#ba7517',weeklyAmount:5,policy:'all-or-nothing',weeklyTarget:2,monthlyTarget:1,payPeriod:'monthly',
+    periods:{0:{weeklyDone:1,monthlyDone:0,bounties:[],adjustment:null,paid:false},'-1':{weeklyDone:2,monthlyDone:1,bounties:[],adjustment:null,paid:true},'-2':{weeklyDone:2,monthlyDone:1,bounties:[],adjustment:null,paid:true}}}
+};
+
+var PERIOD_LABELS={
+  weekly:{0:'Jun 22–28 (current)','-1':'Jun 15–21','-2':'Jun 8–14','-3':'Jun 1–7'},
+  biweekly:{0:'Jun 15–28 (current)','-1':'Jun 1–14','-2':'May 18–31','-3':'May 4–17'},
+  monthly:{0:'June 2025 (current)','-1':'May 2025','-2':'April 2025','-3':'March 2025'}
+};
+
+function getPeriodLabel(){
+  var pp=STUDENTS[selStudent].payPeriod||'weekly';
+  return (PERIOD_LABELS[pp]||PERIOD_LABELS.weekly)[String(periodOffset)]||'Period '+periodOffset;
+}
+
+function getPeriod(st){
+  var p=STUDENTS[st].periods[String(periodOffset)];
+  if(!p){p={weeklyDone:0,monthlyDone:0,bounties:[],adjustment:null,paid:false};STUDENTS[st].periods[String(periodOffset)]=p;}
+  return p;
+}
+
+function calcBase(st){
+  var s=STUDENTS[st],p=getPeriod(st);
+  var wPct=Math.min(1,p.weeklyDone/s.weeklyTarget);
+  var mPct=Math.min(1,p.monthlyDone/s.monthlyTarget);
+  var combined=(wPct+mPct)/2;
+  if(s.policy==='all-or-nothing')return(p.weeklyDone>=s.weeklyTarget&&p.monthlyDone>=s.monthlyTarget)?s.weeklyAmount:0;
+  return Math.round(s.weeklyAmount*combined*100)/100;
+}
+function calcBounties(st){return getPeriod(st).bounties.reduce(function(a,b){return a+b.amt;},0);}
+function calcAdj(st){var adj=getPeriod(st).adjustment;return adj?adj.amt:0;}
+function calcTotal(st){return Math.max(0,calcBase(st)+calcBounties(st)+calcAdj(st));}
+
+function renderPeriodBar(){
+  var lbl=document.getElementById('periodLbl');
+  lbl.textContent=getPeriodLabel();
+  lbl.className='period-lbl'+(periodOffset<0?' past':'');
+  document.getElementById('prevBtn').className='wnav-btn'+(periodOffset<=-3?' dis':'');
+  document.getElementById('nextBtn').className='wnav-btn'+(periodOffset>=0?' dis':'');
+  var unpaid=Object.keys(STUDENTS).filter(function(st){return !getPeriod(st).paid&&calcTotal(st)>0;}).length;
+  var pend=Object.keys(STUDENTS).filter(function(st){return !getPeriod(st).paid;}).length;
+  document.getElementById('periodRight').innerHTML=
+    unpaid>0?'<span style="color:var(--amber)"><i class="ti ti-coin" style="font-size:11px"></i> '+unpaid+' unpaid</span>':
+    '<span style="color:var(--green)"><i class="ti ti-check" style="font-size:11px"></i> All paid</span>';
+}
+
+function renderCards(){
+  var h='';
+  Object.keys(STUDENTS).forEach(function(name){
+    var s=STUDENTS[name],p=getPeriod(name);
+    var total=calcTotal(name);
+    var pct=Math.min(1,(p.weeklyDone/s.weeklyTarget+p.monthlyDone/s.monthlyTarget)/2);
+    var barColor=pct>=1?'var(--green)':pct>0.5?'var(--amber)':'var(--red)';
+    var isSel=name===selStudent;
+    var ppLabel={weekly:'WKL',biweekly:'BI-WK',monthly:'MO'}[s.payPeriod]||'WKL';
+    h+='<div class="stu-card'+(isSel?' sel':'')+'" style="border-left-color:'+s.color+'" onclick="selectStudent(\''+name+'\')">'
+      +'<div class="sc-top"><div class="sc-dot" style="background:'+s.color+'"></div><span class="sc-name">'+name+'</span>'
+      +'<span class="sc-policy">'+(s.policy==='proportional'?'PROP':'A/N')+' · '+ppLabel+'</span></div>'
+      +'<div class="sc-earned" style="color:'+(p.paid?'var(--t3)':barColor)+'">'+(p.paid?'✓ ':'')+'$'+total.toFixed(2)+'</div>'
+      +'<div class="sc-target">of $'+s.weeklyAmount.toFixed(2)+' base</div>'
+      +'<div class="sc-bar-wrap"><div class="sc-bar" style="width:'+(pct*100)+'%;background:'+barColor+'"></div></div>'
+      +'<div class="sc-badges">'+(p.paid?'<span class="badge b-paid">PAID</span>':'<span class="badge b-unpaid">UNPAID</span>')
+      +(p.weeklyDone>=s.weeklyTarget?'':'<span class="badge b-short">'+p.weeklyDone+'/'+s.weeklyTarget+' wkly</span>')
+      +(p.monthlyDone>=s.monthlyTarget?'':'<span class="badge b-short">'+p.monthlyDone+'/'+s.monthlyTarget+' mo</span>')
+      +'</div></div>';
+  });
+  document.getElementById('cardsRow').innerHTML=h;
+}
+
+function renderLedger(){
+  var st=selStudent,s=STUDENTS[st],p=getPeriod(st);
+  var base=calcBase(st),bountyTotal=calcBounties(st),adj=calcAdj(st),total=calcTotal(st);
+  var wPct=Math.min(100,Math.round(p.weeklyDone/s.weeklyTarget*100));
+  var mPct=Math.min(100,Math.round(p.monthlyDone/s.monthlyTarget*100));
+  var ppNames={weekly:'weekly',biweekly:'biweekly',monthly:'monthly'};
+
+  var h='<div class="ledger-hdr">'
+    +'<span class="ledger-title">'+st+' — '+getPeriodLabel()+'</span>'
+    +'<button class="btn sm" onclick="openSettings()"><i class="ti ti-adjustments"></i> Edit settings</button>'
+    +'</div>';
+
+  h+='<div class="section-lbl">Base allowance</div>'
+    +'<div class="ledger-table">'
+    +'<div class="lt-row"><div class="lt-label">Weekly chores<div class="lt-sub">'+p.weeklyDone+' of '+s.weeklyTarget+' completed ('+wPct+'%)</div></div><div class="lt-amount">'+(s.policy==='proportional'?wPct+'%':p.weeklyDone+'/'+s.weeklyTarget)+'</div></div>'
+    +'<div class="lt-row"><div class="lt-label">Monthly chores<div class="lt-sub">'+p.monthlyDone+' of '+s.monthlyTarget+' completed</div></div><div class="lt-amount">'+(s.policy==='proportional'?mPct+'%':p.monthlyDone+'/'+s.monthlyTarget)+'</div></div>'
+    +'<div class="lt-row total"><div class="lt-label">Base earned<div class="lt-sub">'+(s.policy==='all-or-nothing'?(base>0?'All targets met — full allowance':'Targets not met — $0.00'):'Proportional · '+ppNames[s.payPeriod||'weekly']+' period')+'</div></div>'
+    +'<div class="lt-amount pos">$'+base.toFixed(2)+'</div></div></div>';
+
+  if(p.bounties.length>0){
+    h+='<div class="section-lbl">Bounty earnings</div><div class="ledger-table">';
+    p.bounties.forEach(function(b){
+      h+='<div class="lt-row bounty"><div class="lt-label">'+b.name+'<div class="lt-sub">Extra chore bounty</div></div><div class="lt-amount pos">+$'+b.amt.toFixed(2)+'</div></div>';
+    });
+    h+='<div class="lt-row total"><div class="lt-label">Bounty total</div><div class="lt-amount pos">$'+bountyTotal.toFixed(2)+'</div></div></div>';
+  }
+
+  h+='<div class="section-lbl">Adjustments</div><div class="ledger-table">';
+  if(p.adjustment){
+    h+='<div class="lt-row adj"><div class="lt-label">'+(p.adjustment.note||'Parent adjustment')+'</div>'
+      +'<div class="lt-amount '+(p.adjustment.amt>=0?'pos':'neg')+'">'+(p.adjustment.amt>=0?'+':'')+p.adjustment.amt.toFixed(2)+'</div>'
+      +'<div class="lt-edit" onclick="openAdj()"><i class="ti ti-edit"></i></div></div>';
+  } else {
+    h+='<div class="lt-row" style="cursor:pointer" onclick="openAdj()"><div class="lt-label" style="color:var(--t4)"><i class="ti ti-plus" style="font-size:11px"></i> Add adjustment</div><div class="lt-amount dim">$0.00</div></div>';
+  }
+  h+='</div>';
+
+  h+='<div class="pay-row">'
+    +'<div class="pay-total"><div class="pay-total-val" style="color:'+(p.paid?'var(--green)':'var(--t1)')+'">$'+total.toFixed(2)+(p.paid?' <span style="font-size:11px;color:var(--green)">✓ paid</span>':'')+'</div>'
+    +'<div class="pay-total-lbl">Total to pay out this '+ppNames[s.payPeriod||'weekly']+' period</div></div>';
+  if(!p.paid){
+    h+='<button class="btn green" onclick="openPay()"><i class="ti ti-coin"></i> Record payment</button>';
+  } else {
+    h+='<button class="btn sm" onclick="undoPay()" style="color:var(--t4)"><i class="ti ti-refresh"></i> Undo</button>';
+  }
+  h+='</div>';
+
+  document.getElementById('ledgerArea').innerHTML=h;
+}
+
+function renderSettings(){
+  var st=selStudent,s=draftSettings;
+  document.getElementById('spTitle').textContent=st+' — settings';
+  var h='<div class="sp-field"><div class="sp-lbl">Base allowance amount ($)</div>'
+    +'<input class="sp-input" type="number" id="ds_amount" value="'+s.weeklyAmount+'" step="0.50" min="0"/></div>'
+    +'<div class="sp-field"><div class="sp-lbl">Pay period</div>'
+    +'<div class="seg">'
+    +'<div class="seg-btn'+(s.payPeriod==='weekly'?' act':'')+'" onclick="setDraft(\'payPeriod\',\'weekly\')">Weekly</div>'
+    +'<div class="seg-btn'+(s.payPeriod==='biweekly'?' act':'')+'" onclick="setDraft(\'payPeriod\',\'biweekly\')">Biweekly</div>'
+    +'<div class="seg-btn'+(s.payPeriod==='monthly'?' act':'')+'" onclick="setDraft(\'payPeriod\',\'monthly\')">Monthly</div>'
+    +'</div></div>'
+    +'<div class="sp-field"><div class="sp-lbl">Completion policy</div>'
+    +'<div class="seg">'
+    +'<div class="seg-btn'+(s.policy==='proportional'?' act':'')+'" onclick="setDraft(\'policy\',\'proportional\')">Proportional</div>'
+    +'<div class="seg-btn'+(s.policy==='all-or-nothing'?' act':'')+'" onclick="setDraft(\'policy\',\'all-or-nothing\')">All or nothing</div>'
+    +'</div></div>'
+    +'<div class="sp-div"></div>'
+    +'<div class="sp-lbl">Chore targets</div>'
+    +'<div class="sp-field"><div style="font-size:10px;color:var(--t3);margin-bottom:3px">Weekly chores required</div>'
+    +'<input class="sp-input" type="number" id="ds_wTarget" value="'+s.weeklyTarget+'" min="1"/></div>'
+    +'<div class="sp-field"><div style="font-size:10px;color:var(--t3);margin-bottom:3px">Monthly chores required</div>'
+    +'<input class="sp-input" type="number" id="ds_mTarget" value="'+s.monthlyTarget+'" min="0"/></div>';
+  document.getElementById('spBody').innerHTML=h;
+}
+
+function setDraft(key,val){
+  draftSettings[key]=val;
+  renderSettings();
+}
+
+function openSettings(){
+  var s=STUDENTS[selStudent];
+  draftSettings={weeklyAmount:s.weeklyAmount,policy:s.policy,payPeriod:s.payPeriod||'weekly',weeklyTarget:s.weeklyTarget,monthlyTarget:s.monthlyTarget};
+  renderSettings();
+  document.getElementById('settingsPanel').classList.add('open');
+  document.getElementById('settingsOverlay').classList.add('open');
+}
+
+function closeSettings(){
+  document.getElementById('settingsPanel').classList.remove('open');
+  document.getElementById('settingsOverlay').classList.remove('open');
+}
+
+function saveSettings(){
+  var s=STUDENTS[selStudent];
+  s.weeklyAmount=parseFloat(document.getElementById('ds_amount').value)||s.weeklyAmount;
+  s.weeklyTarget=parseInt(document.getElementById('ds_wTarget').value)||s.weeklyTarget;
+  s.monthlyTarget=parseInt(document.getElementById('ds_mTarget').value)||s.monthlyTarget;
+  s.policy=draftSettings.policy;
+  s.payPeriod=draftSettings.payPeriod;
+  closeSettings();
+  render();
+}
+
+function selectStudent(name){selStudent=name;render();}
+function shiftPeriod(d){periodOffset=Math.max(-3,Math.min(0,periodOffset+d));render();}
+
+function openAdj(){
+  var p=getPeriod(selStudent);
+  document.getElementById('adjAmt').value=p.adjustment?p.adjustment.amt:'';
+  document.getElementById('adjNote').value=p.adjustment?p.adjustment.note:'';
+  document.getElementById('adjModal').classList.add('open');
+}
+function closeAdj(){document.getElementById('adjModal').classList.remove('open');}
+function saveAdj(){
+  var amt=parseFloat(document.getElementById('adjAmt').value);
+  if(isNaN(amt)){closeAdj();return;}
+  getPeriod(selStudent).adjustment={amt:amt,note:document.getElementById('adjNote').value.trim()||'Parent adjustment'};
+  closeAdj();render();
+}
+
+function openPay(){
+  document.getElementById('payTitle').textContent='Record payment — '+selStudent;
+  document.getElementById('payAmt').textContent='$'+calcTotal(selStudent).toFixed(2);
+  document.getElementById('payModal').classList.add('open');
+}
+function closePay(){document.getElementById('payModal').classList.remove('open');}
+function confirmPay(){getPeriod(selStudent).paid=true;closePay();render();}
+function undoPay(){getPeriod(selStudent).paid=false;render();}
+
+document.querySelectorAll('.modal-bg').forEach(function(m){
+  m.addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');});
+});
+
+function render(){renderPeriodBar();renderCards();renderLedger();}
+render();
+</script>
+</body></html>

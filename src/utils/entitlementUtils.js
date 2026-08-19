@@ -9,7 +9,7 @@ import {
   getUpgradeCopy,
   isUnlimitedPlanLimit,
   SubscriptionStatuses,
-} from '../constants/entitlements';
+} from '../constants/entitlements.js';
 
 const DEFAULT_USAGE = Object.freeze({
   [EntitlementLimitKeys.STUDENTS]: 0,

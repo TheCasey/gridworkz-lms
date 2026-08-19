@@ -1,0 +1,49 @@
+# OwnPath — Implementation Progress
+
+Last updated: 2026-08-19
+
+This note tracks the route-by-route redesign implementation so the work order stays visible without reopening the full prototype docs.
+
+## Started
+
+- `/dashboard/homeschool` overview surface has been started in app code and now closely follows `ownpath_homeschool_overview.html` for the visible dashboard: compact topbar, all-family/student focus tabs, week draft banner, navigation strip, active-subjects-by-student panel, quick stats, and attention items. It remains real-data driven from students/subjects/week settings; lower recent-completions feed and real all-family publish state are not wired yet.
+- `/dashboard/chores` overview surface has been started in app code and now reflects `ownpath_chores_overview.html` with compact topbar/subbar, stats strip, navigation strip, student snapshot list, focused-student summary, and activity feed while preserving trusted chore/reward/allowance handlers.
+- `/dashboard/chores/daily-routines` received a screenshot-driven correction and is ready for basic home testing: it now has the prototype's student-tab/week-control strip, Morning/Afternoon/Evening groups, real checklist-item rows with seven-day completion history, and fixed weekly summary rail. Free access and grouped routine handlers remain intact.
+- `/dashboard/chores/weekly-chores` has completed a screenshot-driven correction: the route now follows the prototype's period strip and fixed two-pane structure, with the real pool on the left and real student quota/activity/review state on the right. Existing add/edit/archive and trusted review behavior remains intact.
+- `/dashboard/chores/monthly-chores` has completed the same screenshot-driven two-pane correction with monthly period, quota, cooldown, claim, and completion language.
+- `/dashboard/chores/allowance` has completed a screenshot-driven correction: selectable real student summary cards now lead into one focused requirement/earnings/adjustment/payment ledger, with settings in a right-side panel. Trusted sync/bookkeeping handlers are preserved. The seeded local environment still returns the existing Firebase callable error for allowance sync; the route recovers and displays unsynced records.
+- `/dashboard/chores/rewards` received a screenshot-driven correction and is ready for basic home testing: Reward Store, Students & Points, and Point Settings now match the prototype's grid, split ledger, and compact settings-table structures. The page now reads real point-ledger entries, integrates each student's request queue beside their wallet, and preserves trusted reward creation, archive/restore, restock, adjustment, approval/rejection, fulfillment/cancel, and settings handlers.
+- `/dashboard/students` has been started in app code; the route now follows `ownpath_students.html` with compact topbar, roster/search pane, selected-student detail pane, portal copy actions, Add Student modal, fallback `StudentCard`, and PIN visual/validation behavior in the redesign language.
+- `/dashboard/curriculum` has started in app code; route shell, student tabs, compact subject tile grid, subject detail/block library view, usage notice, add/edit modal frame, schedule/resources internals, and `BlockObjectivesEditor` have been moved closer to `curriculum.html`. New subject creates now write per-student records through `useSubjectMutations` while legacy shared records remain readable/editable. Weekly publishing has moved out to the dedicated Weekly Blocking route. Subject detail now supports direct reusable block add/edit/remove/pin/type/default-quantity controls without reopening the full subject wizard, while continuing to project compatible legacy `block_objectives`. Block editing now opens a focused modal with instructions/resources/timer controls and a student-response section for written response plus custom text/number/upload requirements.
+- `/dashboard/weekly-blocking` has started in app code; navigation, prototype-style topbar, student tabs, week chips, subject-row weekly schedule, summary rail, reset-from-subject-defaults, draft save, and publish now use the redesign language while preserving the existing `weeklyPlans` hook/schema behavior. Each subject row exposes all reusable curriculum blocks as compact add/subtract quantity chips, with whole-subject enable/disable, repeated-block expansion into unique weekly plan blocks, and a save-as-default-week action that writes subject defaults. Weekly Blocking no longer exposes per-instance title/instruction edit rows; detailed block content editing lives in Curriculum. Published/draft weekly plan blocks now carry block-specific resources, timer requirements, written-response requirements, and custom response fields when set on the curriculum block.
+- `/dashboard/reports` has started in app code; the route now follows `ownpath_reports.html` with a compact topbar, filter toolbar, summary strip, report list, compliance rail, and official records panel while preserving save/print/delete semantics. Current behavior has been reviewed, and published weekly-plan snapshots now use an allow-with-warning readiness contract for incomplete assigned blocks and completed required-response blocks missing written detail.
+- `/dashboard/settings` has started in app code; account plan/access status, usage cards, school-year controls, quarter preview, timezone, weekly reset, and save footer have been moved to the redesign language while preserving the parent settings save flow.
+- Shared redesign tokens/classes for the new dashboard language have started.
+- Parent dashboard shell/header/sidebar have started moving to the dark redesign language and now use the compact 190px rail/topbar proportions from the HTML examples.
+- The responsive student portal direction in `ownpath_student_portal.html` is approved/frozen and its first real implementation has landed at `/student/:slug`. School now groups the real current week by subject, reveals numbered blocks, and expands selected block instructions/resources/response requirements/timer controls in place. Chores has Daily Routine, Weekly Chores, and Monthly Chores subviews wired to existing trusted handlers. Rewards uses the real wallet/catalog/request/cancel flow. Allowance remains a separate Coming Soon workspace. My Avatar provides a layered placeholder preview against the documented asset IDs but deliberately does not persist selections. Desktop uses top tabs/right rails; mobile uses bottom navigation and stacked content. PIN, timer, submission, compatibility, entitlement, chore, and reward contracts remain unchanged.
+- Seeded local E2E testing completed on 2026-08-19 across two PIN-protected students and the parent review surfaces. The pass verified school timers/submissions, routine completion, chore completion/review, allowance and point effects, reward cancellation/refund and approval/fulfillment, sibling isolation, and Free/Lockdown gating. It also fixed missing-timer rule evaluation, post-submission timer cleanup handling, trusted reward eligibility derivation, and Free-plan paid-control visibility. Evidence is in `docs/support/student-portal-seeded-e2e-2026-08-19.md`.
+
+## Still Remaining
+
+- Curriculum backfill/destructive split decision for existing multi-student subject records.
+- Weekly Blocking deeper model work: copy-week, separate reusable assignment-template persistence, and a cleaner objective-selection/publishing workflow around saved/published week state.
+- Reports deeper evidence workflow: actual file/photo evidence drawer, parent override persistence, and official print inclusion of full assigned-block snapshots.
+- Settings deeper account actions, billing management, and student access defaults after the related data-model decisions.
+- Student portal follow-through: user-led mobile/accessibility pass, approved stable-ID avatar persistence with secure storage-backed assets, the approved full-PWA implementation, and a disposable staging confirmation before production launch.
+- Student avatar persistence/catalog decision and final generated asset population.
+- Installable-PWA metadata/offline policy if home-screen installation beyond a saved browser link is required.
+- Final end-to-end QA of the redesign shell and route transitions.
+- Chores follow-on model gaps are deliberately not mocked: routine time-of-day is inferred from compatible fields/template titles and history cells remain read-only until persisted time-of-day and trusted parent-correction contracts exist. Weekly/monthly historical period navigation and allowance bounty rows likewise still need persisted contracts.
+
+## Suggested Next Order
+
+1. Run the chore module against a seeded home/staging household with working trusted callables, including create/edit/archive, approval decisions, allowance bookkeeping, point adjustments, reward stock, and redemption decisions.
+2. Decide whether routine time-of-day/history and chore period-navigation contracts are required before beta or remain a follow-on model change.
+3. Decide whether editable built-in reward pricing/enabled state and streak-bonus settings should become persisted trusted contracts; the prototype exposes those controls, but the current model intentionally does not.
+4. Decide whether existing multi-student subject records need a backfill/split migration or should remain compatibility-only.
+5. Run a mobile and regression polish pass across the completed parent surfaces.
+
+## Current Rule
+
+- Keep updating this note as each surface lands.
+- Do not let implementation drift ahead of the documented order unless a product decision changes it first.
