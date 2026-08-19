@@ -99,9 +99,19 @@ This file records the *why* behind key decisions so future sessions don't re-lit
 **Rationale:** Household may have a 7-year-old and a 15-year-old. Parent controls complexity via block setup, not portal version.
 **Status:** Decided.
 
+### Weekly-choice school launcher
+**Decision:** The student school workspace is organized by subject for the current week, not by day. Tapping a subject reveals its numbered blocks; tapping a block reveals instructions, resources, response requirements, and timer controls.
+**Rationale:** Weekly Blocking defines the work that must be completed during the week while students retain ownership of when and in what order they complete it. A student may complete one subject in a day or spread it across the week.
+**Status:** Implemented in the standalone prototype. This aligns with the existing published weekly-plan launcher contract and the non-negotiable week-level assignment decision.
+
+### Student chore navigation
+**Decision:** The student Chores workspace contains three explicit subviews: Daily Routine, Weekly Chores, and Monthly Chores. Allowance is a separate primary workspace.
+**Rationale:** Each cadence has a different student action model—checking routine items versus claiming from weekly or monthly pools—and should not be mixed in one long page.
+**Status:** Implemented in the standalone prototype. Allowance is intentionally marked Coming Soon until bounty and earning details are finalized.
+
 ### Mobile student navigation
-**Decision:** The student portal is desktop-capable but mobile-first at narrow widths. Desktop uses top workspace tabs and a contextual right rail; mobile uses a four-item bottom navigation bar and stacks rail content below the active workspace.
-**Rationale:** Students should be able to save the portal link to a phone or tablet home screen and reach School, Chores, Rewards, and Avatar without navigating the parent-oriented sidebar pattern.
+**Decision:** The student portal is desktop-capable but mobile-first at narrow widths. Desktop uses top workspace tabs and a contextual right rail; mobile uses a five-item bottom navigation bar and stacks rail content below the active workspace.
+**Rationale:** Students should be able to save the portal link to a phone or tablet home screen and reach School, Chores, Allowance, Rewards, and Avatar without navigating the parent-oriented sidebar pattern.
 **Status:** Implemented in the standalone prototype. Installable PWA metadata and offline behavior remain separate implementation work.
 
 ### Layered avatar assets
