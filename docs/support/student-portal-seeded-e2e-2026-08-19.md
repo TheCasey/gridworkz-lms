@@ -55,3 +55,9 @@ No staging or production data was written.
 - Build a full PWA with manifest/icons, standalone behavior, update handling, a bounded offline-data policy, and installation verification.
 
 The current repository does not yet contain a web app manifest, service worker, install icon set, or offline strategy. Those are implementation work, not part of this E2E pass.
+
+## Production Timer Performance Follow-Up
+
+Household feedback after the initial production promotion exposed portal-wide render and listener churn during active timers. The timer display had been replacing page-level timer state every second, which recomputed the weekly launcher and resubscribed subject-scoped Firestore listeners. Completion tracking also duplicated one weekly submission query with one additional query per subject.
+
+The follow-up fix keeps target-end-time accuracy while moving the visual clock into the school workspace, updates authoritative timer state only at lifecycle boundaries, derives all weekly completion state from one listener, and correctly disposes nested student listeners. A fresh seeded browser pass verified continuous countdown, an exactly stable paused value, correct resume behavior, responsive workspace switching, persisted timer state, and no browser-console errors.

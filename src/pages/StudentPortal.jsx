@@ -85,7 +85,6 @@ const StudentPortal = () => {
   const [error, setError] = useState('');
   const [student, setStudent] = useState(null);
   const [subjects, setSubjects] = useState([]);
-  const [, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [selectedBlockIndex, setSelectedBlockIndex] = useState(null);
@@ -106,7 +105,6 @@ const StudentPortal = () => {
   const [pinAttempts, setPinAttempts] = useState(0);
   const [pinLockoutUntil, setPinLockoutUntil] = useState(null);
   const [activeWorkspace, setActiveWorkspace] = useState('school');
-  const oldSubjectUnsubRef = useRef(null);
   const completionNotifiedRef = useRef({});
   const previousTimersRef = useRef({});
   const timerRemovalInFlightRef = useRef({});
@@ -239,27 +237,41 @@ const StudentPortal = () => {
 
   useEffect(() => {
     if (!slug) return;
+    let unsubscribeSubjects = () => {};
+    let unsubscribeLegacySubjects = () => {};
+    let unsubscribeSubmissions = () => {};
+    const cleanupStudentListeners = () => {
+      unsubscribeSubjects();
+      unsubscribeLegacySubjects();
+      unsubscribeSubmissions();
+      unsubscribeSubjects = () => {};
+      unsubscribeLegacySubjects = () => {};
+      unsubscribeSubmissions = () => {};
+    };
     const studentQuery = query(collection(db, 'students'), where('slug', '==', slug), limit(1));
     const unsubscribeStudent = onSnapshot(studentQuery, (snapshot) => {
       if (snapshot.empty) { setError('Student not found'); setLoading(false); return; }
+      cleanupStudentListeners();
       const studentData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
       setStudent(studentData);
 
       const subjectsQuery = query(collection(db, 'subjects'),
         where('parent_id', '==', studentData.parent_id), where('is_active', '==', true),
         where('student_ids', 'array-contains', studentData.id), orderBy('title'));
-      const unsubscribeSubjects = onSnapshot(subjectsQuery, (snap) => {
+      unsubscribeSubjects = onSnapshot(subjectsQuery, (snap) => {
         const subjectsData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         if (subjectsData.length === 0) {
+          unsubscribeLegacySubjects();
           const oldQuery = query(collection(db, 'subjects'),
             where('parent_id', '==', studentData.parent_id), where('student_id', '==', studentData.id),
             where('is_active', '==', true), orderBy('title'));
-          const unsubOld = onSnapshot(oldQuery, (oldSnap) => {
+          unsubscribeLegacySubjects = onSnapshot(oldQuery, (oldSnap) => {
             setSubjects(oldSnap.docs.map(d => ({ id: d.id, ...d.data() })));
             setLoading(false);
           }, () => setLoading(false));
-          oldSubjectUnsubRef.current = unsubOld;
         } else {
+          unsubscribeLegacySubjects();
+          unsubscribeLegacySubjects = () => {};
           setSubjects(subjectsData);
           setLoading(false);
         }
@@ -268,39 +280,24 @@ const StudentPortal = () => {
       const { weekStart } = getCurrentWeekRange(new Date(), studentData);
       const submissionsQuery = query(collection(db, 'submissions'),
         where('student_id', '==', studentData.id), where('timestamp', '>=', weekStart), orderBy('timestamp', 'desc'));
-      const unsubscribeSubmissions = onSnapshot(submissionsQuery, (snap) => {
-        setSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      unsubscribeSubmissions = onSnapshot(submissionsQuery, (snap) => {
+        const nextCompletedBlocks = {};
+        snap.docs.forEach((submissionDoc) => {
+          const submission = submissionDoc.data();
+          if (!submission.subject_id || !Number.isInteger(submission.block_index)) return;
+          if (!nextCompletedBlocks[submission.subject_id]) {
+            nextCompletedBlocks[submission.subject_id] = [];
+          }
+          nextCompletedBlocks[submission.subject_id].push(submission.block_index);
+        });
+        setCompletedBlocks(nextCompletedBlocks);
       });
-
-      return () => {
-        unsubscribeSubjects();
-        unsubscribeSubmissions();
-        if (oldSubjectUnsubRef.current) { oldSubjectUnsubRef.current(); oldSubjectUnsubRef.current = null; }
-      };
     }, () => { setError('Student not found'); setLoading(false); });
-    return unsubscribeStudent;
+    return () => {
+      unsubscribeStudent();
+      cleanupStudentListeners();
+    };
   }, [slug, db]);
-
-  useEffect(() => {
-    if (!student) return;
-    if (portalSubjects.length === 0) {
-      setCompletedBlocks({});
-      return;
-    }
-    const { weekStart } = getCurrentWeekRange(new Date(), weekConfig);
-    const completedBlocksData = {};
-    const unsubscribers = portalSubjects.map(subject => {
-      const q = query(collection(db, 'submissions'),
-        where('student_id', '==', student.id), where('subject_id', '==', subject.id),
-        where('timestamp', '>=', weekStart), orderBy('timestamp', 'desc'));
-      return onSnapshot(q, (snap) => {
-        const indices = snap.docs.map(d => d.data().block_index).filter(i => i !== undefined);
-        completedBlocksData[subject.id] = indices;
-        setCompletedBlocks(prev => ({ ...prev, ...completedBlocksData }));
-      });
-    });
-    return () => unsubscribers.forEach(u => u());
-  }, [student, portalSubjects, db, weekConfig]);
 
   useEffect(() => {
     if (!student) return;
@@ -372,17 +369,14 @@ const StudentPortal = () => {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const completedTimers = [];
-
       setActiveTimers(prev => {
-        const updated = { ...prev };
-        Object.keys(updated).forEach(subjectId => {
-          const timer = updated[subjectId];
+        let updated = prev;
+        Object.keys(prev).forEach(subjectId => {
+          const timer = prev[subjectId];
           if (timer && timer.isRunning && !timer.pausedAt) {
             const remaining = getRemainingTime(timer.targetEndTime);
-            if (remaining > 0) {
-              updated[subjectId] = { ...timer, remainingTime: remaining };
-            } else {
+            if (remaining === 0) {
+              if (updated === prev) updated = { ...prev };
               updated[subjectId] = {
                 ...timer,
                 remainingTime: 0,
@@ -390,24 +384,14 @@ const StudentPortal = () => {
                 pausedAt: null,
                 completedAt: timer.completedAt ?? Date.now(),
               };
-              completedTimers.push({ subjectId, timer: updated[subjectId] });
             }
           }
         });
         return updated;
       });
-
-      completedTimers.forEach(({ subjectId, timer }) => {
-        const subject = subjectMap[subjectId];
-        if (!subject) return;
-
-        persistTimer(subject, timer).catch((error) => {
-          console.error('Error syncing completed timer:', error);
-        });
-      });
     }, 1000);
     return () => clearInterval(interval);
-  }, [subjectMap]);
+  }, []);
 
   useEffect(() => {
     Object.entries(activeTimers).forEach(([subjectId, timer]) => {
@@ -418,6 +402,12 @@ const StudentPortal = () => {
         timer?.remainingTime === 0 &&
         !completionNotifiedRef.current[subjectId]
       ) {
+        const subject = subjectMap[subjectId];
+        if (subject) {
+          persistTimer(subject, timer).catch((error) => {
+            console.error('Error syncing completed timer:', error);
+          });
+        }
         playNotificationSound().catch((error) => {
           console.warn('Alarm playback failed:', error);
         });
@@ -434,7 +424,7 @@ const StudentPortal = () => {
     previousTimersRef.current = Object.fromEntries(
       Object.entries(activeTimers).map(([subjectId, timer]) => [subjectId, { ...timer }])
     );
-  }, [activeTimers]);
+  }, [activeTimers, subjectMap]);
 
   useEffect(() => {
     if (!student) return;
@@ -611,8 +601,12 @@ const StudentPortal = () => {
   };
 
   const pauseTimer = async (subject) => {
+    const current = activeTimers[subject.id];
     const config = {
-      ...activeTimers[subject.id],
+      ...current,
+      remainingTime: current?.isRunning && !current?.pausedAt
+        ? getRemainingTime(current.targetEndTime)
+        : current?.remainingTime,
       isRunning: false,
       pausedAt: Date.now(),
     };

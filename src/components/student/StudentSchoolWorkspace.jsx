@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
   Check,
@@ -92,6 +92,27 @@ const StudentSchoolWorkspace = ({
   onCompleteSubject,
   onCompleteWorkItem,
 }) => {
+  const hasRunningTimer = useMemo(() => Object.values(activeTimers).some((timer) => (
+    timer?.isRunning && !timer?.pausedAt && timer?.remainingTime > 0
+  )), [activeTimers]);
+  const [clockNow, setClockNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!hasRunningTimer) return undefined;
+    setClockNow(Date.now());
+    const interval = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [hasRunningTimer]);
+
+  const displayTimers = useMemo(() => Object.fromEntries(
+    Object.entries(activeTimers).map(([subjectId, timer]) => [
+      subjectId,
+      timer?.isRunning && !timer?.pausedAt
+        ? { ...timer, remainingTime: Math.max(0, timer.targetEndTime - clockNow) }
+        : timer,
+    ])
+  ), [activeTimers, clockNow]);
+
   const groups = useMemo(() => buildSchoolGroups({
     hasPublishedWeeklyPlan,
     publishedWorkItems,
@@ -101,7 +122,7 @@ const StudentSchoolWorkspace = ({
   const selectedGroup = groups.find((group) => group.id === expandedSubjectId) || null;
   const selectedItem = selectedGroup?.items.find((item) => item.blockIndex === expandedBlockIndex) || null;
   const selectedSubject = selectedItem?.subject || selectedGroup?.subject || null;
-  const selectedTimer = selectedSubject ? activeTimers[selectedSubject.id] : null;
+  const selectedTimer = selectedSubject ? displayTimers[selectedSubject.id] : null;
   const timerMatchesSelection = Boolean(selectedTimer && selectedTimer.blockIndex === selectedItem?.blockIndex);
   const timerOnOtherBlock = Boolean(selectedTimer && !timerMatchesSelection);
   const selectedPolicy = selectedItem
@@ -172,7 +193,7 @@ const StudentSchoolWorkspace = ({
             {groups.map((group) => {
               const isOpen = expandedSubjectId === group.id;
               const completedCount = group.items.filter((item) => isBlockCompleted(item.subject, item.blockIndex)).length;
-              const timer = activeTimers[group.id];
+              const timer = displayTimers[group.id];
               return (
                 <article key={group.id} className={`student-subject-row ${isOpen ? 'is-open' : ''}`}>
                   <button className="student-subject-toggle" type="button" onClick={() => onToggleSubject(group.id)} aria-expanded={isOpen}>
