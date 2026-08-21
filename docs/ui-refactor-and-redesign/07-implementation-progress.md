@@ -1,6 +1,6 @@
 # OwnPath — Implementation Progress
 
-Last updated: 2026-08-19
+Last updated: 2026-08-21
 
 This note tracks the route-by-route redesign implementation so the work order stays visible without reopening the full prototype docs.
 
@@ -23,6 +23,7 @@ This note tracks the route-by-route redesign implementation so the work order st
 - The responsive student portal direction in `ownpath_student_portal.html` is approved/frozen and its first real implementation has landed at `/student/:slug`. School now groups the real current week by subject, reveals numbered blocks, and expands selected block instructions/resources/response requirements/timer controls in place. Chores has Daily Routine, Weekly Chores, and Monthly Chores subviews wired to existing trusted handlers. Rewards uses the real wallet/catalog/request/cancel flow. Allowance remains a separate Coming Soon workspace. My Avatar provides a layered placeholder preview against the documented asset IDs but deliberately does not persist selections. Desktop uses top tabs/right rails; mobile uses bottom navigation and stacked content. PIN, timer, submission, compatibility, entitlement, chore, and reward contracts remain unchanged.
 - Seeded local E2E testing completed on 2026-08-19 across two PIN-protected students and the parent review surfaces. The pass verified school timers/submissions, routine completion, chore completion/review, allowance and point effects, reward cancellation/refund and approval/fulfillment, sibling isolation, and Free/Lockdown gating. It also fixed missing-timer rule evaluation, post-submission timer cleanup handling, trusted reward eligibility derivation, and Free-plan paid-control visibility. Evidence is in `docs/support/student-portal-seeded-e2e-2026-08-19.md`.
 - Student timer responsiveness was hardened after production household feedback: the visible countdown now updates inside the school workspace without replacing portal-wide timer state every second, completion tracking uses one weekly submission listener instead of one listener per subject, and nested student listeners now clean up correctly. Seeded browser verification covered continuous countdown, pause, resume, workspace switching, persistence, and console errors.
+- A 2026-08-21 Firestore read incident identified a remaining timer snapshot/resubscription loop. Timer subscriptions are now keyed to stable student/subject identities, identical lifecycle snapshots are state no-ops, and seeded diagnostics stayed flat while an active timer counted down and the portal was exercised. This is a frontend-only correction; no rules, schema, or Functions deployment is involved.
 
 ## Still Remaining
 
