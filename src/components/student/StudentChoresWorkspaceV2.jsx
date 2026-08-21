@@ -117,6 +117,7 @@ const StudentChoresWorkspaceV2 = ({
         </div>
 
         {error?.message ? <div className="student-error" role="alert">{error.message}</div> : null}
+        {loading && !workspace.canInteract ? <p className="student-list-empty" role="status">Loading routines and chores…</p> : null}
         {workspace.accessState === 'locked' ? <div className="student-empty-state"><Lock /><h2>Chores are locked right now</h2><p>Verify the student session before using the household workspace.</p></div> : null}
         {workspace.accessState === 'all_done' ? <div className="student-success-banner"><Sparkles />You are done for now.</div> : null}
 
