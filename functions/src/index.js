@@ -5510,12 +5510,14 @@ export const readStudentChoreState = onCall({ region: REGION }, async (request) 
     studentId,
     parentId,
   } = await resolveTrustedStudentContext(request.data);
-  const { access } = await assertHouseholdModuleAccess(
-    parentId,
-    'canUseDailyRoutines',
-    'Daily routines are not included in the current plan.'
-  );
-  const settings = await getTrustedParentChoreSettings(parentId);
+  const [{ access }, settings] = await Promise.all([
+    assertHouseholdModuleAccess(
+      parentId,
+      'canUseDailyRoutines',
+      'Daily routines are not included in the current plan.'
+    ),
+    getTrustedParentChoreSettings(parentId),
+  ]);
   const weekConfig = normalizeTrustedChoreWeekConfig(settings);
   const [
     routineTemplates,

@@ -21,6 +21,7 @@ const StudentRewardStoreV2 = ({
       <header className="student-page-heading"><div><h1>Reward store</h1><p>Spend earned points on family rewards and personal unlocks.</p></div></header>
 
       {error?.message ? <div className="student-error" role="alert">{error.message}</div> : null}
+      {loading && !store.canInteract ? <p className="student-list-empty" role="status">Loading rewards and points…</p> : null}
       {store.accessState === 'locked' ? <div className="student-empty-state"><Lock /><h2>Rewards are locked right now</h2><p>Verify the student session before browsing the reward store.</p></div> : null}
 
       {store.canInteract ? (

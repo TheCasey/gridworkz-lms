@@ -229,13 +229,29 @@ const StudentPortal = () => {
   }, [getNextAvailableBlock, subjectMap]);
 
   useEffect(() => {
-    if (activeWorkspace === 'chores' && !studentChores.canShowTab) {
+    if (
+      activeWorkspace === 'chores'
+      && !studentChores.loading
+      && !studentChores.isResolvingAccess
+      && !studentChores.canShowTab
+    ) {
       setActiveWorkspace('school');
     }
-    if (activeWorkspace === 'rewards' && !studentChores.canShowRewardTab) {
+    if (
+      activeWorkspace === 'rewards'
+      && !studentChores.loading
+      && !studentChores.isResolvingAccess
+      && !studentChores.canShowRewardTab
+    ) {
       setActiveWorkspace('school');
     }
-  }, [activeWorkspace, studentChores.canShowRewardTab, studentChores.canShowTab]);
+  }, [
+    activeWorkspace,
+    studentChores.canShowRewardTab,
+    studentChores.canShowTab,
+    studentChores.isResolvingAccess,
+    studentChores.loading,
+  ]);
 
   const ensureAlarmAudio = () => {
     if (!alarmAudioRef.current) {
@@ -1036,7 +1052,7 @@ const StudentPortal = () => {
         ) : activeWorkspace === 'chores' ? (
           <StudentChoresWorkspaceV2
             workspace={studentChores.workspace}
-            loading={studentChores.loading}
+            loading={studentChores.loading || studentChores.isResolvingAccess}
             error={studentChores.error}
             onClaimChore={studentChores.claimChore}
             onCompleteChore={studentChores.completeChore}
@@ -1048,7 +1064,7 @@ const StudentPortal = () => {
         ) : activeWorkspace === 'rewards' ? (
           <StudentRewardStoreV2
             store={studentChores.rewardStore}
-            loading={studentChores.loading}
+            loading={studentChores.loading || studentChores.isResolvingAccess}
             error={studentChores.error}
             onRedeem={studentChores.requestRewardRedemption}
             onCancelRedemption={studentChores.cancelRewardRedemption}

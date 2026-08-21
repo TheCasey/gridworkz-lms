@@ -198,6 +198,12 @@ export const useStudentChores = ({
   }, [hasVerifiedStudentContext, runTrustedMutation, trustedStudentPayload]);
 
   const isPinError = error?.code === 'missing_pin' || error?.code === 'pin_mismatch';
+  const isResolvingAccess = Boolean(
+    enabled
+    && hasVerifiedStudentContext
+    && !hasLoaded
+    && !error
+  );
   const workspace = useMemo(() => {
     if (isPinError) {
       return buildStudentChoreWorkspaceModel({
@@ -242,9 +248,10 @@ export const useStudentChores = ({
     choreState,
     error,
     loading,
+    isResolvingAccess,
     hasVisibleWorkspace: workspace.canShowArea,
-    canShowTab: workspace.canShowArea,
-    canShowRewardTab: Boolean(rewardStore.canShowArea),
+    canShowTab: Boolean(enabled && hasVerifiedStudentContext && !isPinError),
+    canShowRewardTab: Boolean(rewardStore.canShowArea || isResolvingAccess),
     refresh: loadChoreState,
     claimChore,
     completeChore,
