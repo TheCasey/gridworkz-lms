@@ -34,6 +34,7 @@ assert.deepEqual(
   {
     id: '',
     title: 'Morning Routine',
+    routine_period: '',
     student_ids: [],
     checklist_items: [{ id: 'teeth', label: 'Brush teeth' }],
     counts_toward_allowance: false,

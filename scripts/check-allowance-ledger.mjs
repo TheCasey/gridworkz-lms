@@ -41,6 +41,9 @@ const buildMonthlyCompletions = (count, completedAt = '2026-05-07T15:00:00.000Z'
 const routineTemplates = [
   {
     id: 'routine-1',
+    title: 'Morning Routine',
+    student_ids: ['student-1'],
+    checklist_items: [{ id: 'make-bed', label: 'Make bed' }],
     counts_toward_allowance: true,
   },
 ];
@@ -54,6 +57,96 @@ const routineCompletions = [
     completed_at: '2026-05-05T13:00:00.000Z',
   },
 ];
+
+const fullRoutineDayTemplates = [
+  {
+    id: 'routine-morning',
+    title: 'Morning Routine',
+    routine_period: 'morning',
+    student_ids: ['student-1'],
+    checklist_items: [{ id: 'make-bed', label: 'Make bed' }],
+  },
+  {
+    id: 'routine-evening',
+    title: 'Evening Routine',
+    routine_period: 'evening',
+    student_ids: ['student-1'],
+    checklist_items: [{ id: 'brush-teeth', label: 'Brush teeth' }],
+  },
+];
+
+const buildRoutineOnlyLedger = ({ templates, completions }) => buildAllowanceLedgerEntry({
+  studentId: 'student-1',
+  quota: { required_routine_days: 1 },
+  allowancePolicy: {
+    period_type: 'weekly',
+    allowance_amount: 10,
+    completion_policy: 'all_or_nothing',
+    include_routines: true,
+    include_weekly_chores: false,
+    include_monthly_chores: false,
+  },
+  weekConfig,
+  routineTemplates: templates,
+  routineCompletions: completions,
+  referenceDate: '2026-05-07T12:00:00.000Z',
+});
+
+const partialRoutineDay = buildRoutineOnlyLedger({
+  templates: fullRoutineDayTemplates,
+  completions: [{
+    student_id: 'student-1',
+    routine_template_id: 'routine-morning',
+    date_key: '2026-05-05',
+    completed_at: '2026-05-05T13:00:00.000Z',
+  }],
+});
+assert.equal(partialRoutineDay.completed_counts.routine_days, 0);
+
+const completeRoutineDay = buildRoutineOnlyLedger({
+  templates: fullRoutineDayTemplates,
+  completions: [
+    {
+      student_id: 'student-1',
+      routine_template_id: 'routine-morning',
+      date_key: '2026-05-05',
+      completed_at: '2026-05-05T13:00:00.000Z',
+    },
+    {
+      student_id: 'student-1',
+      routine_template_id: 'routine-evening',
+      date_key: '2026-05-05',
+      completed_at: '2026-05-05T23:00:00.000Z',
+    },
+  ],
+});
+assert.equal(completeRoutineDay.completed_counts.routine_days, 1);
+assert.equal(completeRoutineDay.calculated_earned_amount, 10);
+
+const emptyCanonicalPeriodSuppressesLegacy = buildRoutineOnlyLedger({
+  templates: [
+    {
+      id: 'legacy-shared-morning',
+      title: 'Morning Routine',
+      student_ids: [],
+      checklist_items: [{ id: 'legacy-item', label: 'Legacy item' }],
+    },
+    {
+      id: 'routine_student-1_morning',
+      title: 'Morning Routine',
+      routine_period: 'morning',
+      student_ids: ['student-1'],
+      checklist_items: [],
+    },
+  ],
+  completions: [{
+    student_id: 'student-1',
+    routine_template_id: 'legacy-shared-morning',
+    date_key: '2026-05-05',
+    completed_at: '2026-05-05T13:00:00.000Z',
+  }],
+});
+assert.equal(emptyCanonicalPeriodSuppressesLegacy.completed_counts.routine_days, 0);
 
 const halfCompleteAllOrNothing = buildAllowanceLedgerEntry({
   studentId: 'student-1',

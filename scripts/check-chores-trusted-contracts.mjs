@@ -14,6 +14,7 @@ import {
   normalizeTrustedChoreSettingsPayload,
   normalizeTrustedRoutineTemplatePayload,
   normalizeTrustedStudentChoreContextPayload,
+  resolveTrustedRoutineTemplatesForStudent,
   validateTrustedStudentPinContext,
 } from '../functions/src/choreTrustedValidators.js';
 
@@ -62,6 +63,7 @@ assert.deepEqual(
   {
     id: '',
     title: 'Morning',
+    routine_period: '',
     student_ids: ['student_a'],
     checklist_items: [{ id: 'teeth', label: 'Brush teeth' }],
     counts_toward_allowance: true,
@@ -85,6 +87,29 @@ assert.equal(
   'approval should default to auto-approved unless requires_parent_approval is explicitly true'
 );
 assert.deepEqual(normalizedDefinition.eligible_student_ids, ['student_a']);
+
+assert.deepEqual(
+  resolveTrustedRoutineTemplatesForStudent({
+    studentId: 'student_a',
+    routineTemplates: [
+      {
+        id: 'legacy_shared_morning',
+        title: 'Morning Routine',
+        student_ids: [],
+        checklist_items: [{ id: 'legacy', label: 'Legacy item' }],
+      },
+      {
+        id: 'routine_student_a_morning',
+        title: 'Morning Routine',
+        routine_period: 'morning',
+        student_ids: ['student_a'],
+        checklist_items: [{ id: 'personal', label: 'Personal item' }],
+      },
+    ],
+  }).map((routine) => routine.id),
+  ['routine_student_a_morning'],
+  'trusted reads should prefer the canonical per-student routine period over legacy shared data'
+);
 
 assert.deepEqual(
   normalizeTrustedStudentChoreContextPayload({

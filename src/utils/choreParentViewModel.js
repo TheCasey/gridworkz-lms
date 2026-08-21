@@ -13,7 +13,9 @@ import {
   DEFAULT_CHORE_SETTINGS,
   countAvailableChoreBlocksForStudent,
   getChoreAvailability,
+  getRoutinePeriod,
   isStudentEligibleForChore,
+  resolveRoutineTemplatesForStudent,
 } from './choreUtils.js';
 import {
   buildDateFromTimeZoneParts,
@@ -468,14 +470,31 @@ const buildProgressCards = ({
       weekConfig,
       claimExpirationHours,
     });
+    const effectiveRoutineTemplates = resolveRoutineTemplatesForStudent({
+      routineTemplates,
+      studentId: student.id,
+    });
+    const routineCompletionIdsByDay = new Map();
+    (Array.isArray(routineCompletions) ? routineCompletions : [])
+      .filter((completion) => (
+        completion?.student_id === student.id
+        && isWithinRange(completion.completed_at || completion.created_at, weekStart, weekEnd)
+      ))
+      .forEach((completion) => {
+        const dateKey = trimString(completion.date_key);
+        if (!dateKey) return;
+        const completedIds = routineCompletionIdsByDay.get(dateKey) || new Set();
+        completedIds.add(trimString(completion.routine_template_id));
+        routineCompletionIdsByDay.set(dateKey, completedIds);
+      });
     const routineDays = new Set(
-      (Array.isArray(routineCompletions) ? routineCompletions : [])
-        .filter((completion) => (
-          completion?.student_id === student.id &&
-          isWithinRange(completion.completed_at || completion.created_at, weekStart, weekEnd)
-        ))
-        .map((completion) => trimString(completion.date_key))
-        .filter(Boolean)
+      effectiveRoutineTemplates.length > 0
+        ? [...routineCompletionIdsByDay.entries()]
+          .filter(([, completedIds]) => (
+            effectiveRoutineTemplates.every((template) => completedIds.has(trimString(template.id)))
+          ))
+          .map(([dateKey]) => dateKey)
+        : []
     );
     const weeklyCompleted = (Array.isArray(choreCompletions) ? choreCompletions : []).reduce((sum, completion) => {
       if (completion?.student_id !== student.id || !ACTIVE_COMPLETION_STATUSES.has(completion?.status)) {
@@ -512,10 +531,7 @@ const buildProgressCards = ({
     const pendingReviewCount = (Array.isArray(choreCompletions) ? choreCompletions : []).filter(
       (completion) => completion?.student_id === student.id && completion?.status === ChoreCompletionStatuses.COMPLETED
     ).length;
-    const routineCount = (Array.isArray(routineTemplates) ? routineTemplates : []).filter((template) => {
-      const studentIds = toStringArray(template.student_ids);
-      return template?.is_active !== false && (studentIds.length === 0 || studentIds.includes(student.id));
-    }).length;
+    const routineCount = new Set(effectiveRoutineTemplates.map(getRoutinePeriod)).size;
 
     return {
       student_id: student.id,
@@ -639,6 +655,7 @@ const buildAllowanceOverview = ({
 export const createDefaultRoutineTemplateDraft = () => ({
   id: '',
   title: '',
+  routine_period: '',
   assign_to_all_students: true,
   student_ids: [],
   checklist_items: [
@@ -667,6 +684,7 @@ export const createDefaultChoreDefinitionDraft = (frequencyPool = ChoreFrequency
 export const buildRoutineTemplateDraft = (record = {}) => ({
   id: trimString(record.id),
   title: trimString(record.title),
+  routine_period: trimString(record.routine_period),
   assign_to_all_students: toStringArray(record.student_ids).length === 0,
   student_ids: toStringArray(record.student_ids),
   checklist_items: Array.isArray(record.checklist_items) && record.checklist_items.length > 0
@@ -731,6 +749,9 @@ export const buildChoreSettingsDraft = ({ choreSettings = {}, parentSettings = {
 export const normalizeRoutineTemplateDraft = (draft = {}) => ({
   id: trimString(draft.id),
   title: trimString(draft.title),
+  routine_period: ['morning', 'afternoon', 'evening'].includes(trimString(draft.routine_period).toLowerCase())
+    ? trimString(draft.routine_period).toLowerCase()
+    : '',
   student_ids: draft.assign_to_all_students
     ? []
     : toStringArray(draft.student_ids),

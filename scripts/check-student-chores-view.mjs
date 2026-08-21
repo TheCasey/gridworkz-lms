@@ -189,6 +189,62 @@ assert.deepEqual(
   'local student-safe routine shape should stay compatible with trusted routine completions'
 );
 
+const canonicalRoutineView = buildStudentSafeChoreView({
+  studentId: 'student_a',
+  routineTemplates: [
+    {
+      id: 'legacy_shared_morning',
+      title: 'Morning Routine',
+      student_ids: [],
+      checklist_items: [{ id: 'legacy', label: 'Legacy shared item' }],
+      is_active: true,
+    },
+    {
+      id: 'routine_student_a_morning',
+      title: 'Morning Routine',
+      routine_period: 'morning',
+      student_ids: ['student_a'],
+      checklist_items: [{ id: 'personal', label: 'Personal item' }],
+      is_active: true,
+    },
+  ],
+  now,
+  weekConfig: WEEK_CONFIG,
+});
+assert.deepEqual(
+  canonicalRoutineView.routines.map((routine) => routine.id),
+  ['routine_student_a_morning'],
+  'a canonical per-student period should override a legacy shared routine for that period'
+);
+
+const emptyCanonicalRoutineView = buildStudentSafeChoreView({
+  studentId: 'student_a',
+  routineTemplates: [
+    {
+      id: 'legacy_shared_morning',
+      title: 'Morning Routine',
+      student_ids: [],
+      checklist_items: [{ id: 'legacy', label: 'Legacy shared item' }],
+      is_active: true,
+    },
+    {
+      id: 'routine_student_a_morning',
+      title: 'Morning Routine',
+      routine_period: 'morning',
+      student_ids: ['student_a'],
+      checklist_items: [],
+      is_active: true,
+    },
+  ],
+  now,
+  weekConfig: WEEK_CONFIG,
+});
+assert.equal(
+  emptyCanonicalRoutineView.routines.length,
+  0,
+  'an empty canonical period should keep a deleted legacy period hidden for that student'
+);
+
 const workspace = buildStudentChoreWorkspaceModel({
   choreState: {
     routines: studentSafeView.routines,

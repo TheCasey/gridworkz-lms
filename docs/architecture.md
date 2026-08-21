@@ -128,7 +128,8 @@ Important modeling details:
 ### Chores and rewards
 
 - `/dashboard/chores` is route-backed through the shared dashboard feature registry.
-- Free accounts can create, edit, archive, and complete grouped daily routines only.
+- Free accounts can manage and complete daily routines only. Morning, Afternoon, and Evening are canonical per-student periods backed by `routineTemplates`; legacy shared/grouped templates remain compatibility-readable until a per-student period record supersedes them. Parents edit one checklist item at a time, and multi-student adds create independent copies.
+- Routine allowance progress and routine point awards use a full-day contract: all populated routine periods for the student must be complete for the date. The single point award is idempotent on `routine_day:<date_key>`; individual items and periods do not carry separate eligibility decisions in the parent flow.
 - Core/Pro and Lockdown include the full paid module: chore pools, weekly/monthly chores, allowance tracking, points, reward-store behavior, redemptions, achievements, and related placeholder cosmetics.
 - Downgrade behavior is non-destructive: saved paid records remain parent-readable, but new paid setup, allowance sync, point changes, chore review, and reward/redemption mutations are blocked by UI state and trusted callable entitlement checks.
 - Student chores/rewards access uses PIN-verified trusted callables. The student-safe response is scoped to the active student; Free responses omit chore pools, allowance, wallets, rewards, and redemptions.

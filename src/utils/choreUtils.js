@@ -127,6 +127,55 @@ export const getRoutineDateKey = (referenceDate = new Date(), timezone = '') => 
   getDateTimePartsInTimeZone(referenceDate, timezone).localDate
 );
 
+export const getRoutinePeriod = (routineTemplate = {}) => {
+  const explicitPeriod = String(routineTemplate?.routine_period || '').trim().toLowerCase();
+  if (['morning', 'afternoon', 'evening'].includes(explicitPeriod)) {
+    return explicitPeriod;
+  }
+
+  const title = String(routineTemplate?.title || '').trim().toLowerCase();
+  if (title.includes('afternoon')) return 'afternoon';
+  if (title.includes('evening') || title.includes('night')) return 'evening';
+  return 'morning';
+};
+
+export const resolveRoutineTemplatesForStudent = ({
+  routineTemplates = [],
+  studentId = '',
+} = {}) => {
+  const assignedTemplates = (Array.isArray(routineTemplates) ? routineTemplates : [])
+    .filter((routineTemplate) => {
+      const studentIds = toStringArray(routineTemplate?.student_ids);
+      return routineTemplate?.is_active !== false
+        && (studentIds.length === 0 || studentIds.includes(studentId));
+    });
+  const canonicalPeriods = new Set(
+    assignedTemplates
+      .filter((routineTemplate) => {
+        const studentIds = toStringArray(routineTemplate?.student_ids);
+        return String(routineTemplate?.routine_period || '').trim()
+          && studentIds.length === 1
+          && studentIds[0] === studentId;
+      })
+      .map(getRoutinePeriod)
+  );
+
+  return assignedTemplates.filter((routineTemplate) => {
+    const checklistItems = Array.isArray(routineTemplate?.checklist_items)
+      ? routineTemplate.checklist_items.filter((item) => String(item?.label || '').trim())
+      : [];
+    if (!checklistItems.length) return false;
+
+    const period = getRoutinePeriod(routineTemplate);
+    if (!canonicalPeriods.has(period)) return true;
+
+    const studentIds = toStringArray(routineTemplate?.student_ids);
+    return String(routineTemplate?.routine_period || '').trim() !== ''
+      && studentIds.length === 1
+      && studentIds[0] === studentId;
+  });
+};
+
 export const getNextWeeklyBoundary = (referenceDate = new Date(), weekConfig = {}) => {
   const { weekStart } = getCurrentWeekRange(referenceDate, weekConfig);
   return new Date(weekStart.getTime() + WEEK_MS);
@@ -428,13 +477,7 @@ export const buildStudentSafeChoreView = ({
   return {
     student_id: studentId,
     routine_date_key: routineDateKey,
-    routines: (Array.isArray(routineTemplates) ? routineTemplates : [])
-      .filter((routineTemplate) => {
-        const templateStudentIds = toStringArray(routineTemplate?.student_ids);
-        return routineTemplate?.is_active !== false && (
-          templateStudentIds.length === 0 || templateStudentIds.includes(studentId)
-        );
-      })
+    routines: resolveRoutineTemplatesForStudent({ routineTemplates, studentId })
       .map((routineTemplate) => {
         const routineId = routineTemplate.id || '';
         const matchingCompletions = (Array.isArray(routineCompletions) ? routineCompletions : [])
@@ -447,6 +490,7 @@ export const buildStudentSafeChoreView = ({
         return {
           id: routineId,
           title: routineTemplate.title || '',
+          routine_period: getRoutinePeriod(routineTemplate),
           checklist_items: Array.isArray(routineTemplate.checklist_items)
             ? routineTemplate.checklist_items.map((checklistItem) => ({
                 id: checklistItem?.id || '',
