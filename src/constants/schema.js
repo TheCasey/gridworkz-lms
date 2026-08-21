@@ -688,11 +688,12 @@ export const RoutineChecklistItemSchema = {
 export const RoutineTemplateSchema = {
   id: "string", // Auto-generated document ID
   parent_id: "string", // Reference to parent's uid
-  title: "string", // Parent-facing routine title such as Morning Routine
-  student_ids: "array", // Explicit student assignment list; empty means no student assignment yet
+  title: "string", // Compatibility label; canonical records use Morning/Afternoon/Evening Routine
+  routine_period: "string", // Canonical per-student container: morning | afternoon | evening
+  student_ids: "array", // Canonical records contain one student; empty remains a legacy shared-template read
   checklist_items: "array", // Array of RoutineChecklistItemSchema items
-  counts_toward_allowance: "boolean", // Whether completion can contribute to allowance later
-  counts_toward_points: "boolean", // Whether completion can contribute to points later
+  counts_toward_allowance: "boolean", // Legacy compatibility field; routine-day allowance policy is household-level
+  counts_toward_points: "boolean", // Legacy compatibility field; routine-day points are household-level
   is_active: "boolean", // Whether the template is active
   created_at: "timestamp",
   updated_at: "timestamp"

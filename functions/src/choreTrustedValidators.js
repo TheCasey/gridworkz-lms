@@ -455,6 +455,9 @@ export const normalizeTrustedRoutineTemplatePayload = (payload = {}) => {
   return {
     id: trimString(source.id || source.routine_template_id),
     title: trimString(source.title),
+    routine_period: ['morning', 'afternoon', 'evening'].includes(trimString(source.routine_period).toLowerCase())
+      ? trimString(source.routine_period).toLowerCase()
+      : '',
     student_ids: toStringArray(source.student_ids),
     checklist_items: checklistItems,
     counts_toward_allowance: toBoolean(source.counts_toward_allowance, false),
@@ -905,6 +908,55 @@ const sanitizeStudentVisibleChore = (availability) => ({
   active_claim_id: availability.active_claim_id,
 });
 
+const getTrustedRoutinePeriod = (routineTemplate = {}) => {
+  const explicitPeriod = trimString(routineTemplate.routine_period).toLowerCase();
+  if (['morning', 'afternoon', 'evening'].includes(explicitPeriod)) {
+    return explicitPeriod;
+  }
+
+  const title = trimString(routineTemplate.title).toLowerCase();
+  if (title.includes('afternoon')) return 'afternoon';
+  if (title.includes('evening') || title.includes('night')) return 'evening';
+  return 'morning';
+};
+
+export const resolveTrustedRoutineTemplatesForStudent = ({
+  routineTemplates = [],
+  studentId = '',
+} = {}) => {
+  const assignedTemplates = (Array.isArray(routineTemplates) ? routineTemplates : [])
+    .filter((routineTemplate) => {
+      const studentIds = toStringArray(routineTemplate.student_ids);
+      return routineTemplate.is_active !== false
+        && (studentIds.length === 0 || studentIds.includes(studentId));
+    });
+  const canonicalPeriods = new Set(
+    assignedTemplates
+      .filter((routineTemplate) => {
+        const studentIds = toStringArray(routineTemplate.student_ids);
+        return trimString(routineTemplate.routine_period)
+          && studentIds.length === 1
+          && studentIds[0] === studentId;
+      })
+      .map(getTrustedRoutinePeriod)
+  );
+
+  return assignedTemplates.filter((routineTemplate) => {
+    const checklistItems = Array.isArray(routineTemplate.checklist_items)
+      ? routineTemplate.checklist_items.filter((item) => trimString(item?.label))
+      : [];
+    if (!checklistItems.length) return false;
+
+    const period = getTrustedRoutinePeriod(routineTemplate);
+    if (!canonicalPeriods.has(period)) return true;
+
+    const studentIds = toStringArray(routineTemplate.student_ids);
+    return trimString(routineTemplate.routine_period) !== ''
+      && studentIds.length === 1
+      && studentIds[0] === studentId;
+  });
+};
+
 export const buildTrustedStudentSafeChoreView = ({
   studentId,
   routineTemplates = [],
@@ -943,15 +995,11 @@ export const buildTrustedStudentSafeChoreView = ({
   return {
     contract: TRUSTED_CHORE_CONTRACT,
     student_id: studentId,
-    routines: (Array.isArray(routineTemplates) ? routineTemplates : [])
-      .filter((routineTemplate) => {
-        const studentIds = toStringArray(routineTemplate.student_ids);
-        return routineTemplate.is_active !== false &&
-          (studentIds.length === 0 || studentIds.includes(studentId));
-      })
+    routines: resolveTrustedRoutineTemplatesForStudent({ routineTemplates, studentId })
       .map((routineTemplate) => ({
         id: getRecordId(routineTemplate),
         title: trimString(routineTemplate.title),
+        routine_period: getTrustedRoutinePeriod(routineTemplate),
         checklist_items: Array.isArray(routineTemplate.checklist_items)
           ? routineTemplate.checklist_items.map((item) => ({
             id: trimString(item.id),

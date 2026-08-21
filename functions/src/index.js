@@ -39,6 +39,7 @@ import {
   normalizeTrustedRoutineTemplatePayload,
   normalizeTrustedStudentChoreContextPayload,
   normalizeTrustedChoreWeekConfig,
+  resolveTrustedRoutineTemplatesForStudent,
   validateRequiredTrustedFields,
   validateTrustedStudentPinContext,
 } from './choreTrustedValidators.js';
@@ -4417,25 +4418,44 @@ const awardTrustedPointsForChoreCompletion = async (completionRecord = {}) => {
   });
 };
 
-const awardTrustedPointsForRoutineCompletion = async ({
-  completionRecord = {},
-  routineTemplate = {},
-} = {}) => {
+const awardTrustedPointsForRoutineDay = async ({ completionRecord = {} } = {}) => {
   const parentId = trimString(completionRecord.parent_id);
   const studentId = trimString(completionRecord.student_id);
+  const dateKey = trimString(completionRecord.date_key);
 
-  if (!parentId || !studentId || !trimString(completionRecord.id)) {
+  if (!parentId || !studentId || !dateKey) {
     return {
       awarded: false,
       reason: 'invalid_routine_completion',
     };
   }
 
-  const rewardSettings = await getTrustedParentRewardSettings(parentId);
+  const [rewardSettings, routineTemplates] = await Promise.all([
+    getTrustedParentRewardSettings(parentId),
+    listParentCollectionRecords(COLLECTIONS.ROUTINE_TEMPLATES, parentId),
+  ]);
+  const requiredRoutines = resolveTrustedRoutineTemplatesForStudent({ routineTemplates, studentId });
+  const completionSnapshots = await Promise.all(
+    requiredRoutines.map((routineTemplate) => (
+      db.collection(COLLECTIONS.ROUTINE_COMPLETIONS)
+        .doc(`${trimString(routineTemplate.id)}_${studentId}_${dateKey}`)
+        .get()
+    ))
+  );
+  const fullRoutineDayComplete = requiredRoutines.length > 0
+    && completionSnapshots.every((snapshot) => snapshot.exists);
+
+  if (!fullRoutineDayComplete) {
+    return {
+      awarded: false,
+      reason: 'routine_day_incomplete',
+    };
+  }
+
   const deltaPoints = getPointValueForSource({
     sourceType: POINT_SOURCE_TYPES.ROUTINE_COMPLETION,
     rewardSettings,
-    routineTemplate,
+    routineTemplate: { counts_toward_points: true },
   });
 
   if (deltaPoints <= 0) {
@@ -4449,15 +4469,12 @@ const awardTrustedPointsForRoutineCompletion = async ({
     parentId,
     studentId,
     sourceType: POINT_SOURCE_TYPES.ROUTINE_COMPLETION,
-    sourceId: trimString(completionRecord.id),
+    sourceId: `routine_day:${dateKey}`,
     deltaPoints,
-    description: trimString(routineTemplate.title)
-      ? `Routine completion: ${trimString(routineTemplate.title)}`
-      : 'Routine completion',
+    description: 'Full routine day',
     metadata: {
-      routine_completion_id: trimString(completionRecord.id),
-      routine_template_id: trimString(completionRecord.routine_template_id),
-      date_key: trimString(completionRecord.date_key),
+      date_key: dateKey,
+      routine_template_ids: requiredRoutines.map((routineTemplate) => trimString(routineTemplate.id)),
     },
   });
 };
@@ -5873,8 +5890,8 @@ export const completeRoutine = onCall({ region: REGION }, async (request) => {
     });
   }
 
-  if (!result.already_completed && access.canUseRewards) {
-    await awardTrustedPointsForRoutineCompletion({
+  if (access.canUseRewards) {
+    await awardTrustedPointsForRoutineDay({
       completionRecord: {
         id: result.id,
         parent_id: parentId,
@@ -5882,7 +5899,6 @@ export const completeRoutine = onCall({ region: REGION }, async (request) => {
         routine_template_id: payload.routine_template_id,
         date_key: dateKey,
       },
-      routineTemplate: result.routine,
     });
   }
 

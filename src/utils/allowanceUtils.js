@@ -291,33 +291,60 @@ export const buildAllowanceLedgerEntry = ({
   });
   const periodStart = period.period_start;
   const periodEnd = period.period_end;
-  const routineTemplateLookup = new Map(
-    (Array.isArray(routineTemplates) ? routineTemplates : []).map((template) => [template.id, template])
+  const assignedRoutineTemplates = (Array.isArray(routineTemplates) ? routineTemplates : [])
+    .filter((template) => {
+      const studentIds = Array.isArray(template?.student_ids) ? template.student_ids.filter(Boolean) : [];
+      return template?.is_active !== false
+        && (studentIds.length === 0 || studentIds.includes(studentId));
+    });
+  const canonicalPeriods = new Set(
+    assignedRoutineTemplates
+      .filter((template) => {
+        const studentIds = Array.isArray(template?.student_ids) ? template.student_ids.filter(Boolean) : [];
+        return trimString(template?.routine_period) && studentIds.length === 1 && studentIds[0] === studentId;
+      })
+      .map((template) => trimString(template.routine_period).toLowerCase())
   );
+  const effectiveRoutineTemplates = assignedRoutineTemplates.filter((template) => {
+    if (
+      !Array.isArray(template?.checklist_items)
+      || !template.checklist_items.some((item) => trimString(item?.label))
+    ) return false;
+    const explicitPeriod = trimString(template?.routine_period).toLowerCase();
+    const title = trimString(template?.title).toLowerCase();
+    const period = ['morning', 'afternoon', 'evening'].includes(explicitPeriod)
+      ? explicitPeriod
+      : title.includes('afternoon')
+        ? 'afternoon'
+        : (title.includes('evening') || title.includes('night')) ? 'evening' : 'morning';
+    if (!canonicalPeriods.has(period)) return true;
+    const studentIds = Array.isArray(template?.student_ids) ? template.student_ids.filter(Boolean) : [];
+    return Boolean(explicitPeriod) && studentIds.length === 1 && studentIds[0] === studentId;
+  });
   const choreDefinitionLookup = new Map(
     (Array.isArray(choreDefinitions) ? choreDefinitions : []).map((definition) => [definition.id, definition])
   );
+  const routineCompletionIdsByDay = new Map();
+  if (normalizedPolicy.include_routines) {
+    (Array.isArray(routineCompletions) ? routineCompletions : []).forEach((completion) => {
+      if (
+        completion?.student_id !== studentId
+        || !isWithinPeriod(completion?.completed_at || completion?.created_at, periodStart, periodEnd)
+      ) return;
+      const dateKey = trimString(completion?.date_key);
+      if (!dateKey) return;
+      const completedIds = routineCompletionIdsByDay.get(dateKey) || new Set();
+      completedIds.add(trimString(completion?.routine_template_id));
+      routineCompletionIdsByDay.set(dateKey, completedIds);
+    });
+  }
   const countedRoutineDays = new Set(
-    normalizedPolicy.include_routines
-      ? (Array.isArray(routineCompletions) ? routineCompletions : [])
-        .filter((completion) => {
-          if (completion?.student_id !== studentId) {
-            return false;
-          }
-
-          const template = routineTemplateLookup.get(completion?.routine_template_id);
-          if (!template || template?.counts_toward_allowance !== true) {
-            return false;
-          }
-
-          return isWithinPeriod(
-            completion?.completed_at || completion?.created_at,
-            periodStart,
-            periodEnd
-          );
-        })
-        .map((completion) => trimString(completion?.date_key))
-        .filter(Boolean)
+    effectiveRoutineTemplates.length > 0
+      ? [...routineCompletionIdsByDay.entries()]
+        .filter(([, completedIds]) => (
+          effectiveRoutineTemplates.every((template) => completedIds.has(trimString(template.id)))
+        ))
+        .map(([dateKey]) => dateKey)
       : []
   );
 
