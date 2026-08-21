@@ -1,6 +1,6 @@
 # Chores And Rewards Runbook
 
-Last updated: 2026-05-26
+Last updated: 2026-08-21
 
 ## Launch State
 
@@ -60,7 +60,9 @@ node scripts/smoke-private-beta-callables.mjs --run --target emulator
 
 On 2026-08-19, the student portal path completed a disposable local emulator pass covering PIN unlock, student isolation, school timers/submissions, daily routines, chore completion and parent review, allowance/point effects, reward cancellation/refund, reward approval/fulfillment, and Free/Lockdown gating. See `student-portal-seeded-e2e-2026-08-19.md`.
 
-Staging/browser confirmation is still required before production launch confidence:
+On 2026-08-21, billing-backed Firebase Functions provisioning was restored and all 15 chores/rewards callables were deployed to `gridworkz-lms` in `us-central1`: setup, routine/chore definitions, allowance sync, reward settings/catalog, point adjustments, student state, claims/completions, chore review, reward request/cancel/review, and routine completion. A non-mutating production smoke reached every endpoint and confirmed the expected authenticated-parent or student/PIN validation boundary. The full contract script suite, lint, and production build passed before deployment.
+
+Destructive production/browser confirmation should still use a disposable household rather than live family records:
 
 - Parent target: `http://localhost:3000/dashboard/chores`
 - Student target: `http://localhost:3000/student/:slug`

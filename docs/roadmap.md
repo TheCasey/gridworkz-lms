@@ -43,7 +43,7 @@ Related doc:
 | Firestore security posture | Partial | Subscription enforcement paths are now trusted, but public student portal flows and timer/submission exposure still need broader hardening |
 | Subscription + entitlement model | Partial | Billing sandbox, trusted entitlement authority, live UI gating, Stripe webhook sync, and operator support tooling are now live; projects UI and live-mode billing rollout are still open |
 | Lockdown browser controls | Partial | The browser-extension launch path is live: entitlement-gated parent management, trusted device pairing, secure policy reads, cached fallback, approved-origin and approved-creator enforcement, and downgrade-safe read-only behavior are current state. Kiosk mode and broader rollout hardening remain follow-on scope. |
-| Chores and rewards | Done | Daily routines are free; paid chore pools, allowance, points, reward store, redemptions, and placeholder cosmetics are included in Core/Pro and Lockdown. Browser/callable smoke still needs seeded staging credentials before production launch. |
+| Chores and rewards | Done | Daily routines are free; paid chore pools, allowance, points, reward store, redemptions, and placeholder cosmetics are included in Core/Pro and Lockdown. All trusted callables are deployed; local seeded E2E and non-mutating production endpoint smoke pass. Destructive production QA should use a disposable household. |
 | AI assistance | Future | AI planning is now defined narrowly around curriculum chunking, worksheet drafting, and bounded student help |
 | Tooling baseline | Done | Build and lint both pass, and GitHub Actions runs them as a lightweight CI gate |
 | Mobile apps | Future | Planning docs exist, no mobile workspace yet |

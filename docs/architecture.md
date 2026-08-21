@@ -153,7 +153,7 @@ This is sufficient for the current browser-extension launch path, but the broade
 
 - Stripe-backed billing sync, the trusted entitlement document, and the operator entitlement console now exist in sandbox mode, but live-mode payment rollout and seeded operator validation are still pending.
 - The route-backed dashboard shell and premium gating boundaries are now in place. Projects and any later paid surfaces should continue building on that shared contract; chores/rewards already do.
-- Chores/rewards browser and callable smoke still need a seeded Firebase/staging household before production launch confidence. Local state-model scripts cover privacy, entitlements, cooldowns, allowance, points, and redemptions, but not a live callable runtime.
+- Chores/rewards trusted callables are deployed in production. Local seeded E2E covers privacy, entitlements, cooldowns, allowance, points, redemptions, and parent/student behavior; a non-mutating production smoke confirms live callable routing and authentication/PIN validation. Any destructive production validation should use a disposable household.
 - Longer-term student-session hardening remains open because the module still relies on PIN-verified public student slug context.
 - The weekly-plan compatibility bridge is live, but persisted curriculum template management, assignment management, richer projects, worksheet runtime, and full compliance reporting are still future work.
 - The browser-extension track is now live on the trusted device contract. Follow-on Lockdown scope is kiosk mode, broader rollout hardening, and eventual retirement of compatibility-only snapshot paths.
