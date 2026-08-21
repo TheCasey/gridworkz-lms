@@ -77,6 +77,31 @@ const C = {
 
 const getPortalSubjectTitle = (subject) => subject?.portal_display_title || subject?.title || 'Untitled Block';
 const getSubmissionSubjectName = (subject) => subject?.legacy_subject_title || subject?.title || '';
+const TIMER_LIFECYCLE_FIELDS = [
+  'blockIndex',
+  'isRunning',
+  'startTime',
+  'durationMs',
+  'durationMinutes',
+  'initialDurationMs',
+  'targetEndTime',
+  'pausedAt',
+  'resumedAt',
+  'completedAt',
+];
+
+const hasSameTimerLifecycle = (currentTimer, nextTimer) => (
+  Boolean(currentTimer)
+  && Boolean(nextTimer)
+  && TIMER_LIFECYCLE_FIELDS.every((field) => currentTimer[field] === nextTimer[field])
+);
+
+const incrementPortalDiagnostic = (key) => {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return;
+  const diagnostics = window.__ownPathStudentPortalDiagnostics || {};
+  diagnostics[key] = (diagnostics[key] || 0) + 1;
+  window.__ownPathStudentPortalDiagnostics = diagnostics;
+};
 
 const StudentPortal = () => {
   const { slug } = useParams();
@@ -148,6 +173,11 @@ const StudentPortal = () => {
   const portalSubjects = workLauncherContract.bridge_subjects.length > 0
     ? workLauncherContract.bridge_subjects
     : subjects;
+  const portalSubjectIds = useMemo(
+    () => portalSubjects.map((subject) => subject.id).filter(Boolean),
+    [portalSubjects]
+  );
+  const portalSubjectIdsKey = portalSubjectIds.join('|');
   const subjectMap = useMemo(
     () => Object.fromEntries(portalSubjects.map(subject => [subject.id, subject])),
     [portalSubjects]
@@ -190,6 +220,13 @@ const StudentPortal = () => {
     isAuthenticated,
     enabled: Boolean(student?.id),
   });
+  const subjectMapRef = useRef(subjectMap);
+  const getNextAvailableBlockRef = useRef(getNextAvailableBlock);
+
+  useEffect(() => {
+    subjectMapRef.current = subjectMap;
+    getNextAvailableBlockRef.current = getNextAvailableBlock;
+  }, [getNextAvailableBlock, subjectMap]);
 
   useEffect(() => {
     if (activeWorkspace === 'chores' && !studentChores.canShowTab) {
@@ -300,45 +337,51 @@ const StudentPortal = () => {
   }, [slug, db]);
 
   useEffect(() => {
-    if (!student) return;
-    if (portalSubjects.length === 0) {
-      setActiveTimers({});
+    if (!student?.id) return undefined;
+    if (!portalSubjectIdsKey) {
+      setActiveTimers((prev) => (Object.keys(prev).length > 0 ? {} : prev));
       return;
     }
 
-    const unsubscribers = portalSubjects.map((subject) => {
-      const timerRef = doc(db, 'timerSessions', getTimerSessionDocId(student.id, subject.id));
+    incrementPortalDiagnostic('timerListenerEffectRuns');
+    const unsubscribers = portalSubjectIds.map((subjectId) => {
+      incrementPortalDiagnostic('timerSubscriptions');
+      const timerRef = doc(db, 'timerSessions', getTimerSessionDocId(student.id, subjectId));
 
       return onSnapshot(timerRef, async (snapshot) => {
-        if (timerRemovalInFlightRef.current[subject.id] && snapshot.exists()) {
+        incrementPortalDiagnostic('timerSnapshots');
+        if (timerRemovalInFlightRef.current[subjectId] && snapshot.exists()) {
           return;
         }
 
         if (!snapshot.exists()) {
-          if (timerRemovalInFlightRef.current[subject.id]) {
-            clearTimerFromStorage(getTimerKey(student.id, subject.id));
+          if (timerRemovalInFlightRef.current[subjectId]) {
+            clearTimerFromStorage(getTimerKey(student.id, subjectId));
             setActiveTimers((prev) => {
-              if (!prev[subject.id]) return prev;
+              if (!prev[subjectId]) return prev;
               const updated = { ...prev };
-              delete updated[subject.id];
+              delete updated[subjectId];
               return updated;
             });
-            delete timerRemovalInFlightRef.current[subject.id];
-            delete previousTimersRef.current[subject.id];
-            delete completionNotifiedRef.current[subject.id];
+            delete timerRemovalInFlightRef.current[subjectId];
+            delete previousTimersRef.current[subjectId];
+            delete completionNotifiedRef.current[subjectId];
             return;
           }
 
-          const key = getTimerKey(student.id, subject.id);
+          const key = getTimerKey(student.id, subjectId);
           const stored = loadTimerFromStorage(key);
-          const nextBlock = getNextAvailableBlock(subject);
+          const currentSubject = subjectMapRef.current[subjectId];
+          const nextBlock = currentSubject
+            ? getNextAvailableBlockRef.current(currentSubject)
+            : null;
 
-          if (stored && stored.blockIndex === nextBlock) {
+          if (currentSubject && stored && stored.blockIndex === nextBlock) {
             const hydrated = hydrateStoredTimer(stored);
 
             if (hydrated) {
               try {
-                await persistTimer(subject, hydrated, true);
+                await persistTimer(currentSubject, hydrated, true);
               } catch (migrationError) {
                 console.error('Error migrating timer to Firestore:', migrationError);
               }
@@ -347,25 +390,29 @@ const StudentPortal = () => {
 
           clearTimerFromStorage(key);
           setActiveTimers((prev) => {
-            if (!prev[subject.id]) return prev;
+            if (!prev[subjectId]) return prev;
             const updated = { ...prev };
-            delete updated[subject.id];
+            delete updated[subjectId];
             return updated;
           });
-          delete timerRemovalInFlightRef.current[subject.id];
-          delete previousTimersRef.current[subject.id];
-          delete completionNotifiedRef.current[subject.id];
+          delete timerRemovalInFlightRef.current[subjectId];
+          delete previousTimersRef.current[subjectId];
+          delete completionNotifiedRef.current[subjectId];
           return;
         }
 
         const hydrated = hydrateStoredTimer(snapshot.data());
 
-        setActiveTimers((prev) => ({ ...prev, [subject.id]: hydrated }));
+        setActiveTimers((prev) => (
+          hasSameTimerLifecycle(prev[subjectId], hydrated)
+            ? prev
+            : { ...prev, [subjectId]: hydrated }
+        ));
       });
     });
 
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [student, portalSubjects, completedBlocks, db, getNextAvailableBlock]);
+  }, [db, portalSubjectIdsKey, student?.id]);
 
   useEffect(() => {
     const interval = setInterval(() => {

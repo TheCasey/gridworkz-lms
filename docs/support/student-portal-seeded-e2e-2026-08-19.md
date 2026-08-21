@@ -61,3 +61,11 @@ The current repository does not yet contain a web app manifest, service worker, 
 Household feedback after the initial production promotion exposed portal-wide render and listener churn during active timers. The timer display had been replacing page-level timer state every second, which recomputed the weekly launcher and resubscribed subject-scoped Firestore listeners. Completion tracking also duplicated one weekly submission query with one additional query per subject.
 
 The follow-up fix keeps target-end-time accuracy while moving the visual clock into the school workspace, updates authoritative timer state only at lifecycle boundaries, derives all weekly completion state from one listener, and correctly disposes nested student listeners. A fresh seeded browser pass verified continuous countdown, an exactly stable paused value, correct resume behavior, responsive workspace switching, persisted timer state, and no browser-console errors.
+
+## Firestore Read Incident Follow-Up — 2026-08-21
+
+Production usage exposed a second timer-specific loop that was not visible in the first responsiveness pass. An existing `timerSessions` snapshot replaced the timer map even when no lifecycle field changed. That replacement rebuilt the portal subject array, which restarted every subject timer listener; each new listener immediately received its existing snapshot and repeated the cycle. This could generate continuous document reads while a student portal tab remained open.
+
+The listener now keys subscriptions only to the student ID and stable subject-ID set, reads changing subject helpers through refs, and preserves the existing timer map when a snapshot has the same lifecycle state. Development-only counters were added for targeted regression checks without affecting production behavior.
+
+A seeded emulator/browser reproduction loaded an already-running timer, unlocked the PIN-protected portal, expanded its subject and block, and observed the clock count down from `28:09` to `28:04`. After initial React development-mode setup, diagnostics remained exactly flat for the full interaction: 2 effect runs, 3 subscriptions, and 1 timer snapshot. The browser reported no runtime errors. No Firestore rules, schema, or Functions changes were required.
