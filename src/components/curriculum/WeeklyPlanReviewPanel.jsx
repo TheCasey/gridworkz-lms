@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   doc,
   getFirestore,
@@ -32,6 +33,7 @@ import {
   getWeekRangeByOffset,
 } from '../../utils/weekUtils';
 import {
+  getSubjectBlockCount,
   getSubjectBlockLengthMinutes,
   getSubjectCurriculumBlocks,
   getSubjectDefaultBlockQuantities,
@@ -207,9 +209,7 @@ const getStudentSubjects = (subjects, studentId) => (
 
 const getStudentDefaultHours = (subjects, studentId) => (
   getStudentSubjects(subjects, studentId).reduce((minutes, subject) => {
-    const quantities = getSubjectDefaultBlockQuantities(subject);
-    const blockCount = Object.values(quantities).reduce((total, quantity) => total + toNonNegativeInt(quantity), 0);
-    return minutes + Math.max(blockCount, Number(subject?.block_count || 0)) * getSubjectBlockLengthMinutes(subject);
+    return minutes + getSubjectBlockCount(subject) * getSubjectBlockLengthMinutes(subject);
   }, 0) / 60
 );
 
@@ -421,8 +421,7 @@ const WeeklyPlanReviewPanel = ({
     const assignedCount = getSubjectCurriculumBlocks(subject).reduce((total, block) => (
       total + toNonNegativeInt(blockQuantities[subject.id]?.[block.id])
     ), 0);
-    const target = Object.values(getSubjectDefaultBlockQuantities(subject)).reduce((total, quantity) => total + toNonNegativeInt(quantity), 0)
-      || Number(subject?.block_count || assignedCount);
+    const target = getSubjectBlockCount(subject);
     return assignedCount !== target;
   });
 
@@ -537,7 +536,7 @@ const WeeklyPlanReviewPanel = ({
         return updateDoc(doc(db, 'subjects', subject.id), {
           curriculum_blocks: nextCurriculumBlocks,
           default_block_quantities: nextSubjectQuantities,
-          block_count: Math.max(nextBlockCount, 1),
+          block_count: nextBlockCount,
           updated_at: serverTimestamp(),
         });
       }));
@@ -796,9 +795,7 @@ const WeeklyPlanReviewPanel = ({
                     const subjectBlocks = getSubjectCurriculumBlocks(subject);
                     const subjectQuantities = blockQuantities[subject.id] || {};
                     const totalAssigned = subjectBlocks.reduce((total, block) => total + toNonNegativeInt(subjectQuantities[block.id]), 0);
-                    const target = Object.values(getSubjectDefaultBlockQuantities(subject)).reduce((total, quantity) => total + toNonNegativeInt(quantity), 0)
-                      || Number(subject?.block_count || 0)
-                      || totalAssigned;
+                    const target = getSubjectBlockCount(subject);
                     const diff = totalAssigned - target;
 
                     return (
@@ -821,8 +818,9 @@ const WeeklyPlanReviewPanel = ({
                             type="button"
                             onClick={() => handleToggleSubjectEnabled(subject)}
                             className={`op-weekly-enable-chip ${totalAssigned > 0 ? 'is-on' : ''}`}
+                            disabled={subjectBlocks.length === 0}
                           >
-                            {totalAssigned > 0 ? 'Enabled' : 'Disabled'}
+                            {subjectBlocks.length === 0 ? 'Needs blocks' : totalAssigned > 0 ? 'Enabled' : 'Disabled'}
                           </button>
                           <span className="text-[10px] text-[rgba(238,234,248,0.46)]">{getSubjectBlockLengthMinutes(subject)}m/block</span>
                           <span
@@ -838,50 +836,61 @@ const WeeklyPlanReviewPanel = ({
 
                         {isOpen ? (
                           <div className="op-weekly-subject-body">
-                            <div className="op-weekly-pill-row">
-                              {subjectBlocks.map((block) => {
-                                const fieldCount = getConfiguredFieldCount(block.custom_fields);
-                                const quantity = toNonNegativeInt(subjectQuantities[block.id]);
+                            {subjectBlocks.length === 0 ? (
+                              <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-[#f59e0b] bg-[rgba(245,158,11,0.08)] px-3 py-2">
+                                <p className="text-[10px] leading-4 text-[#f59e0b]">
+                                  Add a reusable block before assigning weekly quantities.
+                                </p>
+                                <Link to="/dashboard/curriculum" className="op-proto-btn">
+                                  Go to Curriculum
+                                </Link>
+                              </div>
+                            ) : (
+                              <div className="op-weekly-pill-row">
+                                {subjectBlocks.map((block) => {
+                                  const fieldCount = getConfiguredFieldCount(block.custom_fields);
+                                  const quantity = toNonNegativeInt(subjectQuantities[block.id]);
 
-                                return (
-                                  <div
-                                    key={block.id}
-                                    className={`op-weekly-block-pill ${quantity === 0 ? 'is-muted' : ''}`}
-                                    style={{ borderColor: quantity > 0 ? `${accent}88` : 'rgba(255,255,255,0.14)' }}
-                                  >
-                                    <span className={`op-weekly-block-type ${block.instruction ? 'is-guided' : ''}`}>
-                                      {getBlockTypeLabel(block)}
-                                    </span>
-                                    <span className="min-w-0 flex-1 truncate">
-                                      {block.title || subject.title}
-                                    </span>
-                                    <span className="text-[9px] text-[rgba(238,234,248,0.38)]">
-                                      {getSubjectBlockLengthMinutes(subject)}m
-                                    </span>
-                                    {fieldCount > 0 ? (
-                                      <span className="op-weekly-field-count">{fieldCount}</span>
-                                    ) : null}
-                                    <span className="qty-inline">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleBlockQuantityChange({ subjectId: subject.id, blockId: block.id, delta: -1 })}
-                                        className="qi-btn"
-                                      >
-                                        -
-                                      </button>
-                                      <span className="qi-val">{quantity}</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleBlockQuantityChange({ subjectId: subject.id, blockId: block.id, delta: 1 })}
-                                        className="qi-btn"
-                                      >
-                                        +
-                                      </button>
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                                  return (
+                                    <div
+                                      key={block.id}
+                                      className={`op-weekly-block-pill ${quantity === 0 ? 'is-muted' : ''}`}
+                                      style={{ borderColor: quantity > 0 ? `${accent}88` : 'rgba(255,255,255,0.14)' }}
+                                    >
+                                      <span className={`op-weekly-block-type ${block.instruction ? 'is-guided' : ''}`}>
+                                        {getBlockTypeLabel(block)}
+                                      </span>
+                                      <span className="min-w-0 flex-1 truncate">
+                                        {block.title || subject.title}
+                                      </span>
+                                      <span className="text-[9px] text-[rgba(238,234,248,0.38)]">
+                                        {getSubjectBlockLengthMinutes(subject)}m
+                                      </span>
+                                      {fieldCount > 0 ? (
+                                        <span className="op-weekly-field-count">{fieldCount}</span>
+                                      ) : null}
+                                      <span className="qty-inline">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleBlockQuantityChange({ subjectId: subject.id, blockId: block.id, delta: -1 })}
+                                          className="qi-btn"
+                                        >
+                                          -
+                                        </button>
+                                        <span className="qi-val">{quantity}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleBlockQuantityChange({ subjectId: subject.id, blockId: block.id, delta: 1 })}
+                                          className="qi-btn"
+                                        >
+                                          +
+                                        </button>
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
 
                           </div>
                         ) : null}
@@ -910,9 +919,7 @@ const WeeklyPlanReviewPanel = ({
                     const assignedCount = subjectBlocks.reduce((total, block) => (
                       total + toNonNegativeInt(blockQuantities[subject.id]?.[block.id])
                     ), 0);
-                    const target = Object.values(getSubjectDefaultBlockQuantities(subject)).reduce((total, quantity) => total + toNonNegativeInt(quantity), 0)
-                      || Number(subject?.block_count || 0)
-                      || assignedCount;
+                    const target = getSubjectBlockCount(subject);
                     const diff = assignedCount - target;
 
                     return (

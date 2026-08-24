@@ -64,11 +64,19 @@ export const useSubjectMutations = ({
         }
 
         for (const studentId of studentIds) {
-          await createTrustedSubject({
+          const createdSubject = await createTrustedSubject({
             ...createPayload,
             student_id: studentId,
             student_ids: [studentId],
           });
+
+          if (createdSubject?.id && Array.isArray(createPayload.curriculum_blocks)) {
+            await updateDoc(doc(db, 'subjects', createdSubject.id), {
+              curriculum_blocks: createPayload.curriculum_blocks,
+              default_block_quantities: createPayload.default_block_quantities || {},
+              updated_at: serverTimestamp(),
+            });
+          }
         }
       }
 

@@ -138,7 +138,7 @@ export const SubjectSchema = {
   resources: "array", // Array of ResourceSchema items
   custom_fields: "array", // Array of CustomFieldSchema items
   block_objectives: "object", // Map of blockIndex (string) -> BlockObjectiveSchema
-  curriculum_blocks: "array", // Array of CurriculumBlockDefinitionSchema items; fallback is generated from block_count/block_objectives
+  curriculum_blocks: "array", // Reusable block definitions; an explicit empty array is a valid new container, while an absent field uses legacy fallback reads
   default_block_quantities: "object", // Optional map of curriculumBlockId -> default weekly quantity
   is_active: "boolean", // Whether subject is currently active
   created_at: "timestamp",
