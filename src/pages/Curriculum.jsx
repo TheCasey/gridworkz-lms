@@ -1,9 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { serverTimestamp } from 'firebase/firestore';
 import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, ListChecks, MessageSquareText, Plus, Settings, Trash2, Archive, Edit, Timer, Upload, X } from 'lucide-react';
-import BlockObjectivesEditor from '../components/curriculum/BlockObjectivesEditor';
 import { dashboardFeaturesById } from '../constants/dashboardFeatures';
 import useEntitlements from '../hooks/useEntitlements';
 import useStudents from '../hooks/useStudents';
@@ -68,12 +67,6 @@ const emptyBlockObjective = {
   custom_fields: [],
   student_overrides: {},
 };
-
-const createEmptyBlockObjective = () => ({
-  instruction: '',
-  custom_fields: [],
-  student_overrides: {},
-});
 
 const getNormalizedBlockObjectiveDraft = (objective = {}) => ({
   ...emptyBlockObjective,
@@ -187,7 +180,7 @@ const normalizeCurriculumBlocksForSave = (blocks = []) => (
 );
 
 const buildCurriculumBlocksFromSubject = (subject = {}) => {
-  if (Array.isArray(subject?.curriculum_blocks) && subject.curriculum_blocks.length > 0) {
+  if (Array.isArray(subject?.curriculum_blocks)) {
     return normalizeCurriculumBlocksForSave(subject.curriculum_blocks);
   }
 
@@ -231,14 +224,12 @@ const countDefaultBlockQuantity = (subject = {}) => (
   ), 0)
 );
 
-const getFirstConfiguredBlockIndex = (objectives = {}) => {
-  const configuredIndexes = Object.keys(normalizeBlockObjectivesForSave(objectives))
-    .map((value) => Number.parseInt(value, 10))
-    .filter(Number.isInteger)
-    .sort((left, right) => left - right);
-
-  return configuredIndexes[0] ?? 0;
-};
+const buildDefaultBlockQuantities = (blocks = []) => Object.fromEntries(
+  normalizeCurriculumBlocksForSave(blocks).map((block) => [
+    block.id,
+    Number.parseInt(block.default_quantity, 10) || 0,
+  ])
+);
 
 const getSubjectStudentIds = (subject) => (
   Array.isArray(subject?.student_ids) && subject.student_ids.length
@@ -251,7 +242,7 @@ const isSubjectAssignedToStudent = (subject, studentId) => (
 );
 
 const getSubjectWeeklyMinutes = (subject) => (
-  (subject?.block_count || 10) * (subject?.block_length || 30)
+  countDefaultBlockQuantity(subject) * (subject?.block_length || 30)
 );
 
 const buildSubjectBlockRows = (subject, studentId) => {
@@ -281,13 +272,6 @@ const buildSubjectBlockRows = (subject, studentId) => {
   });
 };
 
-const STEPS = [
-  { label: 'Basics', description: 'Name, students & color' },
-  { label: 'Schedule', description: 'Blocks & time settings' },
-  { label: 'Resources & Feedback', description: 'Links & custom fields (optional)' },
-  { label: 'Block Objectives', description: 'Per-block instructions (optional)' },
-];
-
 const Toggle = ({ value, onChange }) => (
   <button
     type="button"
@@ -309,17 +293,10 @@ const Curriculum = () => {
 
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [subjectName, setSubjectName] = useState('');
-  const [totalBlocks, setTotalBlocks] = useState(10);
   const [blockLength, setBlockLength] = useState(30);
-  const [subjectColor, setSubjectColor] = useState('#3B82F6');
   const [requireSummary, setRequireSummary] = useState(true);
   const [resources, setResources] = useState([{ name: '', url: '' }]);
-  const [customFields, setCustomFields] = useState([]);
-  const [requireTimer, setRequireTimer] = useState(false);
-  const [blockObjectives, setBlockObjectives] = useState({});
-  const [expandedObjectiveBlock, setExpandedObjectiveBlock] = useState(null);
-  const [expandedStudentOverrides, setExpandedStudentOverrides] = useState({});
-  const [currentStep, setCurrentStep] = useState(1);
+  const [showMultiStudentPicker, setShowMultiStudentPicker] = useState(false);
   const [selectedLibraryStudentId, setSelectedLibraryStudentId] = useState('');
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [detailBlockDraft, setDetailBlockDraft] = useState(null);
@@ -366,182 +343,28 @@ const Curriculum = () => {
     setResources(updated);
   };
 
-  const handleAddCustomField = () => setCustomFields([...customFields, { id: Date.now().toString(), type: 'text', label: '', placeholder: '', required: false }]);
-  const handleRemoveCustomField = (i) => setCustomFields(customFields.filter((_, idx) => idx !== i));
-  const handleCustomFieldChange = (i, field, value) => {
-    const updated = [...customFields];
-    updated[i] = { ...updated[i], [field]: value };
-    setCustomFields(updated);
-  };
-
-  const handleToggleObjective = (blockIndex) => {
-    if (blockObjectives[blockIndex]) {
-      setBlockObjectives(prev => { const next = { ...prev }; delete next[blockIndex]; return next; });
-      setExpandedObjectiveBlock(blockIndex);
-    } else {
-      setBlockObjectives(prev => ({ ...prev, [blockIndex]: createEmptyBlockObjective() }));
-      setExpandedObjectiveBlock(blockIndex);
-    }
-  };
-  const handleObjectiveChange = (blockIndex, value) => {
-    setBlockObjectives(prev => ({
-      ...prev,
-      [blockIndex]: {
-        ...getNormalizedBlockObjectiveDraft(prev[blockIndex]),
-        instruction: value,
-      },
-    }));
-  };
-  const handleAddObjectiveCustomField = (blockIndex) => {
-    setBlockObjectives(prev => ({
-      ...prev, [blockIndex]: {
-        ...getNormalizedBlockObjectiveDraft(prev[blockIndex]),
-        custom_fields: [
-          ...getNormalizedBlockObjectiveDraft(prev[blockIndex]).custom_fields,
-          { id: Date.now().toString(), type: 'text', label: '', placeholder: '', required: false },
-        ],
-      }
-    }));
-  };
-  const handleRemoveObjectiveCustomField = (blockIndex, fieldId) => {
-    setBlockObjectives(prev => ({
-      ...prev,
-      [blockIndex]: {
-        ...getNormalizedBlockObjectiveDraft(prev[blockIndex]),
-        custom_fields: getNormalizedBlockObjectiveDraft(prev[blockIndex]).custom_fields.filter(f => f.id !== fieldId),
-      },
-    }));
-  };
-  const handleObjectiveCustomFieldChange = (blockIndex, fieldId, key, value) => {
-    setBlockObjectives(prev => ({
-      ...prev, [blockIndex]: {
-        ...getNormalizedBlockObjectiveDraft(prev[blockIndex]),
-        custom_fields: getNormalizedBlockObjectiveDraft(prev[blockIndex]).custom_fields.map(f => f.id === fieldId ? { ...f, [key]: value } : f),
-      }
-    }));
-  };
-
-  const handleToggleStudentOverride = (blockIndex, studentId) => {
-    const overrideKey = `${blockIndex}_${studentId}`;
-    if (blockObjectives[blockIndex]?.student_overrides?.[studentId]) {
-      setBlockObjectives(prev => {
-        const overrides = { ...(prev[blockIndex]?.student_overrides || {}) };
-        delete overrides[studentId];
-        return { ...prev, [blockIndex]: { ...prev[blockIndex], student_overrides: overrides } };
-      });
-      setExpandedStudentOverrides(prev => { const next = { ...prev }; delete next[overrideKey]; return next; });
-    } else {
-      setBlockObjectives(prev => ({
-        ...prev, [blockIndex]: {
-          ...(prev[blockIndex] || {}),
-          instruction: prev[blockIndex]?.instruction || '',
-          custom_fields: prev[blockIndex]?.custom_fields || [],
-          student_overrides: { ...(prev[blockIndex]?.student_overrides || {}), [studentId]: { instruction: '', custom_fields: [] } }
-        }
-      }));
-      setExpandedStudentOverrides(prev => ({ ...prev, [overrideKey]: true }));
-    }
-  };
-  const handleStudentOverrideChange = (blockIndex, studentId, value) => {
-    setBlockObjectives(prev => ({
-      ...prev, [blockIndex]: {
-        ...(prev[blockIndex] || {}),
-        instruction: prev[blockIndex]?.instruction || '',
-        custom_fields: prev[blockIndex]?.custom_fields || [],
-        student_overrides: {
-          ...(prev[blockIndex]?.student_overrides || {}),
-          [studentId]: { ...(prev[blockIndex]?.student_overrides?.[studentId] || {}), instruction: value }
-        }
-      }
-    }));
-  };
-  const handleAddStudentOverrideCustomField = (blockIndex, studentId) => {
-    setBlockObjectives(prev => ({
-      ...prev, [blockIndex]: {
-        ...(prev[blockIndex] || {}),
-        instruction: prev[blockIndex]?.instruction || '',
-        custom_fields: prev[blockIndex]?.custom_fields || [],
-        student_overrides: {
-          ...(prev[blockIndex]?.student_overrides || {}),
-          [studentId]: {
-            ...(prev[blockIndex]?.student_overrides?.[studentId] || {}),
-            custom_fields: [
-              ...(prev[blockIndex]?.student_overrides?.[studentId]?.custom_fields || []),
-              { id: Date.now().toString(), type: 'text', label: '', placeholder: '', required: false }
-            ]
-          }
-        }
-      }
-    }));
-  };
-  const handleRemoveStudentOverrideCustomField = (blockIndex, studentId, fieldId) => {
-    setBlockObjectives(prev => ({
-      ...prev, [blockIndex]: {
-        ...(prev[blockIndex] || {}),
-        instruction: prev[blockIndex]?.instruction || '',
-        custom_fields: prev[blockIndex]?.custom_fields || [],
-        student_overrides: {
-          ...(prev[blockIndex]?.student_overrides || {}),
-          [studentId]: {
-            ...(prev[blockIndex]?.student_overrides?.[studentId] || {}),
-            custom_fields: (prev[blockIndex]?.student_overrides?.[studentId]?.custom_fields || []).filter(f => f.id !== fieldId)
-          }
-        }
-      }
-    }));
-  };
-  const handleStudentOverrideCustomFieldChange = (blockIndex, studentId, fieldId, key, value) => {
-    setBlockObjectives(prev => ({
-      ...prev, [blockIndex]: {
-        ...(prev[blockIndex] || {}),
-        instruction: prev[blockIndex]?.instruction || '',
-        custom_fields: prev[blockIndex]?.custom_fields || [],
-        student_overrides: {
-          ...(prev[blockIndex]?.student_overrides || {}),
-          [studentId]: {
-            ...(prev[blockIndex]?.student_overrides?.[studentId] || {}),
-            custom_fields: (prev[blockIndex]?.student_overrides?.[studentId]?.custom_fields || []).map(f => f.id === fieldId ? { ...f, [key]: value } : f)
-          }
-        }
-      }
-    }));
-  };
-
-  const handleNext = () => {
-    if (currentStep === 1) {
-      if (!selectedStudents.length) { alert('Please select at least one student.'); return; }
-      if (!subjectName.trim()) { alert('Please enter a subject name.'); return; }
-    }
-    setCurrentStep(s => Math.min(s + 1, STEPS.length));
-  };
-
-  const handlePrimaryAction = async (e) => {
-    e.preventDefault();
-    if (currentStep < STEPS.length) {
-      handleNext();
-      return;
-    }
-    await handleSubmit(e);
-  };
-
   const resetForm = () => {
-    setSelectedStudents([]); setSubjectName(''); setTotalBlocks(10); setBlockLength(30);
-    setSubjectColor('#3B82F6'); setRequireSummary(true); setResources([{ name: '', url: '' }]);
-    setCustomFields([]); setRequireTimer(false); setBlockObjectives({}); setExpandedObjectiveBlock(null);
-    setExpandedStudentOverrides({}); setCurrentStep(1); setShowAddForm(false); setEditingSubject(null);
+    setSelectedStudents([]);
+    setSubjectName('');
+    setBlockLength(30);
+    setRequireSummary(true);
+    setResources([{ name: '', url: '' }]);
+    setShowMultiStudentPicker(false);
+    setShowAddForm(false);
+    setEditingSubject(null);
   };
 
   const openCreateSubjectForm = () => {
     if (!canAddCurriculumItem) return;
     resetForm();
+    setSelectedStudents(selectedLibraryStudentId ? [selectedLibraryStudentId] : []);
     setShowAddForm(true);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (currentStep < STEPS.length) { handleNext(); return; }
     if (!selectedStudents.length || !subjectName.trim()) {
-      alert('Please select at least one student and enter a subject name');
+      alert('Please select at least one student and enter a subject name.');
       return;
     }
 
@@ -558,53 +381,29 @@ const Curriculum = () => {
     }
 
     try {
-      const safeTotalBlocks = parsePositiveInt(totalBlocks, 10, { min: 1, max: 20 });
       const safeBlockLength = parsePositiveInt(blockLength, 30, { min: 5, max: 120 });
-      const data = {
-        student_ids: selectedStudents,
-        parent_id: currentUser.uid,
+      const sharedSettings = {
         title: subjectName.trim(),
-        block_count: safeTotalBlocks,
         block_length: safeBlockLength,
-        color: subjectColor,
-        resources: resources.filter(r => r.name.trim()),
+        resources: getConfiguredResources(resources),
         require_input: requireSummary,
-        custom_fields: customFields.filter(f => f.label.trim()),
-        require_timer: requireTimer,
-        block_objectives: normalizeBlockObjectivesForSave(blockObjectives),
-        curriculum_blocks: normalizeCurriculumBlocksForSave(
-          Object.keys(blockObjectives || {}).length > 0
-            ? Array.from({ length: safeTotalBlocks }, (_, index) => {
-              const objective = getNormalizedBlockObjectiveDraft(blockObjectives[index]);
-              return {
-                id: `block_${index + 1}`,
-                title: hasText(objective.instruction) ? `Block ${index + 1}` : `${subjectName.trim()} block`,
-                type: 'standard',
-                instruction: objective.instruction,
-                resources: getConfiguredResources(resources),
-                require_timer: requireTimer,
-                require_input: requireSummary,
-                custom_fields: objective.custom_fields,
-                default_quantity: 1,
-                pinned: index < 2 || hasText(objective.instruction),
-              };
-            })
-            : Array.from({ length: safeTotalBlocks }, (_, index) => ({
-              id: `block_${index + 1}`,
-              title: `${subjectName.trim()} block`,
-              type: 'standard',
-              instruction: '',
-              resources: getConfiguredResources(resources),
-              require_timer: requireTimer,
-              require_input: requireSummary,
-              custom_fields: [],
-              default_quantity: 1,
-              pinned: index < 2,
-            }))
-        ),
-        is_active: true,
         updated_at: serverTimestamp()
       };
+      const data = editingSubject
+        ? sharedSettings
+        : {
+          ...sharedSettings,
+          student_ids: selectedStudents,
+          parent_id: currentUser.uid,
+          block_count: 1,
+          color: '#3B82F6',
+          custom_fields: [],
+          require_timer: false,
+          block_objectives: {},
+          curriculum_blocks: [],
+          default_block_quantities: {},
+          is_active: true,
+        };
       const saved = await saveSubject({
         editingSubject,
         subjectData: data,
@@ -669,22 +468,13 @@ const Curriculum = () => {
     setDetailBlockDraft(null);
   }, [selectedSubjectId]);
 
-  const handleEdit = (subject, { startStep = 1 } = {}) => {
-    const studentIds = subject.student_ids || [subject.student_id].filter(Boolean);
-    const nextBlockObjectives = subject.block_objectives || {};
-    setSelectedStudents(studentIds);
+  const handleEdit = (subject) => {
+    setSelectedStudents(getSubjectStudentIds(subject));
     setSubjectName(subject.title);
-    setTotalBlocks(subject.block_count || 10);
     setBlockLength(subject.block_length || 30);
-    setSubjectColor(subject.color || '#3B82F6');
     setRequireSummary(subject.require_input !== false);
     setResources(subject.resources?.length ? subject.resources : [{ name: '', url: '' }]);
-    setCustomFields(subject.custom_fields || []);
-    setRequireTimer(subject.require_timer || false);
-    setBlockObjectives(nextBlockObjectives);
-    setExpandedObjectiveBlock(startStep === 4 ? getFirstConfiguredBlockIndex(nextBlockObjectives) : null);
-    setExpandedStudentOverrides({});
-    setCurrentStep(startStep);
+    setShowMultiStudentPicker(false);
     setEditingSubject(subject);
     setShowAddForm(true);
   };
@@ -794,8 +584,9 @@ const Curriculum = () => {
         editingSubject: selectedSubject,
         subjectData: {
           curriculum_blocks: normalizedBlocks,
+          default_block_quantities: buildDefaultBlockQuantities(normalizedBlocks),
           block_objectives: buildBlockObjectivesFromCurriculumBlocks(normalizedBlocks),
-          block_count: Math.max(Number(selectedSubject.block_count || 0), normalizedBlocks.reduce((total, block) => total + (Number(block.default_quantity) || 0), 0), 1),
+          block_count: normalizedBlocks.reduce((total, block) => total + (Number(block.default_quantity) || 0), 0),
           updated_at: serverTimestamp(),
         },
       });
@@ -821,8 +612,9 @@ const Curriculum = () => {
         editingSubject: selectedSubject,
         subjectData: {
           curriculum_blocks: normalizedBlocks,
+          default_block_quantities: buildDefaultBlockQuantities(normalizedBlocks),
           block_objectives: buildBlockObjectivesFromCurriculumBlocks(normalizedBlocks),
-          block_count: Math.max(normalizedBlocks.reduce((total, block) => total + (Number(block.default_quantity) || 0), 0), 1),
+          block_count: normalizedBlocks.reduce((total, block) => total + (Number(block.default_quantity) || 0), 0),
           updated_at: serverTimestamp(),
         },
       });
@@ -851,8 +643,9 @@ const Curriculum = () => {
         editingSubject: selectedSubject,
         subjectData: {
           curriculum_blocks: normalizedBlocks,
+          default_block_quantities: buildDefaultBlockQuantities(normalizedBlocks),
           block_objectives: buildBlockObjectivesFromCurriculumBlocks(normalizedBlocks),
-          block_count: Math.max(Number(selectedSubject.block_count || 0), normalizedBlocks.reduce((total, currentBlock) => total + (Number(currentBlock.default_quantity) || 0), 0), 1),
+          block_count: normalizedBlocks.reduce((total, currentBlock) => total + (Number(currentBlock.default_quantity) || 0), 0),
           updated_at: serverTimestamp(),
         },
       });
@@ -871,7 +664,6 @@ const Curriculum = () => {
     );
   }
 
-  const normalizedTotalBlocks = parsePositiveInt(totalBlocks, 10, { min: 1, max: 20 });
   const curriculumLimitReached = Boolean(curriculumLimitCheck?.hasReachedLimit);
   const curriculumLimitSummary = buildEntitlementUsageSummary({
     limitCheck: curriculumLimitCheck,
@@ -935,293 +727,158 @@ const Curriculum = () => {
 
       {/* Add/Edit Modal */}
       {showAddForm && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-3 sm:p-4">
-          <div
-            className="op-panel w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] sm:max-h-[90vh] flex flex-col overflow-hidden"
-          >
-
-            {/* Sticky header + step indicator */}
-            <div className="sticky top-0 z-10 flex-shrink-0 bg-[#27273e]" style={{ borderBottom: '1px solid rgba(238,234,248,0.12)' }}>
-              <div className="flex items-center justify-between px-6 pt-6 pb-3">
-                <div>
-                  <p className="op-eyebrow">Subject Editor</p>
-                  <h2 className="mt-2 text-[24px] font-display leading-none text-white">
-                    {editingSubject ? 'Edit Subject' : 'Add New Subject'}
-                  </h2>
-                  <p className="op-subtle text-[12px] font-body mt-2">
-                    {STEPS[currentStep - 1].description}
-                  </p>
-                </div>
-                <button onClick={resetForm} className="op-icon-button" title="Close">
-                  <X className="w-5 h-5" />
-                </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-4" role="dialog" aria-modal="true" aria-label={editingSubject ? 'Edit subject settings' : 'Add subject'}>
+          <div className="op-panel flex max-h-[calc(100dvh-1.5rem)] w-full max-w-xl flex-col overflow-hidden sm:max-h-[90vh]">
+            <div className="flex flex-shrink-0 items-start justify-between border-b border-[rgba(238,234,248,0.12)] bg-[#27273e] px-5 py-5 sm:px-6">
+              <div>
+                <p className="op-eyebrow">Subject Settings</p>
+                <h2 className="mt-2 text-[24px] font-display leading-none text-white">
+                  {editingSubject ? 'Edit Subject' : 'Add Subject'}
+                </h2>
+                <p className="op-subtle mt-2 text-[12px] leading-5">
+                  {editingSubject
+                    ? 'Update the defaults shared by this subject’s reusable blocks.'
+                    : `Create an empty subject for ${selectedLibraryStudent?.name || 'the selected student'}, then add reusable blocks inside it.`}
+                </p>
               </div>
-              {!editingSubject && curriculumLimitCheck && (
-                <div
-                  className="op-panel-muted mx-6 mb-4 px-4 py-3"
-                >
-                  <p className="op-eyebrow">
-                    Active Subject Limit
-                  </p>
-                  <p className="op-subtle mt-1.5 text-[13px] font-body leading-5">
-                    {curriculumLimitMessage}
-                  </p>
-                </div>
-              )}
-              {/* Step indicator */}
-              <div className="flex items-start px-6 pb-5">
-                {STEPS.map((step, idx) => {
-                  const n = idx + 1;
-                  const active = n === currentStep;
-                  const done = n < currentStep;
-                  return (
-                    <React.Fragment key={n}>
-                      <div className="flex flex-col items-center flex-shrink-0" style={{ width: 56 }}>
-                        <div className="w-6 h-6 flex items-center justify-center transition-colors"
-                          style={{
-                            backgroundColor: done ? 'rgba(203,183,251,0.92)' : active ? 'rgba(203,183,251,0.18)' : 'transparent',
-                            border: `1.5px solid ${done || active ? C.lavender : 'rgba(238,234,248,0.18)'}`,
-                            color: done ? '#1f1f32' : active ? C.lavender : 'rgba(238,234,248,0.44)',
-                            fontSize: 11, fontWeight: 700
-                          }}>
-                          {done ? '✓' : n}
-                        </div>
-                        <span style={{ fontSize: 9, marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: active ? 700 : 400, color: active ? C.lavender : 'rgba(238,234,248,0.44)', textAlign: 'center', lineHeight: 1.3 }}>
-                          {step.label}
-                        </span>
-                      </div>
-                      {idx < STEPS.length - 1 && (
-                        <div style={{ flex: 1, height: 1.5, marginTop: 11, backgroundColor: n < currentStep ? C.lavender : 'rgba(238,234,248,0.16)' }} />
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </div>
+              <button type="button" onClick={resetForm} className="op-icon-button" title="Close">
+                <X className="h-5 w-5" />
+              </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="min-h-0 flex flex-1 flex-col">
-              <div className="min-h-0 flex-1 overflow-y-auto p-6 space-y-6">
-
-              {/* Step 1: Basics */}
-              {currentStep === 1 && (<>
-                <div>
-                  <label className={labelCls}>Assign Students *</label>
-                  <div className="overflow-hidden max-h-48 overflow-y-auto border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)]">
-                    {students.map((s) => (
-                      <label key={s.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer"
-                        style={{ borderBottom: '1px solid rgba(238,234,248,0.1)' }}
-                        onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(238,234,248,0.08)'}
-                        onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}>
-                        <input type="checkbox" checked={selectedStudents.includes(s.id)}
-                          onChange={(e) => setSelectedStudents(e.target.checked ? [...selectedStudents, s.id] : selectedStudents.filter(id => id !== s.id))}
-                          className="w-4 h-4 accent-amethyst-link" />
-                        <span className="text-[14px] text-[rgba(238,234,248,0.78)] font-body">{s.name}</span>
-                      </label>
-                    ))}
+            <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5 sm:p-6">
+                {!editingSubject && curriculumLimitCheck ? (
+                  <div className="op-panel-muted px-4 py-3">
+                    <p className="op-eyebrow">Active Subject Limit</p>
+                    <p className="op-subtle mt-1.5 text-[12px] leading-5">{curriculumLimitMessage}</p>
                   </div>
-                  {selectedStudents.length === 0
-                    ? <p className="text-[12px] text-[#cbb7fb] mt-1.5">Select at least one student</p>
-                    : <p className="op-subtle text-[12px] mt-1.5">{selectedStudents.length} student{selectedStudents.length > 1 ? 's' : ''} selected</p>}
-                </div>
+                ) : null}
+
                 <div>
                   <label className={labelCls}>Subject Name *</label>
-                  <input type="text" value={subjectName} onChange={(e) => setSubjectName(e.target.value)}
-                    className={inputCls} style={inputStyle}
-                    onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                    onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                    placeholder="e.g., Chess Curriculum" autoFocus />
+                  <input
+                    type="text"
+                    value={subjectName}
+                    onChange={(event) => setSubjectName(event.target.value)}
+                    className={inputCls}
+                    style={inputStyle}
+                    onFocus={(event) => Object.assign(event.currentTarget.style, inputFocusStyle)}
+                    onBlur={(event) => Object.assign(event.currentTarget.style, inputStyle)}
+                    placeholder="e.g., Algebra, Reading, Piano"
+                    autoFocus
+                  />
                 </div>
-                <div>
-                  <label className={labelCls}>Subject Color</label>
-                  <div className="flex items-center gap-3">
-                    <input type="color" value={subjectColor} onChange={(e) => setSubjectColor(e.target.value)}
-                      className="w-14 h-10 cursor-pointer bg-[#202034] p-1" style={{ border: '1px solid rgba(238,234,248,0.18)' }} />
-                    <span className="text-[13px] text-[rgba(238,234,248,0.5)] font-mono">{subjectColor}</span>
-                  </div>
-                </div>
-              </>)}
 
-              {/* Step 2: Schedule */}
-              {currentStep === 2 && (<>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                   <div>
-                    <label className={labelCls}>Blocks per Week</label>
-                    <input type="number" min="1" max="20" value={totalBlocks}
-                      onChange={(e) => setTotalBlocks(e.target.value === '' ? '' : parsePositiveInt(e.target.value, 10, { min: 1, max: 20 }))}
-                      className={inputCls} style={inputStyle}
-                      onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                      onBlur={e => {
-                        Object.assign(e.currentTarget.style, inputStyle);
-                        setTotalBlocks(parsePositiveInt(e.target.value, 10, { min: 1, max: 20 }));
-                      }} />
+                    <label className={labelCls}>Block Length (minutes)</label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="120"
+                      step="5"
+                      value={blockLength}
+                      onChange={(event) => setBlockLength(event.target.value === '' ? '' : parsePositiveInt(event.target.value, 30, { min: 5, max: 120 }))}
+                      onBlur={(event) => setBlockLength(parsePositiveInt(event.target.value, 30, { min: 5, max: 120 }))}
+                      className={inputCls}
+                      style={inputStyle}
+                    />
                   </div>
-                  <div>
-                    <label className={labelCls}>Block Length (min)</label>
-                    <input type="number" min="5" max="120" step="5" value={blockLength}
-                      onChange={(e) => setBlockLength(e.target.value === '' ? '' : parsePositiveInt(e.target.value, 30, { min: 5, max: 120 }))}
-                      className={inputCls} style={inputStyle}
-                      onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                      onBlur={e => {
-                        Object.assign(e.currentTarget.style, inputStyle);
-                        setBlockLength(parsePositiveInt(e.target.value, 30, { min: 5, max: 120 }));
-                      }} />
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex min-h-10 items-center justify-between gap-6 border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)] px-3 py-2">
                     <div>
-                      <p className="text-[14px] font-body text-[rgba(250,249,255,0.9)]">Require Summary</p>
-                      <p className="op-subtle mt-0.5 text-[12px]">
-                        {requireSummary ? 'Students must write a summary (min. 150 characters)' : 'No summary required'}
-                      </p>
+                      <p className="text-[12px] font-label text-white">Written summary</p>
+                      <p className="mt-0.5 text-[10px] text-[rgba(238,234,248,0.44)]">Default for new blocks</p>
                     </div>
                     <Toggle value={requireSummary} onChange={setRequireSummary} />
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[14px] font-body text-[rgba(250,249,255,0.9)]">Require Timer</p>
-                      <p className="op-subtle mt-0.5 text-[12px]">
-                        {requireTimer ? 'Timer must complete before submitting' : 'Timer is optional'}
-                      </p>
-                    </div>
-                    <Toggle value={requireTimer} onChange={setRequireTimer} />
-                  </div>
                 </div>
-              </>)}
 
-              {/* Step 3: Resources & Feedback */}
-              {currentStep === 3 && (<>
                 <div>
-                  <label className={labelCls}>Resource Links</label>
-                  <p className="op-subtle mb-3 text-[12px] font-body">Links or materials students can reference during a block</p>
-                  <div className="space-y-2.5">
-                    {resources.map((resource, i) => (
-                      <div key={i} className="flex flex-col gap-2 sm:flex-row">
-                        <input type="text" value={resource.name}
-                          onChange={(e) => handleResourceChange(i, 'name', e.target.value)}
-                          className={inputCls} style={inputStyle}
-                          onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                          onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                          placeholder="Resource name" />
-                        <input type="url" value={resource.url}
-                          onChange={(e) => handleResourceChange(i, 'url', e.target.value)}
-                          className={inputCls} style={inputStyle}
-                          onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                          onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                          placeholder="https://..." />
-                        {resources.length > 1 && (
-                          <button type="button" onClick={() => handleRemoveResource(i)}
-                            className="self-start p-2 text-[rgba(238,234,248,0.38)] transition-colors hover:text-[rgba(250,249,255,0.92)] sm:self-auto">
-                            <X className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    <button type="button" onClick={handleAddResource}
-                      className="flex items-center gap-2 text-[13px] text-[#cbb7fb] hover:text-[#e0d5ff] font-body transition-colors">
-                      <Plus className="w-4 h-4" /> Add Resource
-                    </button>
-                  </div>
-                </div>
-                <div style={{ borderTop: '1px solid rgba(238,234,248,0.12)' }} />
-                <div>
-                  <label className={labelCls}>Custom Submission Fields</label>
-                  <p className="op-subtle mb-3 text-[12px] font-body">Extra info requested from students on every block completion for this subject</p>
-                  <div className="space-y-3">
-                    {customFields.map((field, i) => (
-                      <div key={field.id} className="op-surface p-4" style={{ borderLeft: '3px solid rgba(203,183,251,0.68)' }}>
-                        <div className="grid grid-cols-1 gap-3 mb-3 sm:grid-cols-2">
-                          <div>
-                            <label className={labelCls}>Field Type</label>
-                            <select value={field.type} onChange={(e) => handleCustomFieldChange(i, 'type', e.target.value)}
-                              className={inputCls} style={inputStyle}
-                              onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                              onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}>
-                              <option value="text">Text Input</option>
-                              <option value="number">Number Input</option>
-                              <option value="file">File Upload</option>
-                            </select>
-                          </div>
-                          <div className="flex items-center gap-2 sm:mt-6">
-                            <input type="checkbox" checked={field.required}
-                              onChange={(e) => handleCustomFieldChange(i, 'required', e.target.checked)}
-                              className="w-4 h-4 accent-amethyst-link" />
-                            <label className="text-[13px] text-[rgba(238,234,248,0.68)] font-body">Required</label>
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <input type="text" value={field.label} onChange={(e) => handleCustomFieldChange(i, 'label', e.target.value)}
-                            className={inputCls} style={inputStyle}
-                            onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                            onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                            placeholder="Field label (e.g., 'Which chapters did you read?')" />
-                          <input type="text" value={field.placeholder} onChange={(e) => handleCustomFieldChange(i, 'placeholder', e.target.value)}
-                            className={inputCls} style={inputStyle}
-                            onFocus={e => Object.assign(e.currentTarget.style, inputFocusStyle)}
-                            onBlur={e => Object.assign(e.currentTarget.style, inputStyle)}
-                            placeholder="Helper text for the student" />
-                        </div>
-                        <button type="button" onClick={() => handleRemoveCustomField(i)}
-                          className="mt-3 text-[12px] text-[rgba(238,234,248,0.44)] hover:text-[rgba(250,249,255,0.92)] font-body transition-colors">
-                          Remove Field
+                  <label className={labelCls}>Resource Links (optional)</label>
+                  <div className="space-y-2">
+                    {resources.map((resource, index) => (
+                      <div key={index} className="grid gap-2 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
+                        <input
+                          type="text"
+                          value={resource.name}
+                          onChange={(event) => handleResourceChange(index, 'name', event.target.value)}
+                          className={inputCls}
+                          style={inputStyle}
+                          placeholder="Resource name"
+                        />
+                        <input
+                          type="url"
+                          value={resource.url}
+                          onChange={(event) => handleResourceChange(index, 'url', event.target.value)}
+                          className={inputCls}
+                          style={inputStyle}
+                          placeholder="https://..."
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveResource(index)}
+                          className="op-icon-button"
+                          title="Remove resource"
+                        >
+                          <X className="h-4 w-4" />
                         </button>
                       </div>
                     ))}
-                    <button type="button" onClick={handleAddCustomField}
-                      className="flex items-center gap-2 text-[13px] text-[#cbb7fb] hover:text-[#e0d5ff] font-body transition-colors">
-                      <Plus className="w-4 h-4" /> Add Custom Field
+                    <button type="button" onClick={handleAddResource} className="op-proto-link">
+                      <Plus className="h-3.5 w-3.5" /> Add resource
                     </button>
                   </div>
                 </div>
-              </>)}
 
-              {/* Step 4: Block Objectives */}
-              {currentStep === 4 && (
-                <BlockObjectivesEditor
-                  blockCount={normalizedTotalBlocks}
-                  blockObjectives={blockObjectives}
-                  colors={C}
-                  expandedObjectiveBlock={expandedObjectiveBlock}
-                  expandedStudentOverrides={expandedStudentOverrides}
-                  inputCls={inputCls}
-                  inputFocusStyle={inputFocusStyle}
-                  inputStyle={inputStyle}
-                  labelCls={labelCls}
-                  onAddObjectiveCustomField={handleAddObjectiveCustomField}
-                  onAddStudentOverrideCustomField={handleAddStudentOverrideCustomField}
-                  onObjectiveChange={handleObjectiveChange}
-                  onObjectiveCustomFieldChange={handleObjectiveCustomFieldChange}
-                  onRemoveObjectiveCustomField={handleRemoveObjectiveCustomField}
-                  onRemoveStudentOverrideCustomField={handleRemoveStudentOverrideCustomField}
-                  onStudentOverrideChange={handleStudentOverrideChange}
-                  onStudentOverrideCustomFieldChange={handleStudentOverrideCustomFieldChange}
-                  onToggleObjective={handleToggleObjective}
-                  onToggleStudentOverride={handleToggleStudentOverride}
-                  selectedStudents={selectedStudents}
-                  setExpandedObjectiveBlock={setExpandedObjectiveBlock}
-                  setExpandedStudentOverrides={setExpandedStudentOverrides}
-                  students={students}
-                />
-              )}
+                {!editingSubject && students.length > 1 ? (
+                  <div className="border-t border-[rgba(238,234,248,0.1)] pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowMultiStudentPicker((value) => !value)}
+                      className="op-proto-link"
+                    >
+                      <Plus className={`h-3.5 w-3.5 transition-transform ${showMultiStudentPicker ? 'rotate-45' : ''}`} />
+                      Create for multiple students
+                    </button>
+                    <p className="op-subtle mt-1.5 text-[10px] leading-4">
+                      Each selected student gets an independent subject record and block library.
+                    </p>
+                    {showMultiStudentPicker ? (
+                      <div className="mt-3 max-h-44 overflow-y-auto border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)]">
+                        {students.map((student) => (
+                          <label key={student.id} className="flex cursor-pointer items-center gap-3 border-b border-[rgba(238,234,248,0.08)] px-3 py-2.5 last:border-b-0">
+                            <input
+                              type="checkbox"
+                              checked={selectedStudents.includes(student.id)}
+                              onChange={(event) => setSelectedStudents(event.target.checked
+                                ? [...new Set([...selectedStudents, student.id])]
+                                : selectedStudents.filter((studentId) => studentId !== student.id))}
+                              className="h-4 w-4 accent-amethyst-link"
+                            />
+                            <span className="text-[12px] text-[rgba(238,234,248,0.78)]">{student.name}</span>
+                            {student.id === selectedLibraryStudentId ? (
+                              <span className="ml-auto text-[9px] uppercase tracking-[0.1em] text-[#b8adff]">Current tab</span>
+                            ) : null}
+                          </label>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
 
-              {/* Step navigation */}
               <div className="sticky bottom-0 flex flex-shrink-0 gap-3 bg-[#27273e] p-4 sm:p-6" style={{ borderTop: '1px solid rgba(238,234,248,0.12)' }}>
-                <button type="button"
-                  onClick={currentStep === 1 ? resetForm : () => setCurrentStep(s => s - 1)}
-                  className="op-button op-button-secondary flex-1">
-                  {currentStep === 1 ? 'Cancel' : '← Back'}
+                <button type="button" onClick={resetForm} className="op-button op-button-secondary flex-1">
+                  Cancel
                 </button>
                 <button
-                  type="button"
-                  onClick={handlePrimaryAction}
+                  type="submit"
                   disabled={isCreateSubjectBlocked}
                   className="op-button flex-1 disabled:cursor-not-allowed">
                   {isCreateSubjectBlocked
                     ? 'Upgrade Required'
-                    : currentStep === STEPS.length
-                      ? (editingSubject ? 'Update Subject' : 'Add Subject')
-                      : 'Next →'}
+                    : editingSubject ? 'Save Settings' : `Create Subject${selectedStudents.length > 1 ? 's' : ''}`}
                 </button>
               </div>
             </form>
@@ -1518,6 +1175,18 @@ const Curriculum = () => {
             </div>
 
               <div className="op-proto-block-list">
+                {selectedSubjectRows.length === 0 ? (
+                  <div className="op-proto-empty min-h-[220px]">
+                    <ListChecks className="mx-auto h-8 w-8 text-[#b8adff]" />
+                    <h3 className="mt-3 text-[15px] font-label text-white">No reusable blocks yet</h3>
+                    <p className="mx-auto mt-2 max-w-sm text-[11px] leading-5 text-[rgba(238,234,248,0.54)]">
+                      This subject is ready. Add one reusable block, then choose its weekly quantity in Weekly Blocking.
+                    </p>
+                    <button type="button" onClick={openNewDetailBlockDraft} className="op-proto-btn op-proto-btn-primary mt-4">
+                      <Plus className="h-3.5 w-3.5" /> Add first block
+                    </button>
+                  </div>
+                ) : null}
                 {selectedSubjectRows.map((row) => {
                   const rowRequiresTimer = typeof row.require_timer === 'boolean'
                     ? row.require_timer
@@ -1643,7 +1312,7 @@ const Curriculum = () => {
             {selectedStudentSubjects.map((subject) => {
               const subjectBlocks = buildCurriculumBlocksFromSubject(subject);
               const configuredBlockCount = countConfiguredBlockObjectives(subject.block_objectives);
-              const totalBlocks = subject.block_count || countDefaultBlockQuantity(subject) || subjectBlocks.length || 1;
+              const totalBlocks = countDefaultBlockQuantity(subject);
 
               return (
                 <button

@@ -58,7 +58,20 @@ export const getStudentSubjectsFromLegacyRecords = (subjects, studentId) => (
 );
 
 export const getSubjectBlockCount = (subject) => (
-  toPositiveInt(subject?.block_count, DEFAULT_SUBJECT_BLOCK_COUNT)
+  Array.isArray(subject?.curriculum_blocks)
+    ? (
+      subject?.default_block_quantities
+      && typeof subject.default_block_quantities === 'object'
+      && !Array.isArray(subject.default_block_quantities)
+      && Object.keys(subject.default_block_quantities).length > 0
+        ? Object.values(subject.default_block_quantities).reduce((total, quantity) => (
+          total + Math.max(0, Number.parseInt(quantity, 10) || 0)
+        ), 0)
+        : subject.curriculum_blocks.reduce((total, block) => (
+          total + Math.max(0, Number.parseInt(block?.default_quantity, 10) || 0)
+        ), 0)
+    )
+    : toPositiveInt(subject?.block_count, DEFAULT_SUBJECT_BLOCK_COUNT)
 );
 
 export const getSubjectBlockLengthMinutes = (subject) => (
@@ -86,7 +99,7 @@ export const normalizeSubjectCurriculumBlock = (block = {}, index = 0) => {
 };
 
 export const getSubjectCurriculumBlocks = (subject) => {
-  if (Array.isArray(subject?.curriculum_blocks) && subject.curriculum_blocks.length > 0) {
+  if (Array.isArray(subject?.curriculum_blocks)) {
     return subject.curriculum_blocks.map(normalizeSubjectCurriculumBlock);
   }
 
@@ -116,6 +129,7 @@ export const getSubjectDefaultBlockQuantities = (subject) => {
     subject?.default_block_quantities
     && typeof subject.default_block_quantities === 'object'
     && !Array.isArray(subject.default_block_quantities)
+    && Object.keys(subject.default_block_quantities).length > 0
   ) {
     return Object.fromEntries(
       Object.entries(subject.default_block_quantities).map(([blockId, quantity]) => [
@@ -235,7 +249,7 @@ export const buildLegacySubjectWeeklyBlockSeeds = ({ subject, studentId }) => {
       occurrenceIndex,
     }))
   ));
-  const fallbackDefinitions = blockDefinitions.length > 0
+  const fallbackDefinitions = blockDefinitions.length > 0 || Array.isArray(subject?.curriculum_blocks)
     ? blockDefinitions
     : Array.from({ length: getSubjectBlockCount(subject) }, (_, blockIndex) => ({
       block: normalizeSubjectCurriculumBlock({
