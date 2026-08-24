@@ -251,6 +251,8 @@ export const buildWorkLauncherActiveWorkSession = ({
 
 export const buildWorkLauncherTimerSessionPayload = ({
   studentRecord = null,
+  weeklyPlan = null,
+  weekKey = '',
   workItem = null,
   timer = null,
   includeCreatedAt = false,
@@ -264,6 +266,9 @@ export const buildWorkLauncherTimerSessionPayload = ({
     parent_id: studentRecord.parent_id,
     subject_id: workItem.legacySubjectId,
     block_index: workItem.compatibilityBlockIndex,
+    block_id: toNonEmptyString(workItem.id),
+    weekly_plan_id: toNonEmptyString(weeklyPlan?.id),
+    week_key: toNonEmptyString(weeklyPlan?.week_key) || toNonEmptyString(weekKey),
     start_time: timer.startTime,
     duration_ms: timer.durationMs,
     duration_minutes: timer.durationMinutes,

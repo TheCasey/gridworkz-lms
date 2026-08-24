@@ -386,6 +386,9 @@ export const TimerSessionSchema = {
   parent_id: "string", // Reference to parent
   subject_id: "string", // Reference to subject
   block_index: "number", // Current block tied to the timer
+  block_id: "string", // Published weekly-plan block identity when available
+  weekly_plan_id: "string", // Published weekly plan that owns this timer, or empty for legacy fallback
+  week_key: "string", // Student week identity used to prevent timers crossing weekly resets
   start_time: "number", // Client timestamp in ms when timer started
   duration_ms: "number", // Original timer duration in milliseconds
   duration_minutes: "number", // Original timer duration in minutes

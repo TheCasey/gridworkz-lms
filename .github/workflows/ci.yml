@@ -26,5 +26,8 @@ jobs:
       - name: Run lint
         run: npm run lint
 
+      - name: Check student timer sessions
+        run: npm run check:student-timers
+
       - name: Run build
         run: npm run build

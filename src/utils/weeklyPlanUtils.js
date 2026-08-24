@@ -203,18 +203,22 @@ export const buildPublishedWeeklyPlanPortalWorkItems = ({
   subjectsById = {},
 } = {}) => {
   const blocks = Array.isArray(weeklyPlan?.blocks) ? weeklyPlan.blocks : [];
-  const planBlockCountBySubject = blocks.reduce((counts, block) => {
+  const planBlockIndicesBySubject = blocks.reduce((indices, block) => {
     const legacySubjectId = toNonEmptyString(block?.legacy_subject_id);
     const legacyBlockIndex = Number.isInteger(block?.legacy_block_index)
       ? block.legacy_block_index
       : null;
 
     if (!legacySubjectId || legacyBlockIndex === null) {
-      return counts;
+      return indices;
     }
 
-    counts[legacySubjectId] = Math.max(counts[legacySubjectId] || 0, legacyBlockIndex + 1);
-    return counts;
+    indices[legacySubjectId] ||= [];
+    if (!indices[legacySubjectId].includes(legacyBlockIndex)) {
+      indices[legacySubjectId].push(legacyBlockIndex);
+      indices[legacySubjectId].sort((left, right) => left - right);
+    }
+    return indices;
   }, {});
 
   return blocks.reduce((workItems, block, index) => {
@@ -259,10 +263,8 @@ export const buildPublishedWeeklyPlanPortalWorkItems = ({
       portal_display_title: displayTitle,
       legacy_subject_id: legacySubjectId,
       legacy_subject_title: legacySubjectTitle,
-      block_count: toPositiveInt(
-        legacySubject?.block_count,
-        planBlockCountBySubject[legacySubjectId] || (legacyBlockIndex + 1)
-      ),
+      block_count: planBlockIndicesBySubject[legacySubjectId]?.length || 1,
+      portal_block_indices: [...(planBlockIndicesBySubject[legacySubjectId] || [legacyBlockIndex])],
       block_length: plannedDurationMinutes,
       require_timer: requireTimer,
       require_input: requireInput,
