@@ -93,10 +93,12 @@ export const useStudentAccessPolicy = ({
   const getNextAvailableBlock = useCallback((subject) => {
     if (!subject) return null;
 
-    const totalBlocks = subject?.block_count || 10;
+    const availableBlockIndices = Array.isArray(subject?.portal_block_indices)
+      ? subject.portal_block_indices
+      : Array.from({ length: subject?.block_count || 10 }, (_, blockIndex) => blockIndex);
     const completedForSubject = completedBlocks[subject.id] || [];
 
-    for (let blockIndex = 0; blockIndex < totalBlocks; blockIndex += 1) {
+    for (const blockIndex of availableBlockIndices) {
       if (!completedForSubject.includes(blockIndex)) {
         return blockIndex;
       }
@@ -151,8 +153,13 @@ export const useStudentAccessPolicy = ({
       };
     }
 
-    const totalBlocks = subject?.block_count || 4;
-    const completedCount = completedBlocks[subject.id]?.length || 0;
+    const availableBlockIndices = Array.isArray(subject?.portal_block_indices)
+      ? subject.portal_block_indices
+      : Array.from({ length: subject?.block_count || 4 }, (_, availableBlockIndex) => availableBlockIndex);
+    const totalBlocks = availableBlockIndices.length;
+    const completedCount = availableBlockIndices.filter((availableBlockIndex) => (
+      completedBlocks[subject.id]?.includes(availableBlockIndex)
+    )).length;
     const nextAvailableBlock = getNextAvailableBlock(subject);
     const preferredBlockAvailable = blockIndex !== null
       && blockIndex !== undefined

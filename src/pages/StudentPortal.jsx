@@ -35,6 +35,11 @@ import {
   buildPublishedWeeklyPlanWorkLauncherContract,
   buildWorkLauncherTimerSessionPayload,
 } from '../utils/workLauncherUtils';
+import { buildPublishedWeeklyPlanPortalWorkItems } from '../utils/weeklyPlanUtils';
+import {
+  buildPortalTimerBlockContext,
+  partitionPortalTimers,
+} from '../utils/studentTimerSessionUtils';
 import useStudentChores from '../hooks/useStudentChores';
 import StudentAvatarWorkspace from '../components/student/StudentAvatarWorkspace';
 import StudentChoresWorkspaceV2 from '../components/student/StudentChoresWorkspaceV2';
@@ -133,6 +138,7 @@ const StudentPortal = () => {
   const completionNotifiedRef = useRef({});
   const previousTimersRef = useRef({});
   const timerRemovalInFlightRef = useRef({});
+  const timerRemovalPromisesRef = useRef({});
 
   const db = getFirestore(app);
   const rawSubjectMap = useMemo(() => Object.fromEntries(subjects.map(subject => [subject.id, subject])), [subjects]);
@@ -142,23 +148,59 @@ const StudentPortal = () => {
     student?.week_reset_minute,
   ]);
   const {
+    weekIdentity,
     weeklyPlan: publishedWeeklyPlan,
     loading: publishedWeeklyPlanLoading,
   } = useStudentPortalWeeklyPlan({
     student,
     enabled: Boolean(student?.id && student?.parent_id),
   });
+  const timerValidationWorkItems = useMemo(() => (
+    publishedWeeklyPlan
+      ? buildPublishedWeeklyPlanPortalWorkItems({
+        weeklyPlan: publishedWeeklyPlan,
+        subjectsById: rawSubjectMap,
+      })
+      : []
+  ), [publishedWeeklyPlan, rawSubjectMap]);
+  const timerBlockContext = useMemo(() => buildPortalTimerBlockContext({
+    hasPublishedWeeklyPlan: Boolean(publishedWeeklyPlan),
+    publishedWorkItems: timerValidationWorkItems,
+    subjects,
+  }), [publishedWeeklyPlan, subjects, timerValidationWorkItems]);
+  const timerPartition = useMemo(() => partitionPortalTimers({
+    activeTimers,
+    blockContext: timerBlockContext,
+    completedBlocks,
+    weeklyPlanId: publishedWeeklyPlan?.id || '',
+    weekKey: weekIdentity?.weekKey || '',
+    weekStart: weekIdentity?.weekStart || null,
+  }), [
+    activeTimers,
+    completedBlocks,
+    publishedWeeklyPlan?.id,
+    timerBlockContext,
+    weekIdentity?.weekKey,
+    weekIdentity?.weekStart,
+  ]);
+  const currentActiveTimers = timerPartition.currentTimers;
+  const staleTimerSubjectIds = Object.keys(timerPartition.staleTimers);
+  const staleTimerSubjectIdsKey = staleTimerSubjectIds.sort().join('|');
   const activeTimerSessions = useMemo(() => (
-    Object.entries(activeTimers).map(([subjectId, timer]) => ({
+    Object.entries(currentActiveTimers).map(([subjectId, timer]) => ({
       id: `${subjectId}_${timer?.blockIndex ?? 0}`,
       subject_id: subjectId,
       block_index: timer?.blockIndex ?? 0,
       is_running: Boolean(timer?.isRunning),
       status: timer?.isRunning ? 'active' : 'paused',
+      remaining_time: Number(timer?.remainingTime || 0),
       saved_at: timer?.savedAt ?? Date.now(),
       updated_at: timer?.updatedAt ?? null,
+      weekly_plan_id: timer?.weeklyPlanId ?? timer?.weekly_plan_id ?? '',
+      week_key: timer?.weekKey ?? timer?.week_key ?? '',
+      block_id: timer?.blockId ?? timer?.block_id ?? '',
     })).filter((timerSession) => Boolean(timerSession.subject_id))
-  ), [activeTimers]);
+  ), [currentActiveTimers]);
   const workLauncherContract = useMemo(() => buildPublishedWeeklyPlanWorkLauncherContract({
     studentRecord: student,
     weeklyPlan: publishedWeeklyPlan,
@@ -186,7 +228,7 @@ const StudentPortal = () => {
     student,
     subjects: portalSubjects,
     completedBlocks,
-    activeTimers,
+    activeTimers: currentActiveTimers,
     submissionLocksRef,
   });
   const currentPolicyPreview = workLauncherContract.policy_preview;
@@ -457,7 +499,7 @@ const StudentPortal = () => {
   }, []);
 
   useEffect(() => {
-    Object.entries(activeTimers).forEach(([subjectId, timer]) => {
+    Object.entries(currentActiveTimers).forEach(([subjectId, timer]) => {
       const previousTimer = previousTimersRef.current[subjectId];
 
       if (
@@ -479,15 +521,15 @@ const StudentPortal = () => {
     });
 
     Object.keys(previousTimersRef.current).forEach((subjectId) => {
-      if (!activeTimers[subjectId]) {
+      if (!currentActiveTimers[subjectId]) {
         delete previousTimersRef.current[subjectId];
       }
     });
 
     previousTimersRef.current = Object.fromEntries(
-      Object.entries(activeTimers).map(([subjectId, timer]) => [subjectId, { ...timer }])
+      Object.entries(currentActiveTimers).map(([subjectId, timer]) => [subjectId, { ...timer }])
     );
-  }, [activeTimers, subjectMap]);
+  }, [currentActiveTimers, subjectMap]);
 
   useEffect(() => {
     if (!student) return;
@@ -570,6 +612,8 @@ const StudentPortal = () => {
     const launcherWorkItem = getLauncherWorkItemForSubject(subject, timer.blockIndex);
     const payload = buildWorkLauncherTimerSessionPayload({
       studentRecord: student,
+      weeklyPlan: publishedWeeklyPlan,
+      weekKey: weekIdentity?.weekKey || '',
       workItem: launcherWorkItem || {
         id: `${subject?.id || 'subject'}_block_${timer.blockIndex}`,
         legacySubjectId: subject?.id || '',
@@ -603,22 +647,44 @@ const StudentPortal = () => {
 
   const removeTimer = async (subjectId) => {
     if (!student || !subjectId) return;
+    if (timerRemovalPromisesRef.current[subjectId]) {
+      await timerRemovalPromisesRef.current[subjectId];
+      return;
+    }
 
     timerRemovalInFlightRef.current[subjectId] = true;
     clearTimerFromStorage(getTimerKey(student.id, subjectId));
     delete previousTimersRef.current[subjectId];
     delete completionNotifiedRef.current[subjectId];
 
+    const removalPromise = deleteDoc(doc(db, 'timerSessions', getTimerSessionDocId(student.id, subjectId)));
+    timerRemovalPromisesRef.current[subjectId] = removalPromise;
+
     try {
-      await deleteDoc(doc(db, 'timerSessions', getTimerSessionDocId(student.id, subjectId)));
+      await removalPromise;
     } catch (error) {
       delete timerRemovalInFlightRef.current[subjectId];
       throw error;
+    } finally {
+      if (timerRemovalPromisesRef.current[subjectId] === removalPromise) {
+        delete timerRemovalPromisesRef.current[subjectId];
+      }
     }
   };
 
   const startTimer = async (subject, preferredBlockIndex = null) => {
     if (!subject) return;
+
+    if (timerRemovalPromisesRef.current[subject.id]) {
+      try {
+        await timerRemovalPromisesRef.current[subject.id];
+      } catch (cleanupError) {
+        console.error('Error clearing previous timer:', cleanupError);
+        setError('The previous timer could not be cleared. Please try again.');
+        return;
+      }
+    }
+
     const subjectPolicy = getSubjectPolicy(subject, { blockIndex: preferredBlockIndex });
     const timerStartPolicy = subjectPolicy.canStartTimer;
     if (!timerStartPolicy.allowed) {
@@ -664,7 +730,7 @@ const StudentPortal = () => {
   };
 
   const pauseTimer = async (subject) => {
-    const current = activeTimers[subject.id];
+    const current = currentActiveTimers[subject.id];
     const config = {
       ...current,
       remainingTime: current?.isRunning && !current?.pausedAt
@@ -684,7 +750,7 @@ const StudentPortal = () => {
   };
 
   const resumeTimer = async (subject) => {
-    const current = activeTimers[subject.id];
+    const current = currentActiveTimers[subject.id];
     const now = Date.now();
     const config = current.pausedAt
       ? { ...current, isRunning: true, targetEndTime: current.targetEndTime + (now - current.pausedAt), pausedAt: null, resumedAt: now }
@@ -710,6 +776,25 @@ const StudentPortal = () => {
       setError('Failed to reset timer. Please try again.');
     }
   };
+
+  useEffect(() => {
+    if (!student?.id || !staleTimerSubjectIdsKey) return;
+
+    staleTimerSubjectIds.forEach((subjectId) => {
+      if (timerRemovalInFlightRef.current[subjectId]) return;
+
+      setActiveTimers((prev) => {
+        if (!prev[subjectId]) return prev;
+        const updated = { ...prev };
+        delete updated[subjectId];
+        return updated;
+      });
+
+      removeTimer(subjectId).catch((cleanupError) => {
+        console.warn('Unable to delete stale timer session:', cleanupError);
+      });
+    });
+  }, [staleTimerSubjectIdsKey, student?.id]);
 
   const setSubmissionLock = (subjectId, blockIndex) => { submissionLocksRef.current[`${subjectId}_${blockIndex}`] = true; };
   const clearSubmissionLock = (subjectId, blockIndex) => { delete submissionLocksRef.current[`${subjectId}_${blockIndex}`]; };
@@ -834,7 +919,7 @@ const StudentPortal = () => {
       return;
     }
     if (subject.require_timer) {
-      const timer = activeTimers[subject.id];
+      const timer = currentActiveTimers[subject.id];
       setActiveTimers(prev => ({ ...prev, [subject.id]: { ...timer, isFinished: true, isRunning: false } }));
     }
 
@@ -849,7 +934,7 @@ const StudentPortal = () => {
   const handleCompleteBlock = (subject) => {
     if (!subject) return;
     stopAlarm();
-    const timerBlock = activeTimers[subject.id]?.blockIndex;
+    const timerBlock = currentActiveTimers[subject.id]?.blockIndex;
     const selectedBlock = expandedSubjectId === subject.id ? expandedBlockIndex : null;
     const targetBlock = timerBlock ?? selectedBlock ?? getNextAvailableBlock(subject);
     const subjectPolicy = getSubjectPolicy(subject, { blockIndex: targetBlock });
@@ -867,7 +952,7 @@ const StudentPortal = () => {
   const handleCompleteWorkItem = (workItem) => {
     const compatibilitySubject = workItem?.compatibilitySubject;
     const compatibilityBlockIndex = workItem?.compatibilityBlockIndex;
-    const activeSubjectTimer = compatibilitySubject ? activeTimers[compatibilitySubject.id] : null;
+    const activeSubjectTimer = compatibilitySubject ? currentActiveTimers[compatibilitySubject.id] : null;
 
     if (!compatibilitySubject || compatibilityBlockIndex === null || compatibilityBlockIndex === undefined) {
       return;
@@ -1028,7 +1113,7 @@ const StudentPortal = () => {
             totalBlocks={totalBlocks}
             weeklyPct={weeklyPct}
             error={error}
-            activeTimers={activeTimers}
+            activeTimers={currentActiveTimers}
             expandedSubjectId={expandedSubjectId}
             expandedBlockIndex={expandedBlockIndex}
             submitting={submitting}
@@ -1212,7 +1297,7 @@ const StudentPortal = () => {
             <div className="space-y-5">
               {publishedWorkItems.map((workItem, index) => {
                 const subject = workItem.compatibilitySubject;
-                const timer = activeTimers[subject.id];
+                const timer = currentActiveTimers[subject.id];
                 const launchState = workItem.launch_state || {};
                 const blockCompleted = Boolean(launchState.completed || isBlockCompleted(subject, workItem.compatibilityBlockIndex));
                 const blockUnavailable = Boolean(launchState.unavailable);
@@ -1451,7 +1536,7 @@ const StudentPortal = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {subjects.map((subject) => {
                 const progress = getSubjectProgress(subject);
-                const timer = activeTimers[subject.id];
+                const timer = currentActiveTimers[subject.id];
                 const selectedBlockForSubject = expandedSubjectId === subject.id ? expandedBlockIndex : null;
                 const subjectPolicy = getSubjectPolicy(subject, { blockIndex: selectedBlockForSubject });
                 const subjectAvailability = subjectPolicy.subjectAvailability;

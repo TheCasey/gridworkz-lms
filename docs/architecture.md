@@ -106,6 +106,7 @@ Important modeling details:
 - Timer logic lives in `src/utils/timerUtils.js`.
 - Timers are based on target end time, not interval drift.
 - Student portal timers persist both locally and in `timerSessions`.
+- Timer sessions are scoped to their student week, published weekly plan, and block identity. The portal ignores and removes sessions for unavailable or already-completed blocks before evaluating the one-timer-at-a-time policy.
 
 ### Student portal access policy
 
