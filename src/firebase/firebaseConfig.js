@@ -18,6 +18,9 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+// Emulator validation must never request production Analytics configuration.
+const analytics = import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true'
+  ? null
+  : getAnalytics(app);
 
 export { app, analytics };

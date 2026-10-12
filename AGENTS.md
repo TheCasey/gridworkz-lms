@@ -17,20 +17,22 @@ For planning or documentation tasks, start here:
 ```bash
 npm run dev          # Start dev server (Vite, port 3000)
 npm run build        # Production build
-npm run lint         # Intended lint command, but currently unusable until ESLint config is added
-npm run lint:fix     # Intended auto-fix lint command, same config caveat
+npm run lint         # ESLint, using .eslintrc.cjs
+npm run lint:fix     # ESLint auto-fix
+npm run check:student-timers  # Timer identity/stale-session regression checks
 firebase deploy --only firestore:rules  # Deploy Firestore security rules
 ```
 
 Notes:
 
-- No automated test suite is configured.
-- As of 2026-05-04, `npm run build` passes.
-- As of 2026-05-04, `npm run lint` fails because the repo has no ESLint config file yet.
+- Node 20 is the Functions and CI runtime; use it for release validation.
+- Focused Node assertion scripts live under `scripts/check-*.mjs`; these do not all exercise a live backend.
+- As of 2026-10-12, lint, build, timer, and sampled entitlement/report/chores/points checks pass under Node 20.
+- Auth, Firestore, and Functions emulator ports are configured in `firebase.json`.
 
 ## Architecture
 
-GridWorkz LMS is a homeschool learning management system built as a React 18 SPA with Vite, backed by Firebase Auth and Firestore, and intended for deployment to Cloudflare Pages.
+GridWorkz LMS is a homeschool learning management system built as a React 18 SPA with Vite, backed by Firebase Auth, Firestore, and trusted Cloud Functions, and deployed through Cloudflare Pages.
 
 ### User flows
 
@@ -41,12 +43,14 @@ GridWorkz LMS is a homeschool learning management system built as a React 18 SPA
 Important route note:
 
 - `/dashboard` is the main authenticated route.
-- Curriculum, reports, and settings are internal dashboard sections, not separate top-level routes.
+- Dashboard sections use nested `/dashboard/*` routes through the shared feature registry; they are not independent public routes.
 
 ### Current app shape
 
 - `src/App.jsx`: route wiring and auth guards
 - `src/pages/ParentDashboard.jsx`: parent shell, student overview, live activity, rollover orchestration
+- `src/constants/dashboardFeatures.js`: registry-backed dashboard routes and shell metadata
+- `src/hooks/`: extracted dashboard/weekly-plan/entitlement domain loading and actions
 - `src/pages/Curriculum.jsx`: subject builder/editor
 - `src/pages/Reports.jsx`: weekly reports, filters, print/export
 - `src/pages/Settings.jsx`: school year and weekly reset settings
@@ -59,6 +63,8 @@ Core collections:
 - `parents`
 - `students`
 - `subjects`
+- `weeklyPlans`
+- `accountEntitlements`
 - `submissions`
 - `weeklyReports`
 - `dailyLogs`
@@ -76,7 +82,7 @@ Important data conventions:
 ### State and data loading
 
 - State management is React Context (`AuthContext`, `ThemeContext`) plus page-local state.
-- There is no shared data layer; pages own Firestore queries directly.
+- Dashboard data loading is extracted into domain hooks, with page-local queries where still present. Preserve the existing hook/registry boundaries for new work.
 - Real-time Firestore listeners are set up with `onSnapshot()` and cleaned up in `useEffect` returns.
 
 ### Week and rollover logic
@@ -105,11 +111,13 @@ Do not assume the rules are fully hardened.
 Current high-level posture:
 
 - `parents`: owner-only access
-- `students`: public read, owner-controlled create/update/delete
-- `subjects`: public read, owner-controlled create/update/delete
+- `students`: public read, trusted callable create, owner-controlled update/delete
+- `subjects`: public read, trusted callable create, owner-controlled update/delete
 - `submissions`: public read and create, authenticated update/delete
 - `timerSessions`: unauthenticated access with assignment and shape checks
 - `weeklyReports`: parent-scoped
+- `accountEntitlements`: owner-readable, server-writable only
+- Chores/routines/rewards writes use trusted callables; collection reads are parent-scoped.
 
 If you touch the student portal or reporting architecture, check `firestore.rules` directly before making assumptions.
 
@@ -124,6 +132,7 @@ If you touch the student portal or reporting architecture, check `firestore.rule
 
 ## Working Conventions
 
-- Preserve the existing page-owned query pattern unless you are intentionally refactoring architecture.
+- Preserve extracted domain hooks, the dashboard feature registry, and remaining page-owned queries unless intentionally refactoring architecture.
 - When documentation changes affect planning or implementation status, update the relevant file under `docs/` instead of only editing a legacy top-level note.
 - If a task claims “lint passes,” verify whether the repo has actually gained an ESLint config first.
+- Routine-first execution state lives in `docs/upgrades/product-direction-execution/`; read `decisions.md` and `workflow-state.yaml` before continuing that work. New contracts/rules remain additive until their implementation phase activates them.

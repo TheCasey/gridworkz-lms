@@ -1,6 +1,6 @@
 # GridWorkz Architecture
 
-Last updated: 2026-05-26
+Last updated: 2026-10-12
 
 ## Stack
 
@@ -163,7 +163,8 @@ This is sufficient for the current browser-extension launch path, but the broade
 
 ## Tooling State
 
-- No automated test suite is configured.
+- Focused helper checks and an isolated Auth/Firestore/Functions + Chromium harness now support the routine-first execution. See [testing instructions](upgrades/product-direction-execution/testing.md).
+- New version-1 private draft/default, correction, amendment, routine snapshot, and cosmetic contracts are additive preparation; current production consumers have not been switched. See [contract boundaries](upgrades/product-direction-execution/contracts.md).
 - `npm run build` currently passes.
 - `npm run lint` currently passes with the root ESLint config.
 - A lightweight GitHub Actions workflow runs lint and build on push and pull request.

@@ -161,6 +161,67 @@ service cloud.firestore {
         request.resource.data.week_key == resource.data.week_key;
     }
 
+    // Routine-first preparation: drafts/defaults stay outside portal-readable plans.
+    // These additive records are not activated by a client writer yet.
+    match /weeklyPlanDrafts/{weeklyPlanId} {
+      allow get: if (resource == null && isOwnerWeeklyPlanLookup(weeklyPlanId)) || isOwnerResource();
+      allow list: if isOwnerResource();
+      allow create: if isAuth() &&
+        validWeeklyPlanData(request.resource.data, weeklyPlanId, request.auth.uid) &&
+        request.resource.data.status == "draft" &&
+        request.resource.data.schema_version == 1 &&
+        request.resource.data.revision is int && request.resource.data.revision >= 1 &&
+        request.resource.data.base_published_revision is int && request.resource.data.base_published_revision >= 0;
+      allow update: if isOwnerResource() &&
+        validWeeklyPlanData(request.resource.data, weeklyPlanId, request.auth.uid) &&
+        request.resource.data.status == "draft" &&
+        request.resource.data.schema_version == 1 &&
+        request.resource.data.revision is int && request.resource.data.revision == resource.data.revision + 1 &&
+        request.resource.data.base_published_revision is int && request.resource.data.base_published_revision >= 0 &&
+        request.resource.data.student_id == resource.data.student_id &&
+        request.resource.data.week_key == resource.data.week_key;
+      allow delete: if isOwnerResource();
+    }
+
+    match /studentDefaultWeeks/{defaultWeekId} {
+      allow get: if (resource == null && isOwnerWeeklyPlanLookup(defaultWeekId)) || isOwnerResource();
+      allow list: if isOwnerResource();
+      allow create: if isAuth() && request.resource.data.parent_id == request.auth.uid &&
+        studentOwnedByParent(request.resource.data.student_id, request.auth.uid) &&
+        defaultWeekId == request.auth.uid + "_" + request.resource.data.student_id &&
+        request.resource.data.default_block_quantities is map &&
+        request.resource.data.schema_version == 1 && request.resource.data.revision is int && request.resource.data.revision == 1;
+      allow update: if isOwnerResource() && request.resource.data.parent_id == resource.data.parent_id &&
+        request.resource.data.student_id == resource.data.student_id &&
+        request.resource.data.default_block_quantities is map &&
+        request.resource.data.schema_version == 1 &&
+        request.resource.data.revision is int && request.resource.data.revision == resource.data.revision + 1;
+      allow delete: if isOwnerResource();
+    }
+
+    // Authority and sensitive history are server-written, parent-readable only.
+    // A later trusted student callable returns a safe projection, not these docs.
+    match /blockCompletionStates/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+    match /parentCorrectionEvents/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+    match /weeklyReportAmendments/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+    match /routineDaySnapshots/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+    match /studentCosmeticStates/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+
     // Weekly reports: parent-scoped only
     match /weeklyReports/{reportId} {
       allow read, write: if isAuth() && request.auth.uid == resource.data.parent_id;

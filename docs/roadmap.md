@@ -1,8 +1,10 @@
 # GridWorkz Roadmap
 
-Last updated: 2026-06-23
+Last updated: 2026-10-12
 
 ## Current Snapshot
+
+- Routine-first product-direction execution started on 2026-10-12. Defaults are accepted, the supported-runtime baseline is verified, and additive contracts/runtime QA are being implemented; production changes remain pending release gates.
 
 - `npm run build` and `npm run lint` both pass as of 2026-05-22.
 - A lightweight GitHub Actions workflow now runs build and lint on push and pull request.
@@ -51,7 +53,15 @@ Related doc:
 
 ## Active Priorities
 
-### 1. Re-baseline the product around weekly autonomy
+### 1. Execute the routine-first release
+
+- Prioritize school planning/student work and complete Daily Routines on Free; Core sells unlimited scale.
+- Preserve tabled household data while hiding broad chore/allowance/reward surfaces through the accepted transition contract.
+- Implement correct draft/default/publish separation, conditional timers, auditable parent corrections, simplified reports/print, and live Core billing in the recorded phase order.
+- Use [execution state](upgrades/product-direction-execution/workflow-state.yaml) and [accepted decisions](upgrades/product-direction-execution/decisions.md). Production acceptance, payment verification, and rollover observation remain required.
+- Treat the older priorities below as compatible background/follow-on work; the routine-first release has precedence for immediate implementation.
+
+### 2. Re-baseline the product around weekly autonomy
 
 - Lock the product stance that parents define the week, students run the day, and order or time-of-day is not the core contract.
 - Keep migrating from the subject-first compatibility input toward the clearer future hierarchy: persisted curriculum templates, assignments, weekly plans, weekly blocks, and projects.
@@ -69,7 +79,7 @@ Related docs:
 - [specs/projects-and-assessment-model.md](specs/projects-and-assessment-model.md)
 - [specs/ai-assisted-planning-and-student-help.md](specs/ai-assisted-planning-and-student-help.md)
 
-### 2. Finish reporting and compliance workflows
+### 3. Finish reporting and compliance workflows
 
 - Run the reporting safety fixture against emulator or staging data before beta claims.
 - Build the richer reporting and compliance contract on top of the future weekly-plan model.
@@ -84,7 +94,7 @@ Related docs:
 - [specs/reporting-and-compliance-contract.md](specs/reporting-and-compliance-contract.md)
 - [specs/report-evidence-drawer.md](specs/report-evidence-drawer.md)
 
-### 3. Harden security and move trusted workflows off the client
+### 4. Harden security and move trusted workflows off the client
 
 - Revisit public read/write rules for `students`, `subjects`, `submissions`, and `timerSessions`.
 - Move weekly rollover/report archival into trusted backend automation.
@@ -97,7 +107,7 @@ Related docs:
 - [upgrades/subscriptions-and-entitlements.md](upgrades/subscriptions-and-entitlements.md)
 - [features/student-portal.md](features/student-portal.md)
 
-### 4. Build on the live subscription foundation without letting premium work sprawl the shell
+### 5. Build on the live subscription foundation without letting premium work sprawl the shell
 
 - Stand up the first paid Core path first and keep public Lockdown messaging in a `coming soon` state until the extension and kiosk follow-on work are ready.
 - Keep future premium modules on the same shell-level entitlement rail instead of reintroducing one-off gates.
@@ -115,7 +125,7 @@ Related docs:
 - [specs/chores-and-rewards-module.md](specs/chores-and-rewards-module.md)
 - [specs/lockdown-browser-extension-plan.md](specs/lockdown-browser-extension-plan.md)
 
-### 5. Extend the lockdown track without reopening the shipped browser-extension contract
+### 6. Extend the lockdown track without reopening the shipped browser-extension contract
 
 - Treat Lockdown as a later focused rollout, not as the immediate gating item for the first paid Core launch.
 - Treat the trusted browser-extension path as current state, not as still-open launch architecture.
@@ -133,7 +143,7 @@ Related docs:
 - [specs/weekly-planning-and-review-flow.md](specs/weekly-planning-and-review-flow.md)
 - [specs/projects-and-assessment-model.md](specs/projects-and-assessment-model.md)
 
-### 6. Stabilize the current web app while the model is being redesigned
+### 7. Stabilize the current web app while the model is being redesigned
 
 - Keep new parent-facing work on the route-backed shell, feature registry, and extracted hook boundaries instead of re-embedding Firestore logic into page components.
 - Avoid large UI churn that fights the future curriculum and weekly-planning redesign.
@@ -145,7 +155,7 @@ Related docs:
 - [upgrades/performance-and-bundle-splitting.md](upgrades/performance-and-bundle-splitting.md)
 - [upgrades/shell-and-data-layer.md](upgrades/shell-and-data-layer.md)
 
-### 7. Pursue mobile as a major upgrade stream after the baseline model is settled
+### 8. Pursue mobile as a major upgrade stream after the baseline model is settled
 
 - Keep mobile work separate from core web stabilization.
 - Treat mobile as a dedicated upgrade track with its own architecture and UX docs.
@@ -158,6 +168,7 @@ Related docs:
 
 ## Documentation Map
 
+- Routine-first execution: [upgrades/product-direction-execution-plan-2026-09.md](upgrades/product-direction-execution-plan-2026-09.md), based on [September working notes](product-direction-working-notes-2026-09.md); [accepted decisions and live workflow](upgrades/product-direction-execution/workflow-plan.md). Execution started; shipped behavior is still the baseline until each release gate passes.
 - Master map: [roadmap.md](roadmap.md)
 - Current-surface shipping guide: [upgrades/current-surface-finalization-and-rollout.md](upgrades/current-surface-finalization-and-rollout.md)
 - Product-baseline planning: [upgrades/baseline-product-foundation.md](upgrades/baseline-product-foundation.md)

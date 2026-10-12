@@ -887,6 +887,126 @@ export const RewardRedemptionSchema = {
   updated_at: "timestamp"
 };
 
+// Additive product-direction v1 contracts. Existing shapes stay available for legacy readers.
+// These are vocabulary, not permission grants; trusted writers validate with pure helpers.
+export const ProductDirectionContractVersion = 1;
+
+export const EffectiveBlockStatuses = Object.freeze({
+  INCOMPLETE: "incomplete",
+  COMPLETED: "completed",
+});
+
+export const WeeklyBlockInstanceSchema = {
+  ...WeeklyBlockSchema,
+  instance_key: "string", // Immutable copy identity; never an array index or quantity ordinal
+};
+
+export const PublishedWeeklyPlanV1Schema = {
+  ...WeeklyPlanSchema,
+  schema_version: "number",
+  revision: "number", // Positive server-checked published revision; archived is immutable
+};
+
+export const WeeklyPlanDraftSchema = {
+  ...WeeklyPlanSchema,
+  schema_version: "number",
+  revision: "number", // Positive private draft revision
+  base_published_revision: "number", // 0 before first publication
+  parent_notes: "string", // Private; never projected into weeklyPlans
+};
+
+export const StudentDefaultWeekSchema = {
+  parent_id: "string",
+  student_id: "string", // Exactly one student; never a subject-wide default write
+  schema_version: "number",
+  revision: "number",
+  default_block_quantities: "object", // subject id -> curriculum block id -> nonnegative integer
+  created_at: "timestamp",
+  updated_at: "timestamp",
+};
+
+export const BlockCompletionStateSchema = {
+  id: "string",
+  parent_id: "string",
+  student_id: "string",
+  week_key: "string",
+  weekly_plan_id: "string",
+  weekly_block_id: "string",
+  schema_version: "number",
+  revision: "number", // 0 for initial state; transaction increments on each accepted change
+  status: "string", // EffectiveBlockStatuses; evidence remains separate and immutable
+  original_evidence_ids: "array", // References to original submissions, including after undo
+  last_correction_event_id: "string",
+  updated_at: "timestamp",
+};
+
+export const ParentCorrectionEventSchema = {
+  id: "string",
+  parent_id: "string",
+  student_id: "string",
+  week_key: "string",
+  weekly_plan_id: "string",
+  weekly_block_id: "string",
+  schema_version: "number",
+  revision: "number",
+  original_evidence_ids: "array",
+  actor_id: "string", // Server derives authenticated parent, never request payload
+  recorded_at: "timestamp", // Server clock supplied by trusted caller
+  prior_status: "string",
+  new_status: "string",
+  prior_revision: "number",
+  reason: "string",
+  note: "string",
+  idempotency_key: "string",
+};
+
+export const WeeklyReportAmendmentSchema = {
+  id: "string",
+  parent_id: "string",
+  student_id: "string",
+  week_key: "string",
+  weekly_plan_id: "string",
+  schema_version: "number",
+  original_report_id: "string", // Root saved snapshot is never rewritten
+  previous_report_version_id: "string", // Root id for version 2; previous amendment id thereafter
+  report_version: "number", // Original is logical version 1; amendments begin at 2
+  correction_event_ids: "array", // Events incorporated in this version
+  snapshot: "object", // Fully materialized report snapshot for this amendment
+  actor_id: "string",
+  recorded_at: "timestamp",
+};
+
+export const RoutineDaySnapshotSchema = {
+  id: "string",
+  parent_id: "string",
+  student_id: "string",
+  schema_version: "number",
+  date_key: "string", // Household-local date on first daily use
+  timezone: "string", // IANA timezone captured with date
+  templates: "array", // Populated qualifying periods and their stable checklist ids/labels
+  routine_day_points: "number", // Existing valid configured amount; new settings default to 10
+  routine_points_enabled: "boolean",
+  recorded_at: "timestamp", // First-use server time; snapshot never changes for this day
+};
+
+export const RoutineRewardCapabilitySchema = {
+  schema_version: "number",
+  daily_routines: "boolean",
+  routine_day_rewards: "boolean", // Narrow full-day award authority, independent of broad rewards
+  built_in_cosmetics: "boolean", // Narrow ownership/selection authority, independent of custom rewards
+};
+
+export const StudentCosmeticStateSchema = {
+  id: "string",
+  parent_id: "string",
+  student_id: "string",
+  schema_version: "number",
+  revision: "number",
+  owned_cosmetic_ids: "array", // Stable built-in catalog ids; preserve historical unlock ids
+  selected_cosmetic_ids: "object", // Slot -> owned built-in catalog id; empty slot is allowed
+  updated_at: "timestamp",
+};
+
 // Export collection names for Firestore
 export const Collections = {
   PARENTS: "parents",
@@ -895,6 +1015,13 @@ export const Collections = {
   CURRICULUM_TEMPLATES: "curriculumTemplates",
   ASSIGNMENTS: "assignments",
   WEEKLY_PLANS: "weeklyPlans",
+  WEEKLY_PLAN_DRAFTS: "weeklyPlanDrafts",
+  STUDENT_DEFAULT_WEEKS: "studentDefaultWeeks",
+  BLOCK_COMPLETION_STATES: "blockCompletionStates",
+  PARENT_CORRECTION_EVENTS: "parentCorrectionEvents",
+  WEEKLY_REPORT_AMENDMENTS: "weeklyReportAmendments",
+  ROUTINE_DAY_SNAPSHOTS: "routineDaySnapshots",
+  STUDENT_COSMETIC_STATES: "studentCosmeticStates",
   WEEKLY_REPORTS: "weeklyReports",
   DAILY_LOGS: "dailyLogs",
   SUBMISSIONS: "submissions",

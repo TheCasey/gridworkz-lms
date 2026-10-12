@@ -50,6 +50,8 @@ temp/
 .codex-artifacts/
 .codex-screenshots/
 .playwright-cli/
+test-results/
+playwright-report/
 
 # Local workflow execution state
 docs/**/*-workflow/workflow-state.yaml
