@@ -57,6 +57,8 @@ The trusted adapter reads idempotency event plus state in the same transaction. 
 
 ## Validation evidence
 
+Backend integration requirement: Firebase deploys the `functions/` source directory. A later backend adapter must package the shared contracts within that deployment (or move the pure canonical module there and re-export it to the client). Do not import `../../src/` directly from a deployed function and assume the app source will be uploaded. This foundation exports helpers to the current local/client context only; no backend adapter is activated yet.
+
 `npx --yes --package=node@20 node scripts/check-product-direction-contracts.mjs` passed 103 assertions on 2026-10-12. Checks execute actual pure helpers for identity, revision conflict, private/public projection, repeated blocks and adoption, malformed/cross-student corrections, idempotency, original evidence retention, ambiguous legacy references, default student scope, original/amended report links and a genuine correction-to-legacy-report helper flow with cross-household/student/week denial, empty/full routine days, timezone/date validation, and cosmetic ownership/selection. They perform no backend reads or writes and do not prove rules/callable/browser behavior.
 
 `npx --yes --package=node@20 node node_modules/eslint/bin/eslint.js . --ext js,jsx --report-unused-disable-directives --max-warnings 0` passed. Repository ESLint configuration exists at `.eslintrc.cjs`. Runtime emulator fixtures/rule tests and later UI/backend integration are tracked by the orchestrator separately.
