@@ -4,20 +4,20 @@ workflow_summary: "Execute source phases 0\u20138 as operational phases 1\u20139
 workflow_status: "active"
 source_plan_path: "docs/upgrades/product-direction-execution-plan-2026-09.md"
 master_developer_start_prompt_path: "docs/upgrades/product-direction-execution/start-master-developer-chat.md"
-current_phase_number: 3
-current_phase_slug: "phase-03-implement-routine-reward-and-entitlement-authority"
+current_phase_number: 4
+current_phase_slug: "phase-04-ship-daily-routines-avatars-and-the-narrow-household-surface"
 current_role: "master-developer"
 phase_status: "locally_verified"
 owner: "master-developer"
 next_downstream_role: "none"
-last_completed_phase_number: 3
-last_completed_phase_slug: "phase-03-implement-routine-reward-and-entitlement-authority"
+last_completed_phase_number: 4
+last_completed_phase_slug: "phase-04-ship-daily-routines-avatars-and-the-narrow-household-surface"
 last_completed_role: "tester"
 last_handoff_role: "developer"
 blocked_reason: "none"
 last_updated: "2026-10-13"
-active_phase_path: "docs/upgrades/product-direction-execution/phases/phase-03-implement-routine-reward-and-entitlement-authority/phase.md"
-active_run_log_path: "docs/upgrades/product-direction-execution/phases/phase-03-implement-routine-reward-and-entitlement-authority/run-log.md"
+active_phase_path: "docs/upgrades/product-direction-execution/phases/phase-04-ship-daily-routines-avatars-and-the-narrow-household-surface/phase.md"
+active_run_log_path: "docs/upgrades/product-direction-execution/phases/phase-04-ship-daily-routines-avatars-and-the-narrow-household-surface/run-log.md"
 prompt_policy:
   read_first_max_items: 6
   allowed_discovery: "Start with the listed read-first files, then follow imports, routes, adjacent tests, and nearby implementation files only as needed. Do not preload broad workflow or product background unless the active phase exposes a concrete blocker."
@@ -57,13 +57,11 @@ active_phase_guidance:
     - "AGENTS.md"
     - "docs/upgrades/product-direction-execution-plan-2026-09.md"
     - "docs/upgrades/product-direction-execution/decisions.md"
-  automated_test_expectation: "Source Phase 2: implement narrow routine reward authority and migration with persisted idempotency/authorization tests; keep activation dormant until complete UI and release gates."
+  automated_test_expectation: "Source Phase 3: implement complete Free routine/cosmetic and private household history UI; verify persisted reload/mobile/keyboard/error states, no suspended background mutations."
   test_files:
-    - "scripts/check-routine-reward-callables.mjs"
-    - "scripts/check-routine-reward-helpers.mjs"
-    - "scripts/check-routine-entitlement-parity.mjs"
+    - "tests/product-direction/routines.spec.js"
   test_cases:
-    - "Atomic frozen day awards, catalog debit/selection, denied capabilities, history settlement and migration replay"
+    - "Free setup/completion/award/unlock/equip/reload and parent-only history; mobile/keyboard/error/no-config cases"
   no_test_rationale: ""
   test_commands:
     - "npm run lint"
@@ -155,3 +153,5 @@ git:
     commit_message_template: "{workflow_slug}: accept phase {phase_number} ({phase_slug})"
 
 routine_authority_acceptance: "locally verified 2026-10-13;164 helper assertions,6 rules,4 compatibility callables,12 routine runtime,2 baseline browser passes; deployment/activation pending UI and release gates"
+
+routine_interface_acceptance: "locally verified 2026-10-13;166 backend+19 view assertions,7 rules,4 compatibility,13 authority/bootstrap,11 browser passes; production activation pending"

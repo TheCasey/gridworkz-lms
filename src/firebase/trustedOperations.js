@@ -264,3 +264,33 @@ export const reviewTrustedChoreCompletion = async (payload = {}) => {
   const result = await reviewChoreCompletionCallable(payload);
   return result.data;
 };
+
+export const readTrustedStudentRoutineRewards = async (payload = {}) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.READ_STUDENT_ROUTINE_REWARDS)(payload);
+  return result.data;
+};
+
+export const unlockTrustedRoutineCosmetic = async (payload = {}) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.UNLOCK_ROUTINE_COSMETIC)(payload);
+  return result.data;
+};
+
+export const selectTrustedRoutineCosmetics = async (payload = {}) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.SELECT_ROUTINE_COSMETICS)(payload);
+  return result.data;
+};
+
+export const upsertTrustedRoutineRewardSettings = async (payload = {}) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.UPSERT_ROUTINE_REWARD_SETTINGS)(payload);
+  return result.data;
+};
+
+export const settleTrustedHouseholdHistory = async (payload = {}) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.SETTLE_HOUSEHOLD_HISTORY)(payload);
+  return result.data;
+};
+
+export const initializeTrustedRoutineFirstAccount = async (payload = {}) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.INITIALIZE_ROUTINE_FIRST_ACCOUNT)(payload);
+  return result.data;
+};

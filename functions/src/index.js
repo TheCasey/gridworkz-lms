@@ -4942,6 +4942,38 @@ const syncEntitlementFromSubscription = async (stripe, subscription, eventType =
 
 const routineRewardService = createRoutineRewardService({ db, Timestamp, HttpsError, resolveEntitlementRecord });
 
+// Owner bootstrap is dormant until the coordinated release enables new accounts.
+// Existing entitlement records are never activated or overwritten by a client request.
+export const initializeRoutineFirstAccount = onCall({ region: REGION }, async (request) => {
+  const parentId = ensureAuthenticated(request);
+  if (request.data && (!isPlainObject(request.data) || Object.keys(request.data).length)) {
+    throw new HttpsError('invalid-argument', 'Account initialization accepts no client configuration.');
+  }
+  const { usageSnapshot } = await loadParentUsageSnapshot(parentId);
+  return db.runTransaction(async (transaction) => {
+    const accountRef = entitlementRef(parentId);
+    const [parent, existing, config] = await Promise.all([
+      transaction.get(db.collection(COLLECTIONS.PARENTS).doc(parentId)),
+      transaction.get(accountRef), transaction.get(db.collection('productDirectionConfig').doc('routineFirst')),
+    ]);
+    if (!parent.exists) throw new HttpsError('not-found', 'Parent account was not found.');
+    if (existing.exists) return { initialized: false, product_direction_version: existing.data().product_direction_version || 0 };
+    if (config.data()?.version !== PRODUCT_DIRECTION_VERSION || config.data()?.new_accounts_enabled !== true) {
+      return { initialized: false, product_direction_version: 0 };
+    }
+    const now = Timestamp.now();
+    const fallback = buildFallbackEntitlementInitializationWrite({ parentId, usageSnapshot, nowTimestamp: now });
+    transaction.create(accountRef, {
+      ...fallback,
+      ...buildRoutineFirstEntitlementPatch({ parentId, entitlementDoc: fallback, activate: true, nowMillis: now.toMillis() }),
+      product_direction_version: PRODUCT_DIRECTION_VERSION,
+      product_direction_migration_version: ROUTINE_REWARD_MIGRATION_VERSION,
+      product_direction_migrated_at: now, updated_via: 'routine_first_bootstrap',
+    });
+    return { initialized: true, product_direction_version: PRODUCT_DIRECTION_VERSION };
+  });
+});
+
 export const readStudentRoutineRewards = onCall({ region: REGION }, async (request) => {
   const { parentId, studentId } = await resolveTrustedStudentContext(request.data);
   return routineRewardService.read({ parentId, studentId });

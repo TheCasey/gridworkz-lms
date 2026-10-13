@@ -35,6 +35,63 @@
   color: var(--sp-text);
 }
 
+/* Bundled routine cosmetics keep every surface readable, including Twilight. */
+.student-portal-v2[data-routine-theme='builtin_theme_twilight'] {
+  --sp-n0: #e5dcf4;
+  --sp-n1: #eeeaf8;
+  --sp-n2: #faf7ff;
+  --sp-n3: #e4daf5;
+  --sp-n4: #cbb7fb;
+  --sp-violet: #714cb6;
+  --sp-lavender: #714cb6;
+  --sp-border: rgba(41, 40, 39, .12);
+  --sp-border-strong: rgba(41, 40, 39, .24);
+  --sp-text: #292827;
+  --sp-text-2: #514574;
+  --sp-text-3: #5f526e;
+  --sp-text-4: #5f526e;
+  --sp-green: #26735c;
+  --sp-amber: #886300;
+  --sp-red: #b93449;
+}
+.student-portal-v2 .student-routine-card,
+.student-portal-v2 .student-cosmetic-card,
+.student-portal-v2 .student-cosmetic-preview {
+  color: #292827;
+  background: #fff9ef;
+  border: 1px solid #cbb7fb;
+}
+.student-portal-v2 .student-routine-card h2,
+.student-portal-v2 .student-routine-card label,
+.student-portal-v2 .student-cosmetic-card h3,
+.student-portal-v2 .student-cosmetic-preview h2 { color: #292827; }
+.student-portal-v2 .student-routine-card p,
+.student-portal-v2 .student-cosmetic-card p,
+.student-portal-v2 .student-cosmetic-preview p { color: #514574; }
+.student-portal-v2 .student-routine-action {
+  min-height: 44px;
+  color: #292827;
+  background: #eeeaf8;
+  border-color: #714cb6;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.student-portal-v2 .student-routine-action:hover:not(:disabled) {
+  color: #292827;
+  background: #dfd1f7;
+}
+.student-portal-v2 .student-routine-action:disabled {
+  color: #514574;
+  background: #eeeaf8;
+  border-color: #b6a5d5;
+  opacity: 1;
+}
+.student-portal-v2 .student-routine-action:focus-visible,
+.student-portal-v2 .student-routine-card input:focus-visible {
+  outline: 3px solid #714cb6;
+  outline-offset: 3px;
+}
+
 .student-portal-v2 button,
 .student-portal-v2 input,
 .student-portal-v2 textarea,

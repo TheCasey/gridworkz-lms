@@ -221,6 +221,10 @@ service cloud.firestore {
       allow read: if isOwnerResource();
       allow write: if false;
     }
+    match /productDirectionConfig/{id} {
+      allow read, write: if false;
+    }
+
     match /productDirectionMigrations/{recordId} {
       allow read, write: if false;
     }

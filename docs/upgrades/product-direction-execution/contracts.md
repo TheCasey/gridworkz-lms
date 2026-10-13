@@ -71,3 +71,8 @@ The dormant backend adapter is packaged entirely inside `functions/src/routineRe
 `routineDayPointers` is server-written/parent-readable and pins each student's first-use snapshot timezone and day boundaries, including skipped-midnight DST. `householdHistoryEvents` is an owner-readable, server-only append audit for settlement of existing obligations. `productDirectionMigrations` is server-only migration receipt storage. Snapshot periods accept canonical periods or exact `legacy:<template-id>` for retained unknown/shared templates.
 
 Completion and activated-read reconciliation reuse the existing single `routine_day:<date>` ledger identity and atomically save any credit with the wallet. Cosmetic unlocks atomically debit server catalog cost with ownership; selection uses optimistic revisions. Owner settlement works after downgrade and never creates new obligations. Runtime validation is recorded in the Phase03 run log; production activation remains pending.
+
+
+The sourcePhase3 interface also needs a safe day projection when narrow rewards are support-disabled: activated reads/completion return top-level `routine_day:{snapshot_id,date_key,timezone,complete}` independently of `routine_rewards`. No wallet/award settings are exposed through this projection. An intentional active empty canonical period supersedes an inherited shared period; inactive canonical records keep legacy fallback.
+
+Owner-only new-household bootstrap is guarded by server-only `productDirectionConfig/routineFirst`. It can initialize only a missing owner entitlement to Free through the canonical resolver/packaging patch. Existing billing/support records are untouched. New-account activation and rollback are explicit migration flags and retain server-only receipts.

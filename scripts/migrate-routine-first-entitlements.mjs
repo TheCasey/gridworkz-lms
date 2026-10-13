@@ -18,6 +18,11 @@ const activate = args.includes('--activate');
 const deactivate = args.includes('--deactivate');
 if (activate && deactivate) throw new Error('Choose activation or deactivation, not both.');
 const action = activate ? 'activate' : deactivate ? 'deactivate' : 'prepare';
+const enableNew = args.includes('--enable-new-accounts');
+const disableNew = args.includes('--disable-new-accounts');
+if ((enableNew && disableNew) || (enableNew && !activate) || (disableNew && !deactivate)) {
+  throw new Error('New-account rollout requires --activate --enable-new-accounts or --deactivate --disable-new-accounts.');
+}
 const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST || '';
 if (target === 'emulator') {
   if (projectId !== 'demo-gridworkz-direction' || !/^127\.0\.0\.1:\d+$/.test(emulatorHost)) {
@@ -90,6 +95,22 @@ try {
     if (changed) {
       summary.changed++;
     } else summary.unchanged++;
+  }
+  if (enableNew || disableNew) {
+    summary.new_accounts = enableNew ? 'enabled' : 'disabled';
+    const configRef = db.collection('productDirectionConfig').doc('routineFirst');
+    const config = await configRef.get();
+    summary.new_accounts_changed = config.data()?.version !== 1 || config.data()?.new_accounts_enabled !== enableNew;
+    if (write && summary.new_accounts_changed) {
+      await db.runTransaction(async (transaction) => {
+        const receiptRef = db.collection('productDirectionMigrations').doc(`v1_new_accounts_${summary.new_accounts}`);
+        const [current, receipt] = await Promise.all([transaction.get(configRef), transaction.get(receiptRef)]);
+        transaction.set(configRef, { version: 1, new_accounts_enabled: enableNew, updated_at: FieldValue.serverTimestamp() }, { merge: true });
+        transaction.set(receiptRef, { migration_version: 1, action: `new_accounts_${summary.new_accounts}`, project_id: projectId,
+          before: receipt.exists ? receipt.data().before : { version: current.data()?.version || 0, new_accounts_enabled: current.data()?.new_accounts_enabled === true },
+          updated_at: FieldValue.serverTimestamp() }, { merge: true });
+      });
+    }
   }
   console.log(JSON.stringify(summary, null, 2));
 } finally { await deleteApp(app); }

@@ -654,7 +654,7 @@ const WeeklyPlanReviewPanel = ({
     <section className="op-weekly-proto">
       <div className="op-proto-topbar">
         <div className="min-w-0 flex-1">
-          <p className="text-[14px] font-label text-white">Weekly Blocking</p>
+          <p className="text-[14px] font-label text-white">Weekly Plan</p>
           <p className="mt-1 truncate text-[10px] text-[rgba(238,234,248,0.42)]">
             {selectedStudent?.name || 'Select a student'} · {selectedWeekOption?.displayText || formatWeekRange(selectedWeekRange.weekStart, selectedWeekRange.weekEnd)}
           </p>

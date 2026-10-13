@@ -123,11 +123,11 @@ export const dashboardFeatures = [
   },
   {
     id: 'weekly-blocking',
-    label: 'Weekly Blocking',
+    label: 'Weekly Plan',
     path: 'weekly-blocking',
     icon: CalendarDays,
     header: {
-      title: 'Weekly Blocking',
+      title: 'Weekly Plan',
       description: 'Publish one student-week at a time from the current subject block plan.',
     },
     shell: buildDashboardShellConfig(),
@@ -243,6 +243,11 @@ export const dashboardFeatures = [
     }),
   },
   {
+    id: 'household-history', label: 'Household History', path: 'chores/household-history', icon: FileText,
+    header: { title: 'Household History', description: 'Private saved records and existing obligations.' },
+    shell: buildDashboardShellConfig(),
+  },
+  {
     id: 'settings',
     label: 'Account Settings',
     path: 'settings',
@@ -340,12 +345,20 @@ export const resolveDashboardFeatureState = (feature, { featureAccess = {} } = {
   return entitlementGate?.fallbackState || DASHBOARD_FEATURE_STATES.LOCKED;
 };
 
-export const resolveDashboardFeatures = ({ featureAccess = {} } = {}) => (
+export const resolveDashboardFeatures = ({ featureAccess = {}, routineFirst = false } = {}) => (
   dashboardFeatures.map((feature) => {
-    const shellState = resolveDashboardFeatureState(feature, { featureAccess });
+    const suspended = ['weekly-chores', 'monthly-chores', 'allowance', 'rewards'];
+    const shellState = routineFirst && suspended.includes(feature.id)
+      ? DASHBOARD_FEATURE_STATES.HIDDEN
+      : feature.id === 'household-history' && !routineFirst
+        ? DASHBOARD_FEATURE_STATES.HIDDEN
+        : resolveDashboardFeatureState(feature, { featureAccess });
+    const label = routineFirst && feature.id === 'chores' ? 'Daily Routines' : feature.label;
 
     return {
       ...feature,
+      label,
+      header: routineFirst && feature.id === 'chores' ? { title: label, description: 'Independent checklists and daily routine points.' } : feature.header,
       shellState,
       isVisible: shellState === DASHBOARD_FEATURE_STATES.VISIBLE,
       isLocked: shellState === DASHBOARD_FEATURE_STATES.LOCKED,
@@ -373,8 +386,8 @@ const resolveDashboardNavigationItem = (item, resolvedFeaturesById, sectionId) =
   };
 };
 
-export const resolveDashboardNavigation = ({ featureAccess = {} } = {}) => {
-  const resolvedFeatures = resolveDashboardFeatures({ featureAccess });
+export const resolveDashboardNavigation = ({ featureAccess = {}, routineFirst = false } = {}) => {
+  const resolvedFeatures = resolveDashboardFeatures({ featureAccess, routineFirst });
   const resolvedFeaturesById = Object.fromEntries(
     resolvedFeatures.map((feature) => [feature.id, feature])
   );
@@ -393,15 +406,18 @@ export const resolveDashboardNavigation = ({ featureAccess = {} } = {}) => {
 
       return {
         ...resolvedSection,
-        children: section.children.map((child) =>
+        children: (routineFirst && section.featureId === 'chores'
+          ? [{ featureId: DASHBOARD_CHORES_CHILD_FEATURE_IDS.DAILY_ROUTINES }, { featureId: 'household-history' }]
+          : section.children).map((child) =>
           resolveDashboardNavigationItem(child, resolvedFeaturesById, section.featureId)
-        ),
+        ).filter((child) => !child.isHidden),
       };
     })
     .filter(Boolean);
 };
 
 export const getDashboardSectionIdForFeatureId = (featureId) => {
+  if (featureId === 'household-history') return 'chores';
   const matchingSection = dashboardNavigationSections.find((section) => (
     section.featureId === featureId
     || section.children.some((child) => child.featureId === featureId)

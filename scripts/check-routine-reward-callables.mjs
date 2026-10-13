@@ -54,8 +54,8 @@ test('invalid checklists/date/sibling templates persist no completion; snapshot 
   denied(await complete(routine, date, routines.students[1]), 'FAILED_PRECONDITION');
   assert.equal((await scoped('routineCompletions')).size, 0);
   await db.collection('routineTemplates').doc(routine.id).update({ checklist_items: [{ id: 'changed', label: 'Changed after first use' }] });
-  await db.collection('rewardSettings').doc(routines.parentId).set({ routine_day_points: 99, routine_points_enabled: true });
-  await db.collection('choreSettings').doc(routines.parentId).set({ timezone: 'Pacific/Kiritimati' });
+  await db.collection('rewardSettings').doc(routines.parentId).set({ parent_id: routines.parentId, routine_day_points: 99, routine_points_enabled: true });
+  await db.collection('choreSettings').doc(routines.parentId).set({ parent_id: routines.parentId, timezone: 'Pacific/Kiritimati' });
   const again = success(await read());
   assert.deepEqual(again.routines, frozen.routines);
   assert.deepEqual(again.routine_rewards.day, frozen.routine_rewards.day);
@@ -115,7 +115,7 @@ test('activated read reconciles pre-existing valid Free completions once', async
 
 test('owner routine settings cannot change school/chore settings; active paid broad mutations deny', async () => {
   const token = await signIn(routines);
-  await db.collection('rewardSettings').doc(routines.parentId).set({ school_block_points: 7, chore_points: 3 }, { merge: true });
+  await db.collection('rewardSettings').doc(routines.parentId).set({ parent_id: routines.parentId, school_block_points: 7, chore_points: 3 }, { merge: true });
   denied(await call('upsertRoutineRewardSettings', { routine_day_points: 12, routine_points_enabled: true }), 'UNAUTHENTICATED');
   denied(await call('upsertRoutineRewardSettings', { routine_day_points: 12, routine_points_enabled: true, school_block_points: 100 }, token), 'INVALID_ARGUMENT');
   success(await call('upsertRoutineRewardSettings', { routine_day_points: 12, routine_points_enabled: true }, token));
@@ -182,9 +182,12 @@ test('support-denied narrow rewards still allow routines without wallet exposure
   denied(await read(s), 'PERMISSION_DENIED');
   const state = success(await call('readStudentChoreState', context(s)));
   assert.equal(state.routine_rewards, null);
+  assert.match(state.routine_day.date_key, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(state.routine_day.timezone, 'America/Chicago');
   assert.equal(state.routines.length, 3);
-  const result = success(await complete(state.routines[0], state.routines[0].completions[0]?.date_key, s));
+  const result = success(await complete(state.routines[0], state.routine_day.date_key, s));
   assert.equal(result.routine_rewards, null);
+  assert.equal(result.routine_day.date_key, state.routine_day.date_key);
   assert.equal((await scoped('pointLedgerEntries', s)).size, 0);
   await entitlementRef.update({ feature_overrides: { can_use_daily_routines: false } });
   denied(await complete(state.routines[1], undefined, s), 'PERMISSION_DENIED');
@@ -206,7 +209,7 @@ test('empty routine day never awards and an evening-only day earns the configure
   // A different student's first use has only an evening period and a configured household award.
   const eveningStudent = core.students[2];
   for (const period of ['morning', 'afternoon']) await db.collection('routineTemplates').doc(`${eveningStudent.id}_${period}`).update({ is_active: false });
-  await db.collection('rewardSettings').doc(core.parentId).set({ routine_day_points: 7, routine_points_enabled: true });
+  await db.collection('rewardSettings').doc(core.parentId).set({ parent_id: core.parentId, routine_day_points: 7, routine_points_enabled: true });
   const evening = success(await read(eveningStudent));
   assert.equal(evening.routines.length, 1);
   const result = success(await complete(evening.routines[0], evening.routine_rewards.day.date_key, eveningStudent));
@@ -224,4 +227,35 @@ test('legacy migration preserves base Free plan beneath temporary paid support o
   assert.equal(migrated.plan_id, 'free', 'legacy fallback billing source remains Free after override expires');
   assert.equal(migrated.limits.maxStudents, null, 'effective temporary override still resolves paid scale');
   assert.equal(migrated.manual_override.plan_id, 'core');
+});
+
+test('new-account bootstrap uses a private release gate, derives Free and preserves existing support records', async () => {
+  const fixture = buildDirectionFixture({ scenario: 'empty' });
+  const accountRef = db.collection('accountEntitlements').doc(fixture.parentId);
+  await accountRef.delete();
+  const token = await signIn(fixture);
+  const configRef = db.collection('productDirectionConfig').doc('routineFirst');
+  await configRef.delete();
+  denied(await call('initializeRoutineFirstAccount', {}), 'UNAUTHENTICATED');
+  assert.equal(success(await call('initializeRoutineFirstAccount', {}, token)).initialized, false);
+  assert.equal((await accountRef.get()).exists, false);
+  const run = async (...args) => {
+    const { stdout } = await promisify(execFile)(process.execPath, ['scripts/migrate-routine-first-entitlements.mjs', `--project=${DIRECTION_PROJECT_ID}`, '--target=emulator', `--parents=${fixture.parentId}`, '--activate', '--enable-new-accounts', ...args], { env: process.env });
+    return JSON.parse(stdout);
+  };
+  assert.equal((await run()).new_accounts_changed, true);
+  assert.equal((await configRef.get()).exists, false, 'rollout dry-run does not enable future accounts');
+  await run('--write');
+  denied(await call('initializeRoutineFirstAccount', { plan_id: 'core', parent_id: core.parentId }, token), 'INVALID_ARGUMENT');
+  const results = await Promise.all([call('initializeRoutineFirstAccount', {}, token), call('initializeRoutineFirstAccount', {}, token)]);
+  assert.equal(results.map(success).filter((value) => value.initialized).length, 1);
+  const initial = (await accountRef.get()).data();
+  assert.equal(initial.product_direction_version, 1);
+  assert.equal(initial.plan_id, 'free');
+  assert.equal(initial.limits.maxStudents, 2);
+  await accountRef.update({ manual_override: { is_active: true, plan_id: 'core' }, product_direction_version: 0 });
+  const before = (await accountRef.get()).data();
+  assert.equal(success(await call('initializeRoutineFirstAccount', {}, token)).initialized, false);
+  assert.deepEqual((await accountRef.get()).data(), before);
+  await configRef.set({ version: 1, new_accounts_enabled: false });
 });

@@ -1,7 +1,14 @@
 import { expect, test } from '@playwright/test';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { buildDirectionFixture } from '../../scripts/product-direction-fixtures.mjs';
 
 const fixture = buildDirectionFixture({ scenario: 'single' });
+
+// Each browser file owns its fixture reset, so standalone/repeated runs remain valid.
+test.beforeAll(async () => {
+  await promisify(execFile)(process.execPath, ['scripts/seed-product-direction-fixtures.mjs', '--scenario=single', '--write'], { env: process.env });
+});
 
 test('seeded parent login reaches dashboard and current student', async ({ page }) => {
   await page.goto('/login');

@@ -39,6 +39,10 @@ if (args.includes('--write')) {
       const existing = await db.collection(collection).where('parent_id', '==', fixture.parentId).get();
       for (const doc of existing.docs) await doc.ref.delete();
     }
+    // Singleton identity is household-scoped even in legacy records missing parent_id.
+    for (const collection of ['parents', 'accountEntitlements', 'choreSettings', 'rewardSettings']) {
+      await db.collection(collection).doc(fixture.parentId).delete();
+    }
     const batch = db.batch();
     for (const record of fixture.documents) batch.set(db.collection(record.collection).doc(record.id), record.data);
     await batch.commit();

@@ -43,7 +43,7 @@ jobs:
         run: node scripts/check-entitlement-resolution.mjs
 
       - name: Check routine reward policies and entitlement parity
-        run: npm run check:routine-reward-helpers && npm run check:routine-entitlements
+        run: npm run check:routine-reward-helpers && npm run check:routine-entitlements && npm run check:routine-view-model
 
       - name: Check product direction contracts
         run: npm run check:direction-contracts

@@ -80,6 +80,8 @@ rejects('ambiguous-routine-templates', () => selectRoutineSnapshotTemplates({ pa
 rejects('invalid-checklist', () => selectRoutineSnapshotTemplates({ parentId, studentId, templates: [{ ...morning, checklist_items: [{ id: '', label: 'Task' }] }] }));
 rejects('scope-mismatch', () => selectRoutineSnapshotTemplates({ parentId, studentId, templates: [{ ...morning, parent_id: 'other-parent' }] }));
 equal(selectRoutineSnapshotTemplates({ parentId, studentId, templates: [{ ...morning, checklist_items: [] }] }), []);
+equal(selectRoutineSnapshotTemplates({ parentId, studentId, templates: [grouped, { ...morning, checklist_items: [] }] }), [], 'Intentional empty canonical period supersedes shared fallback');
+equal(selectRoutineSnapshotTemplates({ parentId, studentId, templates: [grouped, { ...morning, checklist_items: [], is_active: false }] }).map((entry) => entry.id), [grouped.id]);
 const complete = (entry) => ({ parent_id: parentId, student_id: studentId, date_key: frozen.date_key, routine_template_id: entry.id, completed_item_ids: entry.checklist_items.map((item) => item.id), completed_at: now });
 const completions = frozen.templates.map(complete);
 equal(isFrozenRoutineDayComplete(frozen, completions), true);

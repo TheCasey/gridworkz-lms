@@ -46,11 +46,15 @@ Add meaningful policy/persistence tests for the source phase cases; static sourc
 
 ## Test Files
 
-- Not listed yet. Add likely files before dispatching developer work if automated tests are expected.
+- `tests/product-direction/routines.spec.js` (root/browser QA)
+- Focused view-model checks when behavior is extracted
 
 ## Test Cases To Cover
 
-- Not listed yet. Add focused regression or behavior cases before dispatching developer work if the phase changes behavior.
+- Parent Free setup/settings; student full day earns once, unlock/equip/reload and second page.
+- Empty household, no routines, opt-out, errors/retry, keyboard/mobile.
+- Activated stale broad URLs redirect to history; no broad background writes.
+- Existing balances/unlocks visible; owner-only settlement after downgrade.
 
 ## No-Test Rationale
 

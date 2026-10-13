@@ -135,6 +135,9 @@ export const createRoutineRewardService = ({ db, Timestamp, HttpsError, resolveE
     routine_day_points: day.snapshot.routine_day_points, routine_points_enabled: day.snapshot.routine_points_enabled,
     complete: isFrozenRoutineDayComplete(day.snapshot, day.completions),
   });
+  const responseRoutineDay = (day, complete = isFrozenRoutineDayComplete(day.snapshot, day.completions)) => ({
+    snapshot_id: day.snapshot.id, date_key: day.snapshot.date_key, timezone: day.snapshot.timezone, complete,
+  });
   const responseRoutines = (day) => day.snapshot.templates.map((template) => ({
     ...template, counts_toward_allowance: false, counts_toward_points: day.snapshot.routine_points_enabled,
     completions: day.completions.filter((completion) => completion.routine_template_id === template.id).map((completion) => ({
@@ -175,7 +178,7 @@ export const createRoutineRewardService = ({ db, Timestamp, HttpsError, resolveE
       if (cosmetics?.stateChanged) writeState(transaction, cosmetics.cosmeticRef, cosmetics.state, now);
       if (mutation) writeLedgerMutation(transaction, ledgerRef, cosmetics.walletRef, mutation, now);
       return {
-        contract: ROUTINE_REWARD_CONTRACT, student_id: studentId,
+        contract: ROUTINE_REWARD_CONTRACT, student_id: studentId, routine_day: responseRoutineDay(day),
         routines: access.canUseDailyRoutines ? responseRoutines(day) : [], access: publicAccess(access),
         routine_rewards: cosmetics ? { wallet: cleanWallet(mutation?.wallet || cosmetics.wallet), catalog: ROUTINE_REWARD_CATALOG.map((item) => ({ ...item, is_unlocked: cosmetics.state.owned_cosmetic_ids.includes(item.id) })), cosmetics: publicCosmetics(cosmetics.state), day: responseDay(day), awarded: Boolean(mutation), award_entry_id: ledger?.id || mutation?.ledgerEntry.id || null } : null,
       };
@@ -234,7 +237,7 @@ export const createRoutineRewardService = ({ db, Timestamp, HttpsError, resolveE
       if (mutation) writeLedgerMutation(transaction, ledgerRef, walletRef, mutation, now);
       return {
         contract: ROUTINE_REWARD_CONTRACT, routine_completion_id: completionRef.id,
-        date_key: day.snapshot.date_key, already_completed: Boolean(alreadyCompleted),
+        date_key: day.snapshot.date_key, already_completed: Boolean(alreadyCompleted), routine_day: responseRoutineDay(day, fullDay),
         routine_rewards: access.canUseRoutineRewards
           ? { wallet: cleanWallet(wallet), day: { ...responseDay(day), complete: fullDay }, awarded: Boolean(mutation), award_entry_id: ledger?.id || mutation?.ledgerEntry.id || null }
           : null,

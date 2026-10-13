@@ -257,7 +257,7 @@ const HomeschoolRoute = () => {
                 <span className="op-home-nav-meta">Open subject library</span>
               </Link>
               <Link to={`/dashboard/${dashboardFeaturesById['weekly-blocking'].path}`} className="op-home-nav-card" style={{ borderLeftColor: '#0f9e7a' }}>
-                <span className="op-home-nav-title">Weekly Blocking <ArrowRight className="h-3.5 w-3.5" /></span>
+                <span className="op-home-nav-title">Weekly Plan <ArrowRight className="h-3.5 w-3.5" /></span>
                 <span className="op-home-nav-sub">Plan the full family week and publish changes from the default week.</span>
                 <span className="op-home-nav-meta">Weekly publish flow</span>
               </Link>

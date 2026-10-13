@@ -1,3 +1,5 @@
+import StudentDailyRoutines from '../components/student/StudentDailyRoutines';
+import RoutineCosmetics, { CosmeticArt } from '../components/student/RoutineCosmetics';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
@@ -263,6 +265,11 @@ const StudentPortal = () => {
     enabled: Boolean(student?.id),
   });
   const subjectMapRef = useRef(subjectMap);
+  const legacyHouseholdReady = Boolean(studentChores.choreState && !studentChores.routineFirst);
+  const routineSelections = studentChores.routineRewards?.cosmetics?.selected_cosmetic_ids || {};
+  useEffect(() => {
+    if (studentChores.routineFirst && ['allowance', 'rewards'].includes(activeWorkspace)) setActiveWorkspace('chores');
+  }, [studentChores.routineFirst, activeWorkspace]);
   const getNextAvailableBlockRef = useRef(getNextAvailableBlock);
 
   useEffect(() => {
@@ -1079,28 +1086,30 @@ const StudentPortal = () => {
   }
 
   return (
-    <div className="student-portal-v2" style={{ fontFamily: FONT }}>
+    <div className="student-portal-v2" data-routine-theme={routineSelections.profile_theme || undefined} style={{ fontFamily: FONT }}>
       <header className="student-portal-topbar">
         <div className="student-portal-brand"><span>OwnPath</span><strong>Student Portal</strong></div>
         <div className="student-portal-topbar-spacer" />
+        {studentChores.routineFirst && studentChores.routineRewards ? <div className="student-portal-points"><Star />{studentChores.routineRewards.wallet?.total_points || 0} pts</div> : null}
         {studentChores.canShowRewardTab && studentChores.rewardStore.wallet ? <div className="student-portal-points"><Star />{studentChores.rewardStore.wallet.total_points || 0} pts</div> : null}
         <label className="sr-only" htmlFor="student-alarm-sound">Timer alarm sound</label>
         <select id="student-alarm-sound" className="student-alarm-select" value={alarmSound} onChange={(event) => handleAlarmChange(event.target.value)}>
           {ALARM_SOUNDS.map((sound) => <option key={sound.file} value={sound.file}>{sound.label}</option>)}
         </select>
-        <button type="button" className="student-profile-control" onClick={() => setActiveWorkspace('profile')}><span className="student-mini-avatar" /><span className="student-profile-name">{student.name}</span><UserRound /></button>
+        <button type="button" className="student-profile-control" onClick={() => setActiveWorkspace('profile')}>{studentChores.routineFirst ? <CosmeticArt id={routineSelections.avatar || 'builtin_avatar_seedling'} title="Your avatar" className="w-8 h-8 rounded-full" /> : <span className="student-mini-avatar" />}<span className="student-profile-name">{student.name}</span>{studentChores.routineFirst && routineSelections.badge ? <CosmeticArt id={routineSelections.badge} title="Your badge" className="w-6 h-6" /> : <UserRound />}</button>
         {student.access_pin ? <button type="button" className="student-button is-icon" onClick={handleSignOut} aria-label="Sign out"><LogOut /></button> : null}
       </header>
 
       <nav className="student-portal-nav" aria-label="Student workspaces" data-testid="student-portal-workspaces">
         <button type="button" className={activeWorkspace === 'school' ? 'is-active' : ''} onClick={() => setActiveWorkspace('school')}><BookOpen />School</button>
-        {studentChores.canShowTab ? <button type="button" className={activeWorkspace === 'chores' ? 'is-active' : ''} onClick={() => setActiveWorkspace('chores')} data-testid="student-portal-chores-tab"><ListChecks />Chores{studentChores.workspace.claimedChores.length > 0 ? <span className="student-nav-badge">{studentChores.workspace.claimedChores.length}</span> : null}</button> : null}
-        <button type="button" className={activeWorkspace === 'allowance' ? 'is-active' : ''} onClick={() => setActiveWorkspace('allowance')}><Coins />Allowance</button>
+        {studentChores.canShowTab ? <button type="button" className={activeWorkspace === 'chores' ? 'is-active' : ''} onClick={() => setActiveWorkspace('chores')} data-testid="student-portal-chores-tab"><ListChecks />{studentChores.routineFirst ? 'Daily Routines' : 'Chores'}{studentChores.workspace.claimedChores.length > 0 ? <span className="student-nav-badge">{studentChores.workspace.claimedChores.length}</span> : null}</button> : null}
+        {legacyHouseholdReady ? <button type="button" className={activeWorkspace === 'allowance' ? 'is-active' : ''} onClick={() => setActiveWorkspace('allowance')}><Coins />Allowance</button> : null}
         {studentChores.canShowRewardTab ? <button type="button" className={activeWorkspace === 'rewards' ? 'is-active' : ''} onClick={() => setActiveWorkspace('rewards')} data-testid="student-portal-rewards-tab"><Gift />Rewards</button> : null}
-        <button type="button" className={activeWorkspace === 'profile' ? 'is-active' : ''} onClick={() => setActiveWorkspace('profile')}><UserRound />My Avatar</button>
+        <button type="button" className={activeWorkspace === 'profile' ? 'is-active' : ''} onClick={() => setActiveWorkspace('profile')} data-testid="student-portal-avatar-tab"><UserRound />My Avatar</button>
       </nav>
 
       <main className="student-portal-content">
+        {studentChores.error && !studentChores.choreState ? <div role="alert" className="student-list-empty"><p>{studentChores.error.message}</p><button type="button" className="student-button" disabled={studentChores.loading} onClick={studentChores.refresh}>Retry loading</button></div> : null}
 
         {activeWorkspace === 'school' ? (
           <StudentSchoolWorkspace
@@ -1135,7 +1144,7 @@ const StudentPortal = () => {
             onCompleteWorkItem={handleCompleteWorkItem}
           />
         ) : activeWorkspace === 'chores' ? (
-          <StudentChoresWorkspaceV2
+          studentChores.routineFirst ? <StudentDailyRoutines key={student.id} controller={studentChores} /> : <StudentChoresWorkspaceV2
             workspace={studentChores.workspace}
             loading={studentChores.loading || studentChores.isResolvingAccess}
             error={studentChores.error}
@@ -1167,7 +1176,7 @@ const StudentPortal = () => {
             </aside>
           </div>
         ) : activeWorkspace === 'profile' ? (
-          <StudentAvatarWorkspace />
+          studentChores.routineFirst ? <RoutineCosmetics controller={studentChores} studentName={student.name} /> : <StudentAvatarWorkspace />
         ) : (
           <>
         {/* Weekly Progress */}
@@ -1798,8 +1807,8 @@ const StudentPortal = () => {
 
       <nav className="student-portal-mobile-nav" aria-label="Student workspaces">
         <button type="button" className={activeWorkspace === 'school' ? 'is-active' : ''} onClick={() => setActiveWorkspace('school')}><BookOpen /><span>School</span></button>
-        {studentChores.canShowTab ? <button type="button" className={activeWorkspace === 'chores' ? 'is-active' : ''} onClick={() => setActiveWorkspace('chores')}><ListChecks /><span>Chores</span></button> : null}
-        <button type="button" className={activeWorkspace === 'allowance' ? 'is-active' : ''} onClick={() => setActiveWorkspace('allowance')}><Coins /><span>Allowance</span></button>
+        {studentChores.canShowTab ? <button type="button" className={activeWorkspace === 'chores' ? 'is-active' : ''} onClick={() => setActiveWorkspace('chores')}><ListChecks /><span>{studentChores.routineFirst ? 'Daily Routines' : 'Chores'}</span></button> : null}
+        {legacyHouseholdReady ? <button type="button" className={activeWorkspace === 'allowance' ? 'is-active' : ''} onClick={() => setActiveWorkspace('allowance')}><Coins /><span>Allowance</span></button> : null}
         {studentChores.canShowRewardTab ? <button type="button" className={activeWorkspace === 'rewards' ? 'is-active' : ''} onClick={() => setActiveWorkspace('rewards')}><Gift /><span>Rewards</span></button> : null}
         <button type="button" className={activeWorkspace === 'profile' ? 'is-active' : ''} onClick={() => setActiveWorkspace('profile')}><UserRound /><span>Avatar</span></button>
       </nav>

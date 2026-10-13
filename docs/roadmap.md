@@ -4,7 +4,7 @@ Last updated: 2026-10-12
 
 ## Current Snapshot
 
-- Routine-first product-direction execution started on 2026-10-12. Defaults, shared contracts/runtime QA, and the dormant routine reward/entitlement backend are locally verified. Daily Routines/cosmetic UI is next; production changes remain pending release gates.
+- Routine-first product-direction execution started on 2026-10-12. Defaults, shared contracts/runtime QA, dormant routine authority, and the complete Free Daily Routines/cosmetic/Household History interfaces are locally verified. Weekly Plan persistence and conditional timers are next; production changes remain pending release gates.
 
 - `npm run build` and `npm run lint` both pass as of 2026-05-22.
 - A lightweight GitHub Actions workflow now runs build and lint on push and pull request.

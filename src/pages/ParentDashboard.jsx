@@ -344,6 +344,10 @@ const ParentDashboard = () => {
   );
   const {
     plan,
+    entitlementDoc,
+    loading: entitlementsLoading,
+    error: entitlementsError,
+    retryBootstrap,
     curriculumLimitCheck,
     featureAccess,
     featureAccessList,
@@ -406,7 +410,7 @@ const ParentDashboard = () => {
     parentId: currentUser?.uid,
     parentSettings,
     students,
-    enabled: shouldLoadStudentChoresSnapshot,
+    enabled: shouldLoadStudentChoresSnapshot && !entitlementsLoading && !entitlementsError && !(entitlementDoc?.product_direction_version >= 1),
   });
   const loading = studentsLoading || subjectsLoading || activityLoading;
   const { rolloverStatus } = useWeeklyRollover({
@@ -418,17 +422,18 @@ const ParentDashboard = () => {
     settingsReady,
     weekConfig,
   });
+  const routineFirst = entitlementDoc?.product_direction_version >= 1;
   const resolvedDashboardFeatures = useMemo(
-    () => resolveDashboardFeatures({ featureAccess }),
-    [featureAccess]
+    () => resolveDashboardFeatures({ featureAccess, routineFirst }),
+    [featureAccess, routineFirst]
   );
   const resolvedDashboardFeaturesById = useMemo(
     () => Object.fromEntries(resolvedDashboardFeatures.map((feature) => [feature.id, feature])),
     [resolvedDashboardFeatures]
   );
   const resolvedDashboardNavigation = useMemo(
-    () => resolveDashboardNavigation({ featureAccess }),
-    [featureAccess]
+    () => resolveDashboardNavigation({ featureAccess, routineFirst }),
+    [featureAccess, routineFirst]
   );
   const resolvedDashboardFeaturesByPath = useMemo(
     () => Object.fromEntries(resolvedDashboardFeatures.map((feature) => [feature.path, feature])),
@@ -579,8 +584,8 @@ const ParentDashboard = () => {
     }
   }, [addStudent]);
 
-  if (activeFeature?.shellState === DASHBOARD_FEATURE_STATES.HIDDEN) {
-    return <Navigate to={`/dashboard/${defaultDashboardPath}`} replace />;
+  if (!entitlementsLoading && !entitlementsError && activeFeature?.shellState === DASHBOARD_FEATURE_STATES.HIDDEN) {
+    return <Navigate to={routineFirst && ['weekly-chores', 'monthly-chores', 'allowance', 'rewards'].includes(activeFeature.id) ? '/dashboard/chores/household-history' : `/dashboard/${defaultDashboardPath}`} replace />;
   }
 
   const handleViewSchoolProgress = (student) => {
@@ -594,6 +599,7 @@ const ParentDashboard = () => {
   };
 
   const handleViewChoresProgress = (student) => {
+    if (entitlementDoc?.product_direction_version >= 1) { navigate('/dashboard/chores/daily-routines'); return; }
     setSelectedSubmission(null);
     setViewingStudentProgress(null);
     setViewingStudentChoresProgress(student);
@@ -707,6 +713,10 @@ const ParentDashboard = () => {
   };
   const entitlementSummary = {
     plan,
+    routineFirst,
+    loading: entitlementsLoading,
+    error: entitlementsError,
+    retryBootstrap,
     studentLimitCheck,
     curriculumLimitCheck,
     featureAccessList,

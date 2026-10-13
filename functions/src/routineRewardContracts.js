@@ -114,7 +114,7 @@ export const selectRoutineSnapshotTemplates = ({ templates, parentId, studentId 
   const isCanonical = (template) => Array.isArray(template.student_ids) && template.student_ids.length === 1
     && template.student_ids[0] === studentId && canonicalPeriods.includes(template.routine_period);
   const populated = assigned.filter((template) => Array.isArray(template.checklist_items) && template.checklist_items.some((item) => string(item?.label)));
-  const replacedPeriods = new Set(populated.filter(isCanonical).map((template) => template.routine_period));
+  const replacedPeriods = new Set(assigned.filter(isCanonical).map((template) => template.routine_period));
   const result = populated.filter((template) => isCanonical(template) || !replacedPeriods.has(inferredLegacyPeriod(template))).map((template) => {
     requireRoutineReward(string(template.id), 'invalid-template-identity');
     const items = template.checklist_items.filter((item) => string(item?.label)).map((item) => ({ id: item.id, label: item.label }));

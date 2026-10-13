@@ -19,7 +19,8 @@
     "check:direction-fixtures": "node --test scripts/check-product-direction-fixtures.mjs",
     "check:routine-reward-helpers": "node scripts/check-routine-reward-helpers.mjs",
     "check:routine-entitlements": "node scripts/check-routine-entitlement-parity.mjs",
-    "check:routine-reward-callables": "node --test scripts/check-routine-reward-callables.mjs"
+    "check:routine-reward-callables": "node --test scripts/check-routine-reward-callables.mjs",
+    "check:routine-view-model": "node scripts/check-routine-view-model.mjs"
   },
   "dependencies": {
     "firebase": "^10.8.0",

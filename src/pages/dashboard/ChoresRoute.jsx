@@ -1,5 +1,6 @@
+import DailyRoutinesRoute from './DailyRoutinesRoute';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useOutletContext } from 'react-router-dom';
+import { Link, Navigate, useOutletContext } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowRight,
@@ -241,7 +242,7 @@ const getRewardIcon = (reward = {}) => {
   return '🎁';
 };
 
-const ChoresRoute = () => {
+const LegacyChoresRoute = () => {
   const {
     activeDashboardFeatureId,
     colors,
@@ -3912,6 +3913,15 @@ const ChoresRoute = () => {
       </div>
     </div>
   );
+};
+
+const ChoresRoute = () => {
+  const { entitlementSummary, activeDashboardFeatureId } = useOutletContext();
+  if (entitlementSummary?.loading) return <p role="status">Loading household access…</p>;
+  if (entitlementSummary?.error) return <div role="alert" className="op-chores-section"><h2>Household access is unavailable</h2><p className="op-subtle mt-2">{entitlementSummary.error.message || 'Unable to load account access.'}</p><button type="button" className="op-button mt-4" onClick={entitlementSummary.retryBootstrap}>Retry access</button></div>;
+  if (!entitlementSummary?.routineFirst) return <LegacyChoresRoute />;
+  if (['weekly-chores', 'monthly-chores', 'allowance', 'rewards'].includes(activeDashboardFeatureId)) return <Navigate to="/dashboard/chores/household-history" replace />;
+  return <DailyRoutinesRoute history={activeDashboardFeatureId === 'household-history'} />;
 };
 
 export default ChoresRoute;

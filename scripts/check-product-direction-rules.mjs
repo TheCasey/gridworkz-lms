@@ -86,3 +86,13 @@ test('lookup prefixes cannot expose a privileged record belonging to another par
   await assertFails(getDoc(doc(dbFor(parent), 'weeklyPlanDrafts', id)));
   await assertFails(getDoc(doc(dbFor(parent), 'studentDefaultWeeks', id)));
 });
+
+test('rollout configuration and migration receipts are never client-readable or writable', async () => {
+  for (const name of ['productDirectionConfig', 'productDirectionMigrations']) {
+    await env.withSecurityRulesDisabled(async (context) => setDoc(doc(context.firestore(), name, 'private'), { parent_id: parent, new_accounts_enabled: true }));
+    for (const uid of [parent, 'another_parent', null]) {
+      await assertFails(getDoc(doc(dbFor(uid), name, 'private')));
+      await assertFails(setDoc(doc(dbFor(uid), name, 'private'), { parent_id: parent, new_accounts_enabled: true }));
+    }
+  }
+});
