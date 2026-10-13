@@ -186,6 +186,10 @@ check(validateRoutineDaySnapshot(routineSnapshot, { parentId: 'parent-a', studen
 equal(isRoutineDaySnapshotComplete(routineSnapshot, { 'morning-a': ['brush'] }), false);
 equal(isRoutineDaySnapshotComplete(routineSnapshot, { 'morning-a': ['brush', 'dress'] }), true);
 equal(isRoutineDaySnapshotComplete({ ...routineSnapshot, templates: [] }, {}), false);
+const legacyRoutineSnapshot = { ...routineSnapshot, templates: [{ id: 'shared-old', routine_period: 'legacy:shared-old', checklist_items: [{ id: 'ready', label: 'Legacy item' }] }] };
+check(validateRoutineDaySnapshot(legacyRoutineSnapshot, { parentId: 'parent-a', studentId: 'student-a' }));
+equal(isRoutineDaySnapshotComplete(legacyRoutineSnapshot, { 'shared-old': ['ready'] }), true);
+rejects('invalid-routine-templates', () => validateRoutineDaySnapshot({ ...legacyRoutineSnapshot, templates: [{ ...legacyRoutineSnapshot.templates[0], routine_period: 'legacy:another-template' }] }, { parentId: 'parent-a', studentId: 'student-a' }));
 rejects('invalid-date-key', () => buildRoutineDaySnapshotId({ parentId: 'parent-a', studentId: 'student-a', date: '2026-02-30' }));
 rejects('invalid-timezone', () => validateRoutineDaySnapshot({ ...routineSnapshot, timezone: 'bad/timezone' }, { parentId: 'parent-a', studentId: 'student-a' }));
 const cosmetic = {

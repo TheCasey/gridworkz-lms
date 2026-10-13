@@ -175,6 +175,7 @@ const featureOverrideResolved = resolveEntitlementRecord({
 assert.deepEqual(featureOverrideResolved.features, {
   can_use_projects: true,
   can_use_daily_routines: true,
+  can_use_routine_rewards: true,
   can_use_chores: true,
   can_use_rewards: true,
   can_use_lockdown_extension: true,

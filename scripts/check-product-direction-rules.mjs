@@ -65,7 +65,7 @@ test('parent private queries must be constrained to their own household', async 
 });
 
 test('correction, report amendment, routine snapshot and cosmetic authority deny client writes', async () => {
-  for (const name of ['blockCompletionStates', 'parentCorrectionEvents', 'weeklyReportAmendments', 'routineDaySnapshots', 'studentCosmeticStates']) {
+  for (const name of ['blockCompletionStates', 'parentCorrectionEvents', 'weeklyReportAmendments', 'routineDaySnapshots', 'routineDayPointers', 'studentCosmeticStates', 'householdHistoryEvents']) {
     const ref = (database) => doc(database, name, 'authority_test');
     await env.withSecurityRulesDisabled(async (context) => setDoc(ref(context.firestore()), { parent_id: parent, student_id: fixture.students[0].id }));
     await assertSucceeds(getDoc(ref(dbFor(parent))));

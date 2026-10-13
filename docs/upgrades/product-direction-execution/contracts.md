@@ -62,3 +62,12 @@ Backend integration requirement: Firebase deploys the `functions/` source direct
 `npx --yes --package=node@20 node scripts/check-product-direction-contracts.mjs` passed 103 assertions on 2026-10-12. Checks execute actual pure helpers for identity, revision conflict, private/public projection, repeated blocks and adoption, malformed/cross-student corrections, idempotency, original evidence retention, ambiguous legacy references, default student scope, original/amended report links and a genuine correction-to-legacy-report helper flow with cross-household/student/week denial, empty/full routine days, timezone/date validation, and cosmetic ownership/selection. They perform no backend reads or writes and do not prove rules/callable/browser behavior.
 
 `npx --yes --package=node@20 node node_modules/eslint/bin/eslint.js . --ext js,jsx --report-unused-disable-directives --max-warnings 0` passed. Repository ESLint configuration exists at `.eslintrc.cjs`. Runtime emulator fixtures/rule tests and later UI/backend integration are tracked by the orchestrator separately.
+
+
+## Routine Authority Implementation — 2026-10-13
+
+The dormant backend adapter is packaged entirely inside `functions/src/routineReward*.js`; its browser-safe catalog contains no Admin/crypto imports. `accountEntitlements.product_direction_version >= 1` activates the narrow contract, masks broad chore/reward mutation permissions, and survives billing/support resolution. Daily permission and narrow permission are checked independently; denied narrow access never returns a wallet through completion. Existing inactive clients keep their compatibility behavior.
+
+`routineDayPointers` is server-written/parent-readable and pins each student's first-use snapshot timezone and day boundaries, including skipped-midnight DST. `householdHistoryEvents` is an owner-readable, server-only append audit for settlement of existing obligations. `productDirectionMigrations` is server-only migration receipt storage. Snapshot periods accept canonical periods or exact `legacy:<template-id>` for retained unknown/shared templates.
+
+Completion and activated-read reconciliation reuse the existing single `routine_day:<date>` ledger identity and atomically save any credit with the wallet. Cosmetic unlocks atomically debit server catalog cost with ownership; selection uses optimistic revisions. Owner settlement works after downgrade and never creates new obligations. Runtime validation is recorded in the Phase03 run log; production activation remains pending.

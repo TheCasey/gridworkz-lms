@@ -339,7 +339,8 @@ export const validateRoutineDaySnapshot = (snapshot, { parentId, studentId } = {
   const periods = new Set();
   assertUniqueStrings(snapshot.templates.map((template) => template?.id), 'invalid-routine-templates');
   snapshot.templates.forEach((template) => {
-    requireValue(text(template.id) && ['morning', 'afternoon', 'evening'].includes(template.routine_period)
+    requireValue(text(template.id) && (['morning', 'afternoon', 'evening'].includes(template.routine_period)
+      || template.routine_period === `legacy:${template.id}`)
       && !periods.has(template.routine_period), 'invalid-routine-templates');
     periods.add(template.routine_period);
     requireValue(Array.isArray(template.checklist_items) && template.checklist_items.length > 0, 'empty-routine-period');

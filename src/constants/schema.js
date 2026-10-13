@@ -552,6 +552,7 @@ export const SupportOperatorSchema = {
 export const AccountEntitlementFeatureOverridesSchema = {
   can_use_projects: "boolean", // Optional override for the planned projects feature
   can_use_daily_routines: "boolean", // Optional override for grouped daily routine access; included on Free by default
+  can_use_routine_rewards: "boolean", // Narrow full-day points/built-in cosmetics; activation is separate from broad rewards
   can_use_chores: "boolean", // Optional override for paid chore pools, allowance tracking, and achievements
   can_use_rewards: "boolean", // Optional override for paid points, reward-store behavior, redemptions, and cosmetics
   can_use_lockdown_extension: "boolean", // Optional override for browser extension access
@@ -598,6 +599,9 @@ export const AccountEntitlementSchema = {
   updated_via: "string", // billing_webhook | operator_console | operator_clear_override
   billing_state: "object", // See AccountEntitlementBillingStateSchema
   manual_override: "object", // See AccountEntitlementManualOverrideSchema, nullable
+  product_direction_version: "number", // Server-owned activation; 0/absent legacy, 1 routine-first
+  product_direction_migration_version: "number", // Last trusted packaging migration version
+  product_direction_migrated_at: "timestamp", // First trusted packaging migration time
   updated_at: "timestamp" // Last trusted backend entitlement document update
 };
 
@@ -996,6 +1000,16 @@ export const RoutineRewardCapabilitySchema = {
   built_in_cosmetics: "boolean", // Narrow ownership/selection authority, independent of custom rewards
 };
 
+export const RoutineDayPointerSchema = {
+  parent_id: "string",
+  student_id: "string",
+  snapshot_id: "string", // Frozen qualifying day; server-owned selection
+  date_key: "string",
+  timezone: "string",
+  day_start: "timestamp", // Frozen household-local day bounds
+  day_end: "timestamp",
+};
+
 export const StudentCosmeticStateSchema = {
   id: "string",
   parent_id: "string",
@@ -1021,6 +1035,9 @@ export const Collections = {
   PARENT_CORRECTION_EVENTS: "parentCorrectionEvents",
   WEEKLY_REPORT_AMENDMENTS: "weeklyReportAmendments",
   ROUTINE_DAY_SNAPSHOTS: "routineDaySnapshots",
+  ROUTINE_DAY_POINTERS: "routineDayPointers",
+  PRODUCT_DIRECTION_MIGRATIONS: "productDirectionMigrations",
+  HOUSEHOLD_HISTORY_EVENTS: "householdHistoryEvents",
   STUDENT_COSMETIC_STATES: "studentCosmeticStates",
   WEEKLY_REPORTS: "weeklyReports",
   DAILY_LOGS: "dailyLogs",
@@ -1078,6 +1095,11 @@ export const TrustedFunctionNames = {
   CANCEL_REWARD_REDEMPTION: "cancelRewardRedemption",
   REVIEW_REWARD_REDEMPTION: "reviewRewardRedemption",
   READ_STUDENT_CHORE_STATE: "readStudentChoreState",
+  READ_STUDENT_ROUTINE_REWARDS: "readStudentRoutineRewards",
+  UNLOCK_ROUTINE_COSMETIC: "unlockRoutineCosmetic",
+  SELECT_ROUTINE_COSMETICS: "selectRoutineCosmetics",
+  UPSERT_ROUTINE_REWARD_SETTINGS: "upsertRoutineRewardSettings",
+  SETTLE_HOUSEHOLD_HISTORY: "settleHouseholdHistory",
   CLAIM_CHORE: "claimChore",
   COMPLETE_CHORE: "completeChore",
   COMPLETE_ROUTINE: "completeRoutine",

@@ -52,6 +52,14 @@ import {
   buildRewardStatusTransition,
   normalizeRewardCatalogItemRecord,
 } from './rewardRedemptionUtils.js';
+import {
+  PRODUCT_DIRECTION_VERSION,
+  ROUTINE_REWARD_MIGRATION_VERSION,
+  preserveProductDirectionMarkers,
+  requireRoutineReward,
+  resolveRoutineRewardAccess,
+} from './routineRewardContracts.js';
+import { createRoutineRewardService } from './routineRewardAuthority.js';
 
 initializeApp();
 
@@ -143,6 +151,7 @@ const PLAN_LIMITS = Object.freeze({
     features: Object.freeze({
       can_use_projects: false,
       can_use_daily_routines: true,
+      can_use_routine_rewards: true,
       can_use_chores: false,
       can_use_rewards: false,
       can_use_lockdown_extension: false,
@@ -150,11 +159,12 @@ const PLAN_LIMITS = Object.freeze({
     }),
   }),
   [PLAN_IDS.CORE]: Object.freeze({
-    maxStudents: 10,
+    maxStudents: null,
     maxActiveSubjects: null,
     features: Object.freeze({
       can_use_projects: true,
       can_use_daily_routines: true,
+      can_use_routine_rewards: true,
       can_use_chores: true,
       can_use_rewards: true,
       can_use_lockdown_extension: false,
@@ -162,11 +172,12 @@ const PLAN_LIMITS = Object.freeze({
     }),
   }),
   [PLAN_IDS.LOCKDOWN]: Object.freeze({
-    maxStudents: 10,
+    maxStudents: null,
     maxActiveSubjects: null,
     features: Object.freeze({
       can_use_projects: true,
       can_use_daily_routines: true,
+      can_use_routine_rewards: true,
       can_use_chores: true,
       can_use_rewards: true,
       can_use_lockdown_extension: true,
@@ -522,7 +533,7 @@ const buildOwnPathSystemResourceAllowlist = ({
 };
 
 const normalizePlanId = (planId) => (
-  Object.values(PLAN_IDS).includes(planId) ? planId : PLAN_IDS.FREE
+  planId === 'pro' ? PLAN_IDS.CORE : (Object.values(PLAN_IDS).includes(planId) ? planId : PLAN_IDS.FREE)
 );
 
 export const buildFeatureSet = (planId, featureOverrides = {}) => {
@@ -1182,6 +1193,7 @@ export const resolveEntitlementRecord = ({
 
   return {
     ...effectiveFields,
+    ...preserveProductDirectionMarkers(existingEntitlement),
     billing_state: billingState,
     manual_override: isPlainObject(existingEntitlement.manual_override)
       ? existingEntitlement.manual_override
@@ -1246,6 +1258,7 @@ export const buildEntitlementWriteForManualOverride = ({
   };
 
   return {
+    ...preserveProductDirectionMarkers(existing),
     ...buildEffectiveEntitlementFieldsFromManualOverride({
       parentId: normalizedParentId,
       manualOverride,
@@ -1280,6 +1293,7 @@ export const buildEntitlementWriteForOverrideClear = ({
     : ENTITLEMENT_RESOLUTION_SOURCES.FALLBACK_INITIALIZED;
 
   return {
+    ...preserveProductDirectionMarkers(existing),
     ...buildEffectiveEntitlementFieldsFromBilling({
       parentId: normalizedParentId,
       billingState,
@@ -1342,6 +1356,7 @@ export const buildEntitlementWriteForBillingSync = ({
     });
   const entitlementDoc = {
     ...effectiveFields,
+    ...preserveProductDirectionMarkers(existing),
     billing_state: normalizedBillingState,
     resolution_source: hasActiveManualOverride
       ? ENTITLEMENT_RESOLUTION_SOURCES.MANUAL_OVERRIDE
@@ -1421,6 +1436,28 @@ export const buildEntitlementAuditLog = ({
   after: buildEntitlementAuditSnapshot(after),
   created_at: createdAt || FieldValue.serverTimestamp(),
 });
+
+// Merge this top-level patch only. Billing/provider/override/usage records remain intact.
+export const buildRoutineFirstEntitlementPatch = ({ parentId, entitlementDoc = {}, activate = false, nowMillis = Date.now() } = {}) => {
+  requireRoutineReward(trimString(parentId) && (!entitlementDoc.parent_id || entitlementDoc.parent_id === parentId)
+    && typeof activate === 'boolean' && Number.isFinite(nowMillis), 'invalid-entitlement-migration');
+  const resolved = resolveEntitlementRecord({ parentId, entitlementDoc, nowMillis });
+  const priorVersion = Number.isSafeInteger(entitlementDoc.product_direction_version) && entitlementDoc.product_direction_version >= 0
+    ? entitlementDoc.product_direction_version : 0;
+  return {
+    parent_id: resolved.parent_id,
+    // Without nested billing_state this field is the legacy billing source.
+    // Writing the effective override here would make a temporary upgrade permanent.
+    plan_id: isPlainObject(entitlementDoc.billing_state) ? resolved.plan_id : normalizePlanId(entitlementDoc.plan_id),
+    features: resolved.features,
+    limits: resolved.limits,
+    product_direction_version: activate
+      ? Math.max(PRODUCT_DIRECTION_VERSION, priorVersion)
+      : priorVersion,
+    product_direction_migration_version: ROUTINE_REWARD_MIGRATION_VERSION,
+    product_direction_migrated_at: entitlementDoc.product_direction_migrated_at || new Date(nowMillis),
+  };
+};
 
 const queueEntitlementAuditWrite = (batch, auditLog) => {
   batch.set(entitlementAuditLogRef(), buildEntitlementAuditLog(auditLog));
@@ -2085,17 +2122,7 @@ const getAccountEntitlementState = async (parentId) => {
 };
 
 const getHouseholdModuleAccess = (entitlementState = {}) => {
-  const features = entitlementState.features || {};
-  const canUseDailyRoutines = Boolean(features.can_use_daily_routines || features.can_use_chores);
-  const canUseChores = Boolean(features.can_use_chores);
-  const canUseRewards = Boolean(features.can_use_rewards);
-
-  return {
-    canUseDailyRoutines,
-    canUseChores,
-    canUseRewards,
-    canUsePaidModule: canUseChores || canUseRewards,
-  };
+  return resolveRoutineRewardAccess({ features: entitlementState.features, entitlementDoc: entitlementState.data });
 };
 
 const assertHouseholdModuleAccess = async (parentId, accessKey, message) => {
@@ -2396,6 +2423,7 @@ const buildEffectiveEntitlementResponse = ({ entitlementExists, resolvedEntitlem
   billing_provider: resolvedEntitlement.billing_provider,
   feature_overrides: resolvedEntitlement.feature_overrides,
   features: resolvedEntitlement.features,
+  product_direction_version: resolvedEntitlement.product_direction_version || 0,
   usage_snapshot: resolvedEntitlement.usage_snapshot,
   trial_ends_at: resolvedEntitlement.trial_ends_at,
   current_period_end: resolvedEntitlement.current_period_end,
@@ -4912,6 +4940,31 @@ const syncEntitlementFromSubscription = async (stripe, subscription, eventType =
   await batch.commit();
 };
 
+const routineRewardService = createRoutineRewardService({ db, Timestamp, HttpsError, resolveEntitlementRecord });
+
+export const readStudentRoutineRewards = onCall({ region: REGION }, async (request) => {
+  const { parentId, studentId } = await resolveTrustedStudentContext(request.data);
+  return routineRewardService.read({ parentId, studentId });
+});
+
+export const unlockRoutineCosmetic = onCall({ region: REGION }, async (request) => {
+  const { parentId, studentId } = await resolveTrustedStudentContext(request.data);
+  return routineRewardService.unlock({ parentId, studentId, payload: request.data });
+});
+
+export const selectRoutineCosmetics = onCall({ region: REGION }, async (request) => {
+  const { parentId, studentId } = await resolveTrustedStudentContext(request.data);
+  return routineRewardService.select({ parentId, studentId, payload: request.data });
+});
+
+export const upsertRoutineRewardSettings = onCall({ region: REGION }, async (request) => (
+  routineRewardService.upsertSettings({ parentId: ensureAuthenticated(request), payload: request.data })
+));
+
+export const settleHouseholdHistory = onCall({ region: REGION }, async (request) => (
+  routineRewardService.settleHistory({ parentId: ensureAuthenticated(request), payload: request.data })
+));
+
 export const createStudent = onCall({ region: REGION }, async (request) => {
   const parentId = ensureAuthenticated(request);
   const name = trimString(request.data?.name);
@@ -5535,6 +5588,9 @@ export const readStudentChoreState = onCall({ region: REGION }, async (request) 
     ),
     getTrustedParentChoreSettings(parentId),
   ]);
+  if (access.productDirectionActive) {
+    return routineRewardService.read({ parentId, studentId, requireRewards: false });
+  }
   const weekConfig = normalizeTrustedChoreWeekConfig(settings);
   const [
     routineTemplates,
@@ -5823,6 +5879,9 @@ export const completeRoutine = onCall({ region: REGION }, async (request) => {
     'canUseDailyRoutines',
     'Daily routines are not included in the current plan.'
   );
+  if (access.productDirectionActive) {
+    return routineRewardService.complete({ parentId, studentId, payload: request.data });
+  }
   const payload = normalizeTrustedRoutineCompletionPayload(request.data);
 
   if (!payload.routine_template_id) {

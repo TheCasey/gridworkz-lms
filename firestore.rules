@@ -217,6 +217,17 @@ service cloud.firestore {
       allow read: if isOwnerResource();
       allow write: if false;
     }
+    match /routineDayPointers/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+    match /productDirectionMigrations/{recordId} {
+      allow read, write: if false;
+    }
+    match /householdHistoryEvents/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
     match /studentCosmeticStates/{recordId} {
       allow read: if isOwnerResource();
       allow write: if false;

@@ -47,11 +47,18 @@ Add meaningful policy/persistence tests for the source phase cases; static sourc
 
 ## Test Files
 
-- Not listed yet. Add likely files before dispatching developer work if automated tests are expected.
+- `scripts/check-routine-reward-helpers.mjs`
+- `scripts/check-routine-entitlement-parity.mjs`
+- `scripts/check-routine-reward-callables.mjs`
+- `scripts/check-product-direction-rules.mjs`
 
 ## Test Cases To Cover
 
-- Not listed yet. Add focused regression or behavior cases before dispatching developer work if the phase changes behavior.
+- Exact frozen checklists/day identity; concurrent full-day completion and missing-ledger reconciliation.
+- Built-in catalog debit/ownership/selection, sibling/PIN isolation, capability overrides.
+- Empty/evening-only days, configured settings/opt-out, household timezone changes and DST skipped midnight.
+- Owner settlement after downgrade, audit history and refund replay.
+- Unlimited paid creates, Free quota, legacy override expiry, billing/support-preserving migration dry-run/replay/deactivation.
 
 ## No-Test Rationale
 
@@ -80,6 +87,9 @@ Follow active phase imports/consumers/tests; do not widen product scope.
 - npm run lint
 - npm run build
 - npm run check:student-timers
+- npm run check:routine-reward-helpers
+- npm run check:routine-entitlements
+- npm run check:direction-emulators
 
 ## Manual Verification Follow-Up
 

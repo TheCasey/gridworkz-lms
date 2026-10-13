@@ -14,9 +14,12 @@
     "check:direction-rules": "node --test scripts/check-product-direction-rules.mjs",
     "seed:direction": "node scripts/seed-product-direction-fixtures.mjs --scenario=all --write",
     "check:direction-callables": "node --test scripts/check-product-direction-callables.mjs",
-    "check:direction-emulators": "firebase emulators:exec --only auth,firestore,functions --project demo-gridworkz-direction \"npm run check:direction-rules && npm run seed:direction && npm run check:direction-callables && npm run check:direction-browser\"",
+    "check:direction-emulators": "firebase emulators:exec --only auth,firestore,functions --project demo-gridworkz-direction \"npm run check:direction-rules && npm run seed:direction && npm run check:direction-callables && npm run check:routine-reward-callables && npm run check:direction-browser\"",
     "check:direction-browser": "playwright test --config playwright.direction.config.js",
-    "check:direction-fixtures": "node --test scripts/check-product-direction-fixtures.mjs"
+    "check:direction-fixtures": "node --test scripts/check-product-direction-fixtures.mjs",
+    "check:routine-reward-helpers": "node scripts/check-routine-reward-helpers.mjs",
+    "check:routine-entitlements": "node scripts/check-routine-entitlement-parity.mjs",
+    "check:routine-reward-callables": "node --test scripts/check-routine-reward-callables.mjs"
   },
   "dependencies": {
     "firebase": "^10.8.0",

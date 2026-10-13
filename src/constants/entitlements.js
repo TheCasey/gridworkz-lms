@@ -14,6 +14,7 @@ export const EntitlementLimitKeys = Object.freeze({
 export const EntitlementFeatureKeys = Object.freeze({
   PROJECTS: 'can_use_projects',
   DAILY_ROUTINES: 'can_use_daily_routines',
+  ROUTINE_REWARDS: 'can_use_routine_rewards',
   CHORES: 'can_use_chores',
   REWARDS: 'can_use_rewards',
   LOCKDOWN_EXTENSION: 'can_use_lockdown_extension',
@@ -35,6 +36,7 @@ export const EntitlementUpgradeKeys = Object.freeze({
   CURRICULUM_ITEMS: EntitlementLimitKeys.CURRICULUM_ITEMS,
   PROJECTS: 'projects',
   DAILY_ROUTINES: 'daily_routines',
+  ROUTINE_REWARDS: 'routine_rewards',
   CHORES: 'chores',
   REWARDS: 'rewards',
   LOCKDOWN: 'lockdown',
@@ -129,13 +131,14 @@ export const EntitlementCatalog = Object.freeze({
     features: {
       [EntitlementFeatureKeys.PROJECTS]: false,
       [EntitlementFeatureKeys.DAILY_ROUTINES]: true,
+      [EntitlementFeatureKeys.ROUTINE_REWARDS]: true,
       [EntitlementFeatureKeys.CHORES]: false,
       [EntitlementFeatureKeys.REWARDS]: false,
       [EntitlementFeatureKeys.LOCKDOWN_EXTENSION]: false,
       [EntitlementFeatureKeys.LOCKDOWN_KIOSK]: false,
     },
     upgradeCopy: {
-      [EntitlementUpgradeKeys.STUDENTS]: 'Upgrade to Core for up to 10 students.',
+      [EntitlementUpgradeKeys.STUDENTS]: 'Upgrade to Core for unlimited students.',
       [EntitlementUpgradeKeys.CURRICULUM_ITEMS]: 'Upgrade to Core for unlimited curriculum items.',
       [EntitlementUpgradeKeys.PROJECTS]: 'Upgrade to Core to unlock projects when they launch.',
       [EntitlementUpgradeKeys.DAILY_ROUTINES]: 'Daily routines are included on Free.',
@@ -149,19 +152,20 @@ export const EntitlementCatalog = Object.freeze({
     displayName: 'Core',
     priceLabel: '$5/month',
     limits: {
-      [EntitlementLimitKeys.STUDENTS]: 10,
+      [EntitlementLimitKeys.STUDENTS]: UNLIMITED_PLAN_LIMIT,
       [EntitlementLimitKeys.CURRICULUM_ITEMS]: UNLIMITED_PLAN_LIMIT,
     },
     features: {
       [EntitlementFeatureKeys.PROJECTS]: true,
       [EntitlementFeatureKeys.DAILY_ROUTINES]: true,
+      [EntitlementFeatureKeys.ROUTINE_REWARDS]: true,
       [EntitlementFeatureKeys.CHORES]: true,
       [EntitlementFeatureKeys.REWARDS]: true,
       [EntitlementFeatureKeys.LOCKDOWN_EXTENSION]: false,
       [EntitlementFeatureKeys.LOCKDOWN_KIOSK]: false,
     },
     upgradeCopy: {
-      [EntitlementUpgradeKeys.STUDENTS]: 'Core includes up to 10 students. Contact support if you need a larger household limit.',
+      [EntitlementUpgradeKeys.STUDENTS]: 'Core includes unlimited students.',
       [EntitlementUpgradeKeys.CURRICULUM_ITEMS]: 'Core includes unlimited curriculum items.',
       [EntitlementUpgradeKeys.PROJECTS]: 'Projects are included with Core.',
       [EntitlementUpgradeKeys.DAILY_ROUTINES]: 'Daily routines are included with Core.',
@@ -175,19 +179,20 @@ export const EntitlementCatalog = Object.freeze({
     displayName: 'Lockdown',
     priceLabel: '$10/month',
     limits: {
-      [EntitlementLimitKeys.STUDENTS]: 10,
+      [EntitlementLimitKeys.STUDENTS]: UNLIMITED_PLAN_LIMIT,
       [EntitlementLimitKeys.CURRICULUM_ITEMS]: UNLIMITED_PLAN_LIMIT,
     },
     features: {
       [EntitlementFeatureKeys.PROJECTS]: true,
       [EntitlementFeatureKeys.DAILY_ROUTINES]: true,
+      [EntitlementFeatureKeys.ROUTINE_REWARDS]: true,
       [EntitlementFeatureKeys.CHORES]: true,
       [EntitlementFeatureKeys.REWARDS]: true,
       [EntitlementFeatureKeys.LOCKDOWN_EXTENSION]: true,
       [EntitlementFeatureKeys.LOCKDOWN_KIOSK]: true,
     },
     upgradeCopy: {
-      [EntitlementUpgradeKeys.STUDENTS]: 'Lockdown includes up to 10 students. Contact support if you need a larger household limit.',
+      [EntitlementUpgradeKeys.STUDENTS]: 'Lockdown includes unlimited students.',
       [EntitlementUpgradeKeys.CURRICULUM_ITEMS]: 'Lockdown includes unlimited curriculum items.',
       [EntitlementUpgradeKeys.PROJECTS]: 'Projects are included with Lockdown.',
       [EntitlementUpgradeKeys.DAILY_ROUTINES]: 'Daily routines are included with Lockdown.',
@@ -199,6 +204,15 @@ export const EntitlementCatalog = Object.freeze({
 });
 
 export const EntitlementFeatureCatalog = Object.freeze({
+  [EntitlementFeatureKeys.ROUTINE_REWARDS]: buildFeatureDefinition({
+    key: EntitlementFeatureKeys.ROUTINE_REWARDS,
+    title: 'Routine Rewards',
+    shortTitle: 'Routine Rewards',
+    availableDescription: 'Routine points, avatars, and built-in cosmetics are included on every plan.',
+    lockedDescription: 'Routine rewards are not available for this account yet.',
+    availabilityNote: 'Earn points by completing the full routine day.',
+    upgradeKey: EntitlementUpgradeKeys.ROUTINE_REWARDS,
+  }),
   [EntitlementFeatureKeys.PROJECTS]: buildFeatureDefinition({
     key: EntitlementFeatureKeys.PROJECTS,
     title: 'Projects',
@@ -284,7 +298,7 @@ export const SubscriptionStatusCatalog = Object.freeze({
 });
 
 export const getEntitlementPlan = (planId = DEFAULT_PLAN_ID) => (
-  EntitlementCatalog[planId] || EntitlementCatalog[DEFAULT_PLAN_ID]
+  EntitlementCatalog[planId === 'pro' ? PlanIds.CORE : planId] || EntitlementCatalog[DEFAULT_PLAN_ID]
 );
 
 export const getEntitlementFeatureDefinition = (featureKey) => (

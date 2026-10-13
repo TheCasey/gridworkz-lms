@@ -7,15 +7,15 @@ master_developer_start_prompt_path: "docs/upgrades/product-direction-execution/s
 current_phase_number: 3
 current_phase_slug: "phase-03-implement-routine-reward-and-entitlement-authority"
 current_role: "master-developer"
-phase_status: "ready_for_master_developer"
+phase_status: "locally_verified"
 owner: "master-developer"
-next_downstream_role: "developer"
-last_completed_phase_number: 2
-last_completed_phase_slug: "phase-02-fix-shared-contracts-and-build-persisted-qa-fixtures"
+next_downstream_role: "none"
+last_completed_phase_number: 3
+last_completed_phase_slug: "phase-03-implement-routine-reward-and-entitlement-authority"
 last_completed_role: "tester"
-last_handoff_role: "tester"
+last_handoff_role: "developer"
 blocked_reason: "none"
-last_updated: "2026-10-12"
+last_updated: "2026-10-13"
 active_phase_path: "docs/upgrades/product-direction-execution/phases/phase-03-implement-routine-reward-and-entitlement-authority/phase.md"
 active_run_log_path: "docs/upgrades/product-direction-execution/phases/phase-03-implement-routine-reward-and-entitlement-authority/run-log.md"
 prompt_policy:
@@ -58,8 +58,12 @@ active_phase_guidance:
     - "docs/upgrades/product-direction-execution-plan-2026-09.md"
     - "docs/upgrades/product-direction-execution/decisions.md"
   automated_test_expectation: "Source Phase 2: implement narrow routine reward authority and migration with persisted idempotency/authorization tests; keep activation dormant until complete UI and release gates."
-  test_files: []
-  test_cases: []
+  test_files:
+    - "scripts/check-routine-reward-callables.mjs"
+    - "scripts/check-routine-reward-helpers.mjs"
+    - "scripts/check-routine-entitlement-parity.mjs"
+  test_cases:
+    - "Atomic frozen day awards, catalog debit/selection, denied capabilities, history settlement and migration replay"
   no_test_rationale: ""
   test_commands:
     - "npm run lint"
@@ -149,3 +153,5 @@ git:
       - "workflow-state.yaml"
       - "phases/*/run-log.md"
     commit_message_template: "{workflow_slug}: accept phase {phase_number} ({phase_slug})"
+
+routine_authority_acceptance: "locally verified 2026-10-13;164 helper assertions,6 rules,4 compatibility callables,12 routine runtime,2 baseline browser passes; deployment/activation pending UI and release gates"
