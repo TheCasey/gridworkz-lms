@@ -21,7 +21,7 @@ import {
   X,
 } from 'lucide-react';
 
-import { getCurrentWeekRange, getWeekConfig } from '../utils/weekUtils';
+import { getCurrentWeekRange, getWeekConfig, getWeekKey } from '../utils/weekUtils';
 import {
   createTimerConfig, getRemainingTime, saveTimerToStorage,
   loadTimerFromStorage, clearTimerFromStorage, getTimerKey, formatRemainingTime,
@@ -130,6 +130,8 @@ const StudentPortal = () => {
   const [alarmSound, setAlarmSound] = useState(ALARM_SOUNDS[0].file);
   const [customFieldResponses, setCustomFieldResponses] = useState({});
   const submissionLocksRef = useRef({});
+  const completionIdentityRef = useRef(null);
+  const liveCompletionContextRef = useRef(null);
   const alarmAudioRef = useRef(null);
   const alarmStopTimerRef = useRef(null);
   const alarmSoundRef = useRef(ALARM_SOUNDS[0].file);
@@ -148,11 +150,14 @@ const StudentPortal = () => {
     student?.week_reset_day,
     student?.week_reset_hour,
     student?.week_reset_minute,
+    student?.timezone,
   ]);
   const {
     weekIdentity,
     weeklyPlan: publishedWeeklyPlan,
     loading: publishedWeeklyPlanLoading,
+    usesWeeklyPlanAuthority,
+    error: publishedWeeklyPlanError,
   } = useStudentPortalWeeklyPlan({
     student,
     enabled: Boolean(student?.id && student?.parent_id),
@@ -166,10 +171,10 @@ const StudentPortal = () => {
       : []
   ), [publishedWeeklyPlan, rawSubjectMap]);
   const timerBlockContext = useMemo(() => buildPortalTimerBlockContext({
-    hasPublishedWeeklyPlan: Boolean(publishedWeeklyPlan),
+    hasPublishedWeeklyPlan: usesWeeklyPlanAuthority || Boolean(publishedWeeklyPlan),
     publishedWorkItems: timerValidationWorkItems,
     subjects,
-  }), [publishedWeeklyPlan, subjects, timerValidationWorkItems]);
+  }), [publishedWeeklyPlan, subjects, timerValidationWorkItems, usesWeeklyPlanAuthority]);
   const timerPartition = useMemo(() => partitionPortalTimers({
     activeTimers,
     blockContext: timerBlockContext,
@@ -206,20 +211,21 @@ const StudentPortal = () => {
   const workLauncherContract = useMemo(() => buildPublishedWeeklyPlanWorkLauncherContract({
     studentRecord: student,
     weeklyPlan: publishedWeeklyPlan,
+    usesWeeklyPlanAuthority,
     subjectsById: rawSubjectMap,
     timerSessions: activeTimerSessions,
     completedBlocks,
     entitlementActive: true,
     referenceDate: new Date(),
-  }), [activeTimerSessions, completedBlocks, publishedWeeklyPlan, rawSubjectMap, student]);
-  const hasPublishedWeeklyPlan = workLauncherContract.has_published_weekly_plan;
+  }), [activeTimerSessions, completedBlocks, publishedWeeklyPlan, rawSubjectMap, student, usesWeeklyPlanAuthority]);
+  const hasPublishedWeeklyPlan = workLauncherContract.uses_weekly_plan_authority;
   const publishedWorkItems = workLauncherContract.blocks;
-  const portalSubjects = workLauncherContract.bridge_subjects.length > 0
+  const portalSubjects = workLauncherContract.uses_weekly_plan_authority
     ? workLauncherContract.bridge_subjects
     : subjects;
   const portalSubjectIds = useMemo(
-    () => portalSubjects.map((subject) => subject.id).filter(Boolean),
-    [portalSubjects]
+    () => [...new Set([...portalSubjects, ...subjects].map((subject) => subject.id).filter(Boolean))],
+    [portalSubjects, subjects]
   );
   const portalSubjectIdsKey = portalSubjectIds.join('|');
   const subjectMap = useMemo(
@@ -256,6 +262,23 @@ const StudentPortal = () => {
   const currentAllowedResources = workLauncherContract.allowed_resources;
   const requestAccessGuidance = useMemo(() => getRequestAccessGuidance(), []);
   const getSoundUrl = (file) => `${import.meta.env.BASE_URL}sounds/${file}`;
+  liveCompletionContextRef.current = { student, items: publishedWorkItems, authority: hasPublishedWeeklyPlan,
+    weekKey: weekIdentity?.weekKey, weekConfig, loading: publishedWeeklyPlanLoading,
+    error: publishedWeeklyPlanError, getSubjectPolicy, getWorkItemPolicy };
+  useEffect(() => {
+    if (!selectedSubject || publishedWeeklyPlanLoading) return;
+    const captured = completionIdentityRef.current;
+    const currentItem = publishedWorkItems.find((item) => item.id === captured?.blockId);
+    const currentSubject = currentItem?.compatibilitySubject;
+    const requirements = currentSubject ? JSON.stringify([currentSubject.require_timer, currentSubject.require_input, currentSubject.block_length, currentSubject.custom_fields]) : '';
+    if (captured?.weekKey !== weekIdentity?.weekKey || (hasPublishedWeeklyPlan && (!currentItem || requirements !== captured.requirements))) {
+      delete submissionLocksRef.current[`${selectedSubject.id}_${selectedBlockIndex}`];
+      completionIdentityRef.current = null;
+      setSelectedSubject(null); setSelectedBlockIndex(null);
+      setError('The published week changed. Review the current blocks before completing work.');
+    }
+  }, [selectedSubject, selectedBlockIndex, publishedWeeklyPlanLoading, publishedWorkItems, hasPublishedWeeklyPlan, weekIdentity?.weekKey]);
+
   const portalLoading = loading || (Boolean(student?.id && student?.parent_id) && publishedWeeklyPlanLoading);
   const studentChores = useStudentChores({
     student,
@@ -341,14 +364,11 @@ const StudentPortal = () => {
     if (!slug) return;
     let unsubscribeSubjects = () => {};
     let unsubscribeLegacySubjects = () => {};
-    let unsubscribeSubmissions = () => {};
     const cleanupStudentListeners = () => {
       unsubscribeSubjects();
       unsubscribeLegacySubjects();
-      unsubscribeSubmissions();
       unsubscribeSubjects = () => {};
       unsubscribeLegacySubjects = () => {};
-      unsubscribeSubmissions = () => {};
     };
     const studentQuery = query(collection(db, 'students'), where('slug', '==', slug), limit(1));
     const unsubscribeStudent = onSnapshot(studentQuery, (snapshot) => {
@@ -379,27 +399,29 @@ const StudentPortal = () => {
         }
       }, () => setLoading(false));
 
-      const { weekStart } = getCurrentWeekRange(new Date(), studentData);
-      const submissionsQuery = query(collection(db, 'submissions'),
-        where('student_id', '==', studentData.id), where('timestamp', '>=', weekStart), orderBy('timestamp', 'desc'));
-      unsubscribeSubmissions = onSnapshot(submissionsQuery, (snap) => {
-        const nextCompletedBlocks = {};
-        snap.docs.forEach((submissionDoc) => {
-          const submission = submissionDoc.data();
-          if (!submission.subject_id || !Number.isInteger(submission.block_index)) return;
-          if (!nextCompletedBlocks[submission.subject_id]) {
-            nextCompletedBlocks[submission.subject_id] = [];
-          }
-          nextCompletedBlocks[submission.subject_id].push(submission.block_index);
-        });
-        setCompletedBlocks(nextCompletedBlocks);
-      });
     }, () => { setError('Student not found'); setLoading(false); });
     return () => {
       unsubscribeStudent();
       cleanupStudentListeners();
     };
   }, [slug, db]);
+
+  useEffect(() => {
+    setCompletedBlocks({});
+    if (!student?.id || !weekIdentity?.weekStart) return undefined;
+    const submissionsQuery = query(collection(db, 'submissions'),
+      where('student_id', '==', student.id), where('timestamp', '>=', weekIdentity.weekStart),
+      where('timestamp', '<=', weekIdentity.weekEnd), orderBy('timestamp', 'desc'));
+    return onSnapshot(submissionsQuery, (snapshot) => {
+      const next = {};
+      snapshot.docs.forEach((submissionDoc) => {
+        const submission = submissionDoc.data();
+        if (!submission.subject_id || !Number.isInteger(submission.block_index)) return;
+        (next[submission.subject_id] ||= []).push(submission.block_index);
+      });
+      setCompletedBlocks(next);
+    });
+  }, [db, student?.id, weekIdentity?.weekStart, weekIdentity?.weekEnd]);
 
   useEffect(() => {
     if (!student?.id) return undefined;
@@ -785,7 +807,7 @@ const StudentPortal = () => {
   };
 
   useEffect(() => {
-    if (!student?.id || !staleTimerSubjectIdsKey) return;
+    if (!student?.id || publishedWeeklyPlanLoading || publishedWeeklyPlanError || !staleTimerSubjectIdsKey) return;
 
     staleTimerSubjectIds.forEach((subjectId) => {
       if (timerRemovalInFlightRef.current[subjectId]) return;
@@ -801,7 +823,7 @@ const StudentPortal = () => {
         console.warn('Unable to delete stale timer session:', cleanupError);
       });
     });
-  }, [staleTimerSubjectIdsKey, student?.id]);
+  }, [staleTimerSubjectIdsKey, student?.id, publishedWeeklyPlanLoading, publishedWeeklyPlanError]);
 
   const setSubmissionLock = (subjectId, blockIndex) => { submissionLocksRef.current[`${subjectId}_${blockIndex}`] = true; };
   const clearSubmissionLock = (subjectId, blockIndex) => { delete submissionLocksRef.current[`${subjectId}_${blockIndex}`]; };
@@ -922,7 +944,7 @@ const StudentPortal = () => {
     if (!subject || blockIndex === null || blockIndex === undefined) return;
     const subjectPolicy = getSubjectPolicy(subject, { blockIndex });
     if (!subjectPolicy.canSubmitBlock.allowed) {
-      setError(subjectPolicy.canSubmitBlock.blockedReason?.message || 'Unable to submit this block right now.');
+      setError(subjectPolicy?.canSubmitBlock.blockedReason?.message || 'This week changed. Review the current blocks before completing work.');
       return;
     }
     if (subject.require_timer) {
@@ -930,6 +952,10 @@ const StudentPortal = () => {
       setActiveTimers(prev => ({ ...prev, [subject.id]: { ...timer, isFinished: true, isRunning: false } }));
     }
 
+    completionIdentityRef.current = { studentId: student.id, weekKey: weekIdentity?.weekKey,
+      blockId: getLauncherWorkItemForSubject(subject, blockIndex)?.id || '',
+      requirements: JSON.stringify([subject.require_timer, subject.require_input, subject.block_length, subject.custom_fields]),
+    };
     setSubmissionLock(subject.id, blockIndex);
     setSelectedSubject(subject);
     setSelectedBlockIndex(blockIndex);
@@ -965,7 +991,7 @@ const StudentPortal = () => {
       return;
     }
 
-    if (activeSubjectTimer && activeSubjectTimer.blockIndex !== compatibilityBlockIndex) {
+    if (workItem.requireTimer && activeSubjectTimer && activeSubjectTimer.blockIndex !== compatibilityBlockIndex) {
       setError(`Timer is currently active for Block ${activeSubjectTimer.blockIndex + 1}. Finish or reset that timer first.`);
       return;
     }
@@ -986,11 +1012,28 @@ const StudentPortal = () => {
     openCompletionModal(compatibilitySubject, compatibilityBlockIndex);
   };
 
+  const validateLiveCompletion = (subject, blockIndex) => {
+    const live = liveCompletionContextRef.current;
+    const captured = completionIdentityRef.current;
+    const currentKey = getWeekKey(getCurrentWeekRange(new Date(), live?.weekConfig).weekStart, live?.weekConfig);
+    if (!live || live.loading || live.error || captured?.studentId !== live.student?.id
+      || captured?.weekKey !== currentKey || captured.weekKey !== live.weekKey) return null;
+    if (!live.authority) return { subject, policy: live.getSubjectPolicy(subject, { blockIndex, ignoreSubmissionLock: true }) };
+    const workItem = live.items.find((item) => item.id === captured.blockId
+      && item.legacySubjectId === subject.id && item.compatibilityBlockIndex === blockIndex);
+    const liveSubject = workItem?.compatibilitySubject;
+    const requirements = liveSubject ? JSON.stringify([liveSubject.require_timer, liveSubject.require_input, liveSubject.block_length, liveSubject.custom_fields]) : '';
+    if (requirements !== captured.requirements) return null;
+    return workItem ? { subject: workItem.compatibilitySubject,
+      policy: live.getWorkItemPolicy(workItem, { ignoreSubmissionLock: true }) } : null;
+  };
+
   const submitBlock = async (subject, blockIndex, summary) => {
     stopAlarm();
-    const subjectPolicy = getSubjectPolicy(subject, { blockIndex, ignoreSubmissionLock: true });
-    if (!subjectPolicy.canSubmitBlock.allowed) {
-      setError(subjectPolicy.canSubmitBlock.blockedReason?.message || 'Unable to submit this block right now.');
+    const current = validateLiveCompletion(subject, blockIndex);
+    const subjectPolicy = current?.policy;
+    if (!subjectPolicy?.canSubmitBlock.allowed) {
+      setError(subjectPolicy?.canSubmitBlock.blockedReason?.message || 'This week changed. Review the current blocks before completing work.');
       clearSubmissionLock(subject.id, blockIndex);
       return;
     }
@@ -1009,6 +1052,9 @@ const StudentPortal = () => {
         setSummaryText(''); setSelectedResources([]); resetCustomFieldResponses();
         return;
       }
+      const liveSelection = validateLiveCompletion(subject, blockIndex);
+      if (!liveSelection?.policy.canSubmitBlock.allowed) throw new Error('The published week changed before submission.');
+      subject = liveSelection.subject;
       await addDoc(collection(db, 'submissions'), {
         student_id: student.id, parent_id: student.parent_id,
         subject_name: getSubmissionSubjectName(subject), subject_id: subject.id,
@@ -1019,12 +1065,15 @@ const StudentPortal = () => {
         created_at: serverTimestamp()
       });
 
-      try {
-        await removeTimer(subject.id);
-      } catch (timerCleanupError) {
-        console.warn('Block was submitted, but the remote timer could not be cleared:', timerCleanupError);
+      // A non-timed block can finish while another block's timer keeps running.
+      if (currentActiveTimers[subject.id]?.blockIndex === blockIndex) {
+        try {
+          await removeTimer(subject.id);
+        } catch (timerCleanupError) {
+          console.warn('Block was submitted, but the remote timer could not be cleared:', timerCleanupError);
+        }
+        setActiveTimers(prev => { const u = { ...prev }; delete u[subject.id]; return u; });
       }
-      setActiveTimers(prev => { const u = { ...prev }; delete u[subject.id]; return u; });
       setSelectedSubject(null); setSelectedBlockIndex(null);
       setSummaryText(''); setSelectedResources([]); resetCustomFieldResponses();
       clearSubmissionLock(subject.id, blockIndex);

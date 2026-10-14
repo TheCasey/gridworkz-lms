@@ -1,5 +1,5 @@
 import { buildWeeklyPlanDraft, buildPublishedWeeklyPlan } from '../src/utils/weeklyPlanUtils.js';
-import { adoptLegacyWeeklyBlockInstances, buildStudentCosmeticStateId } from '../src/utils/productDirectionContracts.js';
+import { adoptLegacyWeeklyBlockInstances, buildStableWeeklyBlockId, buildStudentCosmeticStateId } from '../src/utils/productDirectionContracts.js';
 import { buildPointLedgerEntryId, POINT_SOURCE_TYPES } from '../functions/src/pointLedgerUtils.js';
 
 export const DIRECTION_PROJECT_ID = 'demo-gridworkz-direction';
@@ -7,7 +7,7 @@ export const DIRECTION_FIXTURE_PASSWORD = 'Direction-emulator-only-2026!';
 // Include generated effects even when a scenario starts with no documents there.
 export const DIRECTION_RESET_COLLECTIONS = Object.freeze([
   'parents', 'accountEntitlements', 'students', 'subjects', 'weeklyPlans', 'weeklyPlanDrafts',
-  'studentDefaultWeeks', 'submissions', 'timerSessions', 'weeklyReports', 'weeklyReportAmendments',
+  'studentDefaultWeeks', 'weeklyPlanningReceipts', 'submissions', 'timerSessions', 'weeklyReports', 'weeklyReportAmendments',
   'routineTemplates', 'routineCompletions', 'routineDaySnapshots', 'routineDayPointers', 'productDirectionMigrations', 'choreSettings', 'choreDefinitions',
   'choreClaims', 'choreCompletions', 'allowancePeriods', 'rewardSettings', 'rewardCatalogItems',
   'rewardRedemptions', 'pointLedgerEntries', 'studentPointWallets', 'studentCosmeticStates',
@@ -61,7 +61,10 @@ export const buildDirectionFixture = ({ scenario = 'free', referenceDate = new D
   }
   for (const [index, student] of students.entries()) {
     const draft = buildWeeklyPlanDraft({ parentId, studentId: student.id, subjects, referenceDate, weekConfig: settings });
-    draft.blocks = adoptLegacyWeeklyBlockInstances(draft);
+    draft.blocks = adoptLegacyWeeklyBlockInstances(draft).map((block) => {
+      const instanceKey = `fixture:${block.legacy_subject_id}:${block.legacy_block_index}`;
+      return { ...block, instance_key: instanceKey, id: buildStableWeeklyBlockId({ assignmentId: block.assignment_id, instanceKey }) };
+    });
     const published = { ...buildPublishedWeeklyPlan(draft), schema_version: 1, revision: 1, published_at: referenceDate };
     if (published.blocks.length) {
       documents.push({ collection: 'weeklyPlans', id: draft.id, data: published });

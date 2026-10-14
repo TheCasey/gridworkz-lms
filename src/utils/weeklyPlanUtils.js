@@ -1,8 +1,12 @@
+import { nanoid } from 'nanoid';
+import { buildStableWeeklyBlockId } from '../../functions/src/weeklyPlanningFoundation.js';
 import { WeeklyPlanStatuses } from '../constants/schema.js';
 import {
   buildLegacySubjectAssignmentSeed,
   buildLegacySubjectWeeklyBlockSeeds,
   getSubjectBlockLengthMinutes,
+  getSubjectCurriculumBlocks,
+  getSubjectDefaultBlockQuantities,
   getStudentSubjectsFromLegacyRecords,
 } from './planningCompatibilityUtils.js';
 import { getWeekKey, getWeekRangeForDate } from './weekUtils.js';
@@ -61,7 +65,7 @@ export const sortSubjectsForWeeklyPlanning = (subjects) => (
 
 export const getActiveStudentSubjectsForWeek = ({ subjects, studentId }) => (
   sortSubjectsForWeeklyPlanning(
-    getStudentSubjectsFromLegacyRecords(subjects, studentId).filter((subject) => subject?.is_active !== false)
+    getStudentSubjectsFromLegacyRecords(subjects, studentId).filter((subject) => subject?.is_active !== false && subject?.is_archived !== true && subject?.archived !== true && subject?.status !== 'archived' && subject?.archived_at == null)
   )
 );
 
@@ -112,23 +116,69 @@ export const deriveWeeklyPlanSourceAssignments = ({ subjects, studentId }) => (
   })
 );
 
-export const deriveWeeklyPlanBlocks = ({ subjects, studentId }) => (
-  getActiveStudentSubjectsForWeek({ subjects, studentId }).flatMap((subject) => {
-    const assignmentId = buildLegacyAssignmentId({
-      studentId,
-      legacySubjectId: subject.id,
-    });
+// Defaults remain a historical map; generation only visits currently available definitions.
+export const buildStudentDefaultQuantities = ({ subjects = [], defaults = null }) => (
+  Object.fromEntries(subjects.map((subject) => [subject.id, Object.fromEntries(
+    getSubjectCurriculumBlocks(subject).filter((block) => block.is_active !== false).map((block) => [
+      block.id,
+      Object.hasOwn(defaults?.default_block_quantities?.[subject.id] || {}, block.id)
+        ? defaults.default_block_quantities[subject.id][block.id]
+        : getSubjectDefaultBlockQuantities(subject)[block.id] || 0,
+    ])
+  )]))
+);
 
-    return buildLegacySubjectWeeklyBlockSeeds({ subject, studentId }).map((blockSeed) => ({
-      ...blockSeed,
-      id: buildWeeklyPlanBlockId({
-        assignmentId,
-        legacyBlockIndex: blockSeed.legacy_block_index,
-      }),
-      assignment_id: assignmentId,
-    }));
+export const deriveWeeklyPlanBlocks = ({ subjects, studentId, quantitiesBySubjectId = null, previousBlocks = [], identityHistory = [], allocateInstanceKey = nanoid }) => (
+  getActiveStudentSubjectsForWeek({ subjects, studentId }).flatMap((subject) => {
+    const assignmentId = buildLegacyAssignmentId({ studentId, legacySubjectId: subject.id });
+    const retained = previousBlocks.filter((block) => block.legacy_subject_id === subject.id);
+    const used = new Set();
+    let nextIndex = [...retained, ...identityHistory].filter((block) => block.legacy_subject_id === subject.id)
+      .reduce((maximum, block) => Math.max(maximum, block.legacy_block_index ?? -1), -1) + 1;
+    return buildLegacySubjectWeeklyBlockSeeds({
+      subject, studentId,
+      defaultQuantities: quantitiesBySubjectId?.[subject.id],
+    }).map((seed) => {
+      const existing = retained.find((block) => !used.has(block.id)
+        && (block.curriculum_block_id === seed.curriculum_block_id
+          || (!block.curriculum_block_id && block.legacy_block_index === seed.curriculum_block_source_index)));
+      if (existing) {
+        used.add(existing.id);
+        return { ...clonePlanValue(existing), instance_key: existing.instance_key ?? `legacy:${existing.id}` };
+      }
+      const instanceKey = allocateInstanceKey();
+      return {
+        ...seed,
+        id: buildStableWeeklyBlockId({ assignmentId, instanceKey }),
+        assignment_id: assignmentId,
+        instance_key: instanceKey,
+        legacy_block_index: nextIndex++,
+      };
+    });
   })
 );
+
+const canonicalPlanValue = (value) => Array.isArray(value) ? value.map(canonicalPlanValue)
+  : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalPlanValue(value[key])])) : value;
+
+export const weeklyPlanValueSignature = (value) => JSON.stringify(canonicalPlanValue(value));
+
+export const weeklyPlanContentSignature = (plan) => weeklyPlanValueSignature({
+  blocks: clonePlanArray(plan?.blocks).map(({ color: _color, ...block }) => block),
+  weekly_exceptions: plan?.weekly_exceptions || [],
+  parent_notes: plan?.parent_notes || '',
+});
+
+export const buildDefaultWeekQuantitiesWrite = ({ currentDefaults = null, subjects = [], quantities = {} }) => {
+  const next = clonePlanValue(currentDefaults?.default_block_quantities || {});
+  subjects.forEach((subject) => {
+    next[subject.id] = { ...(next[subject.id] || {}) };
+    getSubjectCurriculumBlocks(subject).filter((block) => block.is_active !== false).forEach((block) => {
+      next[subject.id][block.id] = Math.max(0, Number.parseInt(quantities?.[subject.id]?.[block.id], 10) || 0);
+    });
+  });
+  return next;
+};
 
 export const buildWeeklyPlanDraft = ({
   parentId,
@@ -137,6 +187,7 @@ export const buildWeeklyPlanDraft = ({
   referenceDate,
   weekConfig = {},
   existingPlan = null,
+  defaults = null,
 }) => {
   const identity = buildWeeklyPlanIdentity({
     parentId,
@@ -145,7 +196,7 @@ export const buildWeeklyPlanDraft = ({
     weekConfig,
   });
   const assignments = deriveWeeklyPlanSourceAssignments({ subjects, studentId });
-  const blocks = deriveWeeklyPlanBlocks({ subjects, studentId });
+  const blocks = deriveWeeklyPlanBlocks({ subjects, studentId, quantitiesBySubjectId: buildStudentDefaultQuantities({ subjects: getActiveStudentSubjectsForWeek({ subjects, studentId }), defaults }) });
 
   return {
     id: identity.planId,

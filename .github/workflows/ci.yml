@@ -45,6 +45,9 @@ jobs:
       - name: Check routine reward policies and entitlement parity
         run: npm run check:routine-reward-helpers && npm run check:routine-entitlements && npm run check:routine-view-model
 
+      - name: Check weekly planning calendars, identities and authority readers
+        run: npm run check:weekly-planning-helpers
+
       - name: Check product direction contracts
         run: npm run check:direction-contracts
 

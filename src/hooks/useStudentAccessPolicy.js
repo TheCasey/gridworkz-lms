@@ -10,6 +10,7 @@ export const StudentAccessPolicyReasonCodes = Object.freeze({
   SUBMISSION_IN_PROGRESS: 'submission_in_progress',
   BLOCK_ALREADY_COMPLETED: 'block_already_completed',
   TIMER_REQUIRED: 'timer_required',
+  TIMER_NOT_REQUIRED: 'timer_not_required',
   TIMER_ASSIGNED_TO_OTHER_BLOCK: 'timer_assigned_to_other_block',
   TIMER_IN_PROGRESS: 'timer_in_progress',
 });
@@ -210,6 +211,14 @@ export const useStudentAccessPolicy = ({
       canStartTimer = extendDecisionMeta(subjectAvailability, {
         ...subjectMeta,
         candidateBlockIndex,
+      });
+    } else if (!subject.require_timer) {
+      canStartTimer = denyDecision({
+        code: StudentAccessPolicyReasonCodes.TIMER_NOT_REQUIRED,
+        message: 'This block does not require a timer.',
+        resolutionType: 'complete_block',
+        resolutionLabel: 'Complete the block when you are ready.',
+        meta: { ...subjectMeta, candidateBlockIndex },
       });
     } else if (subjectTimer) {
       canStartTimer = denyDecision({

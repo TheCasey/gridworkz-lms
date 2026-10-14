@@ -1,11 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  doc,
-  getFirestore,
-  serverTimestamp,
-  updateDoc,
-} from 'firebase/firestore';
 import {
   AlertCircle,
   CalendarDays,
@@ -20,11 +14,8 @@ import {
   Send,
   Star,
 } from 'lucide-react';
-import { app } from '../../firebase/firebaseConfig';
 import useWeeklyPlanRecord from '../../hooks/useWeeklyPlanRecord';
 import {
-  WeeklyBlockCategories,
-  WeeklyBlockCompletionModes,
   WeeklyPlanStatuses,
 } from '../../constants/schema';
 import {
@@ -33,14 +24,16 @@ import {
   getWeekRangeByOffset,
 } from '../../utils/weekUtils';
 import {
-  getSubjectBlockCount,
   getSubjectBlockLengthMinutes,
   getSubjectCurriculumBlocks,
   getSubjectDefaultBlockQuantities,
 } from '../../utils/planningCompatibilityUtils';
 import {
-  buildLegacyAssignmentId,
-  buildWeeklyPlanBlockId,
+  buildStudentDefaultQuantities,
+  buildDefaultWeekQuantitiesWrite,
+  deriveWeeklyPlanBlocks,
+  weeklyPlanContentSignature,
+  weeklyPlanValueSignature,
 } from '../../utils/weeklyPlanUtils';
 
 const STATUS_TONES = {
@@ -130,7 +123,7 @@ const buildStatusMeta = ({ weeklyPlan, hasUnsavedEdits }) => {
       ...STATUS_TONES.preview,
       detail: hasUnsavedEdits
         ? 'Local edits are ready to save or publish.'
-        : 'Generated from current subject assignments but not saved yet.',
+        : 'Generated from this student’s default week; not saved yet.',
     };
   }
 
@@ -147,7 +140,7 @@ const buildStatusMeta = ({ weeklyPlan, hasUnsavedEdits }) => {
   if (weeklyPlan.status === WeeklyPlanStatuses.ARCHIVED) {
     return {
       ...STATUS_TONES.archived,
-      detail: 'Archived weekly plans are read-only in this phase.',
+      detail: 'Archived weekly plans are read-only.',
     };
   }
 
@@ -182,13 +175,6 @@ const toNonNegativeInt = (value, fallback = 0) => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 };
 
-const getBlockCategory = (block) => {
-  if (block?.type === 'project') return WeeklyBlockCategories.PROJECT_WORK;
-  if (block?.type === 'test') return WeeklyBlockCategories.ASSESSMENT;
-  if (block?.type === 'parent_led') return WeeklyBlockCategories.LESSON;
-  return WeeklyBlockCategories.PRACTICE;
-};
-
 const getBlockTypeLabel = (block) => {
   if (block?.type === 'project') return 'PROJ';
   if (block?.type === 'test') return 'TEST';
@@ -207,12 +193,6 @@ const getStudentSubjects = (subjects, studentId) => (
   (Array.isArray(subjects) ? subjects : []).filter((subject) => getSubjectStudentIds(subject).includes(studentId))
 );
 
-const getStudentDefaultHours = (subjects, studentId) => (
-  getStudentSubjects(subjects, studentId).reduce((minutes, subject) => {
-    return minutes + getSubjectBlockCount(subject) * getSubjectBlockLengthMinutes(subject);
-  }, 0) / 60
-);
-
 const buildDefaultQuantitiesForSubjects = (subjects = []) => (
   Object.fromEntries((Array.isArray(subjects) ? subjects : []).map((subject) => [
     subject.id,
@@ -229,7 +209,7 @@ const deriveQuantitiesFromBlocks = ({ blocks = [], subjects = [] } = {}) => {
 
   subjects.forEach((subject) => {
     quantities[subject.id] = Object.fromEntries(
-      getSubjectCurriculumBlocks(subject).map((block) => [block.id, 0])
+      getSubjectCurriculumBlocks(subject).filter((block) => block.is_active !== false).map((block) => [block.id, 0])
     );
   });
 
@@ -251,73 +231,12 @@ const deriveQuantitiesFromBlocks = ({ blocks = [], subjects = [] } = {}) => {
   return quantities;
 };
 
-const buildPlanBlocksFromQuantities = ({ subjects = [], studentId = '', quantitiesBySubjectId = {} } = {}) => (
-  subjects.flatMap((subject) => {
-    const assignmentId = buildLegacyAssignmentId({
-      studentId,
-      legacySubjectId: subject.id,
-    });
-    let subjectBlockIndex = 0;
-
-    return getSubjectCurriculumBlocks(subject).flatMap((block, blockDefinitionIndex) => {
-      const quantity = toNonNegativeInt(quantitiesBySubjectId?.[subject.id]?.[block.id]);
-
-      return Array.from({ length: quantity }, (_, occurrenceIndex) => {
-        const legacyBlockIndex = subjectBlockIndex;
-        subjectBlockIndex += 1;
-        const customFields = Array.isArray(block.custom_fields) && block.custom_fields.length
-          ? block.custom_fields
-          : (Array.isArray(subject.custom_fields) ? subject.custom_fields : []);
-        const requireInput = typeof block.require_input === 'boolean'
-          ? block.require_input
-          : subject.require_input !== false;
-        const requireTimer = typeof block.require_timer === 'boolean'
-          ? block.require_timer
-          : Boolean(subject.require_timer);
-        const blockResources = Array.isArray(block.resources) && block.resources.length
-          ? block.resources
-          : (Array.isArray(subject.resources) ? subject.resources : []);
-
-        return {
-          id: buildWeeklyPlanBlockId({
-            assignmentId,
-            legacyBlockIndex,
-          }),
-          assignment_id: assignmentId,
-          student_id: studentId,
-          title: block.title || subject.title || `Block ${legacyBlockIndex + 1}`,
-          color: subject.color || '#3B82F6',
-          planned_duration_minutes: getSubjectBlockLengthMinutes(subject),
-          category: getBlockCategory(block),
-          completion_mode: requireInput || customFields.length > 0
-            ? WeeklyBlockCompletionModes.HYBRID
-            : WeeklyBlockCompletionModes.TIME_BOXED,
-          require_timer: requireTimer,
-          require_input: requireInput,
-          instruction: block.instruction || '',
-          resources: blockResources,
-          custom_fields: customFields,
-          legacy_subject_id: subject.id,
-          legacy_subject_title: subject.title || '',
-          legacy_block_index: legacyBlockIndex,
-          curriculum_block_id: block.id,
-          curriculum_block_title: block.title,
-          curriculum_block_type: block.type,
-          curriculum_block_source_index: blockDefinitionIndex,
-          curriculum_block_occurrence: occurrenceIndex,
-        };
-      });
-    });
-  })
-);
-
 const WeeklyPlanReviewPanel = ({
   activeSubjects = [],
   currentUser = null,
   parentSettings = {},
   students = [],
 }) => {
-  const db = getFirestore(app);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
   const [editableBlocks, setEditableBlocks] = useState([]);
@@ -325,7 +244,10 @@ const WeeklyPlanReviewPanel = ({
   const [expandedSubjectIds, setExpandedSubjectIds] = useState(() => new Set());
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false);
   const [feedback, setFeedback] = useState(null);
-  const [savingDefaultWeek, setSavingDefaultWeek] = useState(false);
+  const baseline = useRef({ draft: 0, published: 0, defaults: 0 });
+  const localIdentityHistory = useRef([]);
+  const editorScope = useRef('');
+  const editorCandidate = useRef(null);
 
   useEffect(() => {
     if (!students.length) {
@@ -346,6 +268,7 @@ const WeeklyPlanReviewPanel = ({
       parentSettings?.week_reset_day,
       parentSettings?.week_reset_hour,
       parentSettings?.week_reset_minute,
+      parentSettings?.timezone,
       selectedWeekOffset,
     ]
   );
@@ -355,10 +278,17 @@ const WeeklyPlanReviewPanel = ({
       parentSettings?.week_reset_day,
       parentSettings?.week_reset_hour,
       parentSettings?.week_reset_minute,
+      parentSettings?.timezone,
     ]
   );
   const {
     buildDraftPreview,
+    clearError,
+    draftPlan,
+    studentDefaultWeek,
+    saveDefaultWeek,
+    savingDefaultWeek,
+    planId,
     error,
     loading,
     publishWeeklyPlan,
@@ -387,10 +317,14 @@ const WeeklyPlanReviewPanel = ({
     () => getStudentSubjects(activeSubjects, selectedStudentId),
     [activeSubjects, selectedStudentId]
   );
-  const sourcePlan = weeklyPlan || generatedPlanPreview;
+  const sourcePlan = weeklyPlan?.status === WeeklyPlanStatuses.ARCHIVED ? weeklyPlan : draftPlan || weeklyPlan || generatedPlanPreview;
+  const defaultQuantities = useMemo(() => buildStudentDefaultQuantities({ subjects: selectedStudentSubjects, defaults: studentDefaultWeek }), [selectedStudentSubjects, studentDefaultWeek]);
+  const differsFromDefaults = weeklyPlanValueSignature(blockQuantities) !== weeklyPlanValueSignature(defaultQuantities);
+  const differsFromPublished = weeklyPlan?.status !== WeeklyPlanStatuses.PUBLISHED || weeklyPlanContentSignature({ ...sourcePlan, blocks: editableBlocks, parent_notes: '' }) !== weeklyPlanContentSignature({ ...weeklyPlan, parent_notes: '' });
+  const savedDraftDiffersFromPublished = Boolean(draftPlan) && (weeklyPlan?.status !== WeeklyPlanStatuses.PUBLISHED || weeklyPlanContentSignature({ ...draftPlan, parent_notes: '' }) !== weeklyPlanContentSignature({ ...weeklyPlan, parent_notes: '' }));
   const planStatusMeta = useMemo(
-    () => buildStatusMeta({ weeklyPlan, hasUnsavedEdits }),
-    [hasUnsavedEdits, weeklyPlan]
+    () => buildStatusMeta({ weeklyPlan: weeklyPlan || draftPlan, hasUnsavedEdits }),
+    [hasUnsavedEdits, weeklyPlan, draftPlan]
   );
   const selectedWeekOption = useMemo(
     () => weekPickerOptions.find((option) => option.value === selectedWeekOffset) || null,
@@ -409,46 +343,52 @@ const WeeklyPlanReviewPanel = ({
     (total, block) => total + Number(block?.planned_duration_minutes || 0),
     0
   );
-  const planUpdatedAt = formatPlanTimestamp(weeklyPlan?.updated_at);
+  const planUpdatedAt = formatPlanTimestamp(draftPlan?.updated_at || weeklyPlan?.updated_at);
   const planPublishedAt = formatPlanTimestamp(weeklyPlan?.published_at);
   const isArchived = weeklyPlan?.status === WeeklyPlanStatuses.ARCHIVED;
-  const isPublished = weeklyPlan?.status === WeeklyPlanStatuses.PUBLISHED;
-  const isPersistedPlan = Boolean(weeklyPlan);
-  const saveButtonLabel = isPublished ? 'Save as Draft' : 'Save Draft';
-  const publishButtonLabel = isPublished ? 'Publish Updates' : 'Publish Week';
+  const isPersistedPlan = Boolean(weeklyPlan || draftPlan);
+  const busy = loading || savingPlan || publishingPlan || savingDefaultWeek;
+  const conflict = error?.code === 'functions/aborted' || error?.code === 'aborted';
+  const hasRemoteChanges = !loading && (baseline.current.draft !== (draftPlan?.revision || 0) || baseline.current.published !== (weeklyPlan?.revision || 0) || baseline.current.defaults !== (studentDefaultWeek?.revision || 0));
   const blocksAreEditable = Boolean(sourcePlan) && !isArchived;
+  const hasUnavailableBlocks = editableBlocks.some((block) => !selectedStudentSubjects.some((subject) => subject.id === block.legacy_subject_id && getSubjectCurriculumBlocks(subject).some((definition, index) => definition.is_active !== false && (definition.id === block.curriculum_block_id || (!block.curriculum_block_id && index === block.legacy_block_index)))));
   const hasSubjectCountVariance = selectedStudentSubjects.some((subject) => {
     const assignedCount = getSubjectCurriculumBlocks(subject).reduce((total, block) => (
       total + toNonNegativeInt(blockQuantities[subject.id]?.[block.id])
     ), 0);
-    const target = getSubjectBlockCount(subject);
+    const target = Object.values(defaultQuantities[subject.id] || {}).reduce((total, quantity) => total + toNonNegativeInt(quantity), 0);
     return assignedCount !== target;
   });
 
   useEffect(() => {
+    if (busy || !sourcePlan) return;
+    const scopeChanged = editorScope.current !== planId;
+    if (!scopeChanged && (hasUnsavedEdits || error)) return;
+    editorScope.current = planId;
+    editorCandidate.current = sourcePlan;
+    baseline.current = { draft: draftPlan?.revision || 0, published: weeklyPlan?.revision || 0, defaults: studentDefaultWeek?.revision || 0 };
+    localIdentityHistory.current = [
+      ...(sourcePlan.blocks || []),
+      ...(weeklyPlan?.blocks || []),
+      ...Object.entries(draftPlan?.block_identity_history || {}).map(([id, identity]) => ({ ...identity, id })),
+    ];
+    setEditableBlocks(normalizeEditableBlocks(sourcePlan.blocks).map((block) => ({ ...block, instance_key: block.instance_key ?? `legacy:${block.id}` })));
+    setBlockQuantities(deriveQuantitiesFromBlocks({ blocks: sourcePlan.blocks, subjects: selectedStudentSubjects }));
     setHasUnsavedEdits(false);
-    setFeedback(null);
-  }, [selectedStudentId, selectedWeekOffset]);
+    if (scopeChanged) setFeedback(null);
+  }, [busy, error, sourcePlan, selectedStudentSubjects, hasUnsavedEdits, planId, draftPlan, weeklyPlan, studentDefaultWeek]);
 
-  useEffect(() => {
-    if (!sourcePlan) {
-      if (!hasUnsavedEdits) {
-        setEditableBlocks([]);
-        setBlockQuantities(buildDefaultQuantitiesForSubjects(selectedStudentSubjects));
-      }
-      return;
-    }
-
-    if (hasUnsavedEdits) {
-      return;
-    }
-
-    setEditableBlocks(clonePlanBlocks(sourcePlan.blocks));
-    setBlockQuantities(deriveQuantitiesFromBlocks({
-      blocks: sourcePlan.blocks,
-      subjects: selectedStudentSubjects,
-    }));
-  }, [hasUnsavedEdits, selectedStudentSubjects, sourcePlan]);
+  const reloadAndReview = () => {
+    clearError();
+    setHasUnsavedEdits(false);
+    setFeedback({ tone: 'info', text: 'Reloaded the latest saved week. Review it before saving or publishing.' });
+    editorScope.current = planId;
+    editorCandidate.current = sourcePlan;
+    baseline.current = { draft: draftPlan?.revision || 0, published: weeklyPlan?.revision || 0, defaults: studentDefaultWeek?.revision || 0 };
+    localIdentityHistory.current = [...(sourcePlan?.blocks || []), ...(weeklyPlan?.blocks || []), ...Object.entries(draftPlan?.block_identity_history || {}).map(([id, identity]) => ({ ...identity, id }))];
+    setEditableBlocks(normalizeEditableBlocks(sourcePlan?.blocks).map((block) => ({ ...block, instance_key: block.instance_key ?? `legacy:${block.id}` })));
+    setBlockQuantities(deriveQuantitiesFromBlocks({ blocks: sourcePlan?.blocks, subjects: selectedStudentSubjects }));
+  };
 
   useEffect(() => {
     setExpandedSubjectIds((currentValue) => {
@@ -462,32 +402,23 @@ const WeeklyPlanReviewPanel = ({
     });
   }, [selectedStudentSubjects]);
 
-  const handleRefreshFromSubjects = () => {
-    const nextQuantities = buildDefaultQuantitiesForSubjects(selectedStudentSubjects);
-    const refreshedBlocks = buildPlanBlocksFromQuantities({
-      subjects: selectedStudentSubjects,
-      studentId: selectedStudentId,
-      quantitiesBySubjectId: nextQuantities,
+  const applyQuantities = (nextQuantities) => {
+    if (!blocksAreEditable || busy) return;
+    const nextBlocks = deriveWeeklyPlanBlocks({
+      subjects: selectedStudentSubjects, studentId: selectedStudentId,
+      quantitiesBySubjectId: nextQuantities, previousBlocks: editableBlocks,
+      identityHistory: localIdentityHistory.current,
     });
-
+    localIdentityHistory.current = [...localIdentityHistory.current, ...nextBlocks];
     setBlockQuantities(nextQuantities);
-    setEditableBlocks(refreshedBlocks);
+    setEditableBlocks(nextBlocks);
     setHasUnsavedEdits(true);
-    setFeedback({
-      tone: 'info',
-      text: 'Week reset to the current subject defaults. Save draft or publish to keep the regenerated plan.',
-    });
+    setFeedback(null);
   };
 
-  const applyQuantities = (nextQuantities, { markUnsaved = true } = {}) => {
-    setBlockQuantities(nextQuantities);
-    setEditableBlocks(buildPlanBlocksFromQuantities({
-      subjects: selectedStudentSubjects,
-      studentId: selectedStudentId,
-      quantitiesBySubjectId: nextQuantities,
-    }));
-    setHasUnsavedEdits(markUnsaved);
-    setFeedback(null);
+  const handleRefreshFromSubjects = () => {
+    applyQuantities(defaultQuantities);
+    setFeedback({ tone: 'info', text: 'Reset to this student’s default week. Save Draft or Publish This Week to keep these selections.' });
   };
 
   const handleBlockQuantityChange = ({ subjectId, blockId, delta }) => {
@@ -506,8 +437,8 @@ const WeeklyPlanReviewPanel = ({
     const currentSubjectQuantities = blockQuantities[subject.id] || {};
     const hasAnyEnabled = Object.values(currentSubjectQuantities).some((quantity) => toNonNegativeInt(quantity) > 0);
     const nextSubjectQuantities = hasAnyEnabled
-      ? Object.fromEntries(getSubjectCurriculumBlocks(subject).map((block) => [block.id, 0]))
-      : getSubjectDefaultBlockQuantities(subject);
+      ? Object.fromEntries(getSubjectCurriculumBlocks(subject).filter((block) => block.is_active !== false).map((block) => [block.id, 0]))
+      : defaultQuantities[subject.id] || getSubjectDefaultBlockQuantities(subject);
 
     applyQuantities({
       ...blockQuantities,
@@ -516,45 +447,12 @@ const WeeklyPlanReviewPanel = ({
   };
 
   const handleSaveAsDefaultWeek = async () => {
-    if (!currentUser?.uid || !selectedStudentSubjects.length) return;
-
-    setSavingDefaultWeek(true);
-    try {
-      await Promise.all(selectedStudentSubjects.map((subject) => {
-        const nextSubjectQuantities = Object.fromEntries(
-          getSubjectCurriculumBlocks(subject).map((block) => [
-            block.id,
-            toNonNegativeInt(blockQuantities[subject.id]?.[block.id]),
-          ])
-        );
-        const nextCurriculumBlocks = getSubjectCurriculumBlocks(subject).map((block) => ({
-          ...block,
-          default_quantity: toNonNegativeInt(nextSubjectQuantities[block.id]),
-        }));
-        const nextBlockCount = Object.values(nextSubjectQuantities).reduce((total, quantity) => total + toNonNegativeInt(quantity), 0);
-
-        return updateDoc(doc(db, 'subjects', subject.id), {
-          curriculum_blocks: nextCurriculumBlocks,
-          default_block_quantities: nextSubjectQuantities,
-          block_count: nextBlockCount,
-          updated_at: serverTimestamp(),
-        });
-      }));
-
-      setHasUnsavedEdits(true);
-      setFeedback({
-        tone: 'success',
-        text: 'Default week saved from the current block selections. Save or publish this week separately if you want this specific week persisted too.',
-      });
-    } catch (nextError) {
-      console.error('Error saving default week:', nextError);
-      setFeedback({
-        tone: 'error',
-        text: 'Unable to save the default week block selections.',
-      });
-    } finally {
-      setSavingDefaultWeek(false);
-    }
+    if (!blocksAreEditable || busy) return;
+    const quantities = buildDefaultWeekQuantitiesWrite({ currentDefaults: studentDefaultWeek, subjects: selectedStudentSubjects, quantities: blockQuantities });
+    const result = await saveDefaultWeek({ defaultBlockQuantities: quantities, expectedRevision: baseline.current.defaults });
+    if (!result) return;
+    baseline.current.defaults = result.revision;
+    setFeedback({ tone: 'success', text: `Default week saved for ${selectedStudent?.name}. Future generated weeks will use these selections; this week still needs its own save or publication.` });
   };
 
   const toggleSubjectGroup = (subjectId) => {
@@ -571,52 +469,39 @@ const WeeklyPlanReviewPanel = ({
     });
   };
 
+  const mutationOptions = () => ({
+    candidate: editorCandidate.current,
+    expectedDraftRevision: baseline.current.draft,
+    expectedPublishedRevision: baseline.current.published,
+    planOverrides: { blocks: normalizeEditableBlocks(editableBlocks) },
+  });
+  const studentWeekLabel = `${selectedStudent?.name} · ${selectedWeekOption?.displayText || formatWeekRange(selectedWeekRange.weekStart, selectedWeekRange.weekEnd)}`;
+
   const handleSaveDraft = async () => {
-    const savedPlan = await saveDraftWeeklyPlan({
-      overwritePublished: isPublished,
-      planOverrides: {
-        blocks: normalizeEditableBlocks(editableBlocks),
-      },
-    });
-
-    if (!savedPlan) {
-      return;
-    }
-
+    const result = await saveDraftWeeklyPlan(mutationOptions());
+    if (!result) return;
+    baseline.current.draft = result.draft_revision;
+    baseline.current.published = result.published_revision;
     setHasUnsavedEdits(false);
-    setFeedback({
-      tone: 'success',
-      text: isPublished
-        ? 'Published week moved back to draft with your edits.'
-        : 'Weekly plan draft saved.',
-    });
+    setFeedback({ tone: 'success', text: `Draft saved for ${studentWeekLabel}. ${weeklyPlan?.status === 'published' ? 'Students continue to see the published week.' : 'Ready to publish when you choose.'}` });
   };
 
   const handlePublish = async () => {
-    const publishedPlan = await publishWeeklyPlan({
-      planOverrides: {
-        blocks: normalizeEditableBlocks(editableBlocks),
-      },
-    });
-
-    if (!publishedPlan) {
-      return;
-    }
-
+    const empty = editableBlocks.length === 0;
+    if (!window.confirm(`Publish ${studentWeekLabel}? ${empty ? 'This is an empty week. The student will have no schoolwork blocks for this week.' : `${editableBlocks.length} blocks from the current selections will become the student’s week.`}`)) return;
+    const result = await publishWeeklyPlan(mutationOptions());
+    if (!result) return;
+    baseline.current.draft = result.draft_revision;
+    baseline.current.published = result.published_revision;
     setHasUnsavedEdits(false);
-    setFeedback({
-      tone: 'success',
-      text: isPublished
-        ? 'Published weekly plan updated.'
-        : 'Weekly plan published for this student-week.',
-    });
+    setFeedback({ tone: 'success', text: `${empty ? 'Empty week' : 'Week'} published for ${studentWeekLabel}. ${empty ? 'No schoolwork blocks are assigned.' : `${editableBlocks.length} blocks are available to the student.`}` });
   };
 
   const renderMessage = () => {
     const message = error
       ? {
           tone: 'error',
-          text: error.message || 'Unable to load or save the weekly plan.',
+          text: conflict ? 'This week or default changed in another tab. Your edits are still here. Reload and review the latest saved version before trying again.' : `${error.message || 'Unable to load or save the weekly plan.'} You can retry the same action.`,
         }
       : feedback;
 
@@ -637,6 +522,7 @@ const WeeklyPlanReviewPanel = ({
 
     return (
       <div
+        role={message.tone === 'error' ? 'alert' : 'status'}
         className="mt-5 flex items-start gap-3 border px-4 py-3"
         style={{
           backgroundColor: tone.surface,
@@ -645,25 +531,25 @@ const WeeklyPlanReviewPanel = ({
         }}
       >
         <Icon className="mt-0.5 h-4 w-4 flex-shrink-0" />
-        <p className="text-[13px] font-body leading-5">{message.text}</p>
+        <div><p className="text-[13px] font-body leading-5">{message.text}</p>{conflict ? <button type="button" className="op-proto-btn mt-2" onClick={reloadAndReview}>Reload and review</button> : null}</div>
       </div>
     );
   };
 
   return (
     <section className="op-weekly-proto">
-      <div className="op-proto-topbar">
-        <div className="min-w-0 flex-1">
+      <div className="op-proto-topbar sticky top-0 z-20 flex-wrap" style={{ backgroundColor: '#241d38' }} role="region" aria-label="Weekly Plan actions" aria-busy={busy}>
+        <div className="min-w-0 flex-1 basis-full sm:basis-0">
           <p className="text-[14px] font-label text-white">Weekly Plan</p>
           <p className="mt-1 truncate text-[10px] text-[rgba(238,234,248,0.42)]">
-            {selectedStudent?.name || 'Select a student'} · {selectedWeekOption?.displayText || formatWeekRange(selectedWeekRange.weekStart, selectedWeekRange.weekEnd)}
+            {selectedStudent?.name || 'Select a student'} · {selectedWeekOption?.displayText || formatWeekRange(selectedWeekRange.weekStart, selectedWeekRange.weekEnd)} · {planStatusMeta.label}
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <button
             type="button"
             onClick={handleRefreshFromSubjects}
-            disabled={!blocksAreEditable || loading || savingPlan || publishingPlan}
+            disabled={!blocksAreEditable || busy}
             className="op-proto-btn"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -672,20 +558,23 @@ const WeeklyPlanReviewPanel = ({
           <button
             type="button"
             onClick={handleSaveDraft}
-            disabled={!blocksAreEditable || !selectedStudentSubjects.length || loading || savingPlan || publishingPlan}
+            disabled={!blocksAreEditable || busy || conflict}
             className="op-proto-btn"
           >
             <Save className="h-3.5 w-3.5" />
-            {savingPlan ? 'Saving...' : saveButtonLabel}
+            Save Draft
+          </button>
+          <button type="button" onClick={handleSaveAsDefaultWeek} disabled={!blocksAreEditable || busy || conflict} className="op-proto-btn">
+            <Star className="h-3.5 w-3.5" />Save as Default Week
           </button>
           <button
             type="button"
             onClick={handlePublish}
-            disabled={!blocksAreEditable || !selectedStudentSubjects.length || loading || savingPlan || publishingPlan}
+            disabled={!blocksAreEditable || busy || conflict}
             className="op-proto-btn op-proto-btn-primary"
           >
             <Send className="h-3.5 w-3.5" />
-            {publishingPlan ? 'Publishing...' : publishButtonLabel}
+            Publish This Week
           </button>
         </div>
       </div>
@@ -698,11 +587,25 @@ const WeeklyPlanReviewPanel = ({
         </div>
       ) : (
         <>
+          <div className="px-4 py-2 text-[11px] text-[rgba(238,234,248,0.76)]" role="status">
+            {hasUnsavedEdits ? 'Unsaved changes' : 'No unsaved changes'} · {savedDraftDiffersFromPublished ? 'Saved draft differs from published week' : draftPlan ? 'Saved draft matches published week' : 'No saved private draft'} · {differsFromPublished ? 'Current selections differ from published week' : 'Current selections match published week'} · {differsFromDefaults ? 'Different from default week' : 'Matches default week'}
+            {hasRemoteChanges && hasUnsavedEdits ? ' · A saved version changed; your edits are preserved.' : ''}
+            {editableBlocks.length === 0 ? ' · Empty week: no schoolwork blocks.' : ''}
+          </div>
           <div className="op-weekly-controls">
+            <label className="text-[11px] text-white">Student
+              <select aria-label="Student" value={selectedStudentId} onChange={(event) => setSelectedStudentId(event.target.value)} className="ml-2 bg-[#241d38] text-white">
+                {students.map((student) => <option key={student.id} value={student.id}>{student.name}</option>)}
+              </select>
+            </label>
+            <label className="text-[11px] text-white">Week
+              <select aria-label="Week" value={selectedWeekOffset} onChange={(event) => setSelectedWeekOffset(Number(event.target.value))} className="ml-2 bg-[#241d38] text-white">
+                {weekPickerOptions.map((option) => <option key={option.value} value={option.value}>{option.displayText || option.label}</option>)}
+              </select>
+            </label>
             <div className="op-weekly-student-tabs">
               {students.map((student) => {
                 const isActive = student.id === selectedStudentId;
-                const defaultHours = getStudentDefaultHours(activeSubjects, student.id);
 
                 return (
                   <button
@@ -712,7 +615,7 @@ const WeeklyPlanReviewPanel = ({
                     className={`op-proto-tab ${isActive ? 'is-active' : ''}`}
                   >
                     <span className="op-proto-tab-name">{student.name}</span>
-                    <span className="op-proto-tab-meta">~{defaultHours.toFixed(1)}h default</span>
+                    <span className="op-proto-tab-meta">{isActive ? 'Selected student' : 'View week'}</span>
                   </button>
                 );
               })}
@@ -766,7 +669,7 @@ const WeeklyPlanReviewPanel = ({
                     ? 'This student-week is saved.'
                     : hasUnsavedEdits
                       ? 'This week has been customized.'
-                      : 'Using current subject blocks as the default schedule preview.'}
+                      : 'Previewing this student’s default week.'}
                 </span>
                 {(isPersistedPlan || hasUnsavedEdits) && blocksAreEditable ? (
                   <button
@@ -781,21 +684,27 @@ const WeeklyPlanReviewPanel = ({
               </div>
 
               {renderMessage()}
+              {hasUnavailableBlocks && blocksAreEditable ? (
+                <div className="mt-3 border-l-2 border-[#f59e0b] px-3 py-2 text-[11px] text-[#f59e0b]" role="status">
+                  Some saved blocks are no longer available in Curriculum. Their published history is retained.
+                  <button type="button" onClick={() => applyQuantities(blockQuantities)} className="op-proto-btn ml-2" disabled={busy}>Remove unavailable blocks</button>
+                </div>
+              ) : null}
 
               {!selectedStudentSubjects.length ? (
                 <div className="op-proto-empty min-h-[280px]">
                   <p className="text-[14px] font-label text-white">No active subject blocks are available.</p>
-                  <p className="mt-2 text-[12px] text-[rgba(238,234,248,0.54)]">Assign at least one active subject, then build reusable blocks in Curriculum.</p>
+                  <p className="mt-2 text-[12px] text-[rgba(238,234,248,0.54)]">You can publish an empty week, or add reusable blocks in Curriculum.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
                   {selectedStudentSubjects.map((subject, groupIndex) => {
                     const isOpen = expandedSubjectIds.has(subject.id);
                     const accent = subject?.color || getBlockAccent(groupIndex);
-                    const subjectBlocks = getSubjectCurriculumBlocks(subject);
+                    const subjectBlocks = getSubjectCurriculumBlocks(subject).filter((block) => block.is_active !== false);
                     const subjectQuantities = blockQuantities[subject.id] || {};
                     const totalAssigned = subjectBlocks.reduce((total, block) => total + toNonNegativeInt(subjectQuantities[block.id]), 0);
-                    const target = getSubjectBlockCount(subject);
+                    const target = Object.values(defaultQuantities[subject.id] || {}).reduce((total, quantity) => total + toNonNegativeInt(quantity), 0);
                     const diff = totalAssigned - target;
 
                     return (
@@ -818,7 +727,7 @@ const WeeklyPlanReviewPanel = ({
                             type="button"
                             onClick={() => handleToggleSubjectEnabled(subject)}
                             className={`op-weekly-enable-chip ${totalAssigned > 0 ? 'is-on' : ''}`}
-                            disabled={subjectBlocks.length === 0}
+                            disabled={!blocksAreEditable || busy || subjectBlocks.length === 0}
                           >
                             {subjectBlocks.length === 0 ? 'Needs blocks' : totalAssigned > 0 ? 'Enabled' : 'Disabled'}
                           </button>
@@ -864,7 +773,7 @@ const WeeklyPlanReviewPanel = ({
                                         {block.title || subject.title}
                                       </span>
                                       <span className="text-[9px] text-[rgba(238,234,248,0.38)]">
-                                        {getSubjectBlockLengthMinutes(subject)}m
+                                        {block.require_timer ?? subject.require_timer ? `${getSubjectBlockLengthMinutes(subject)}m timer` : 'No timer'}
                                       </span>
                                       {fieldCount > 0 ? (
                                         <span className="op-weekly-field-count">{fieldCount}</span>
@@ -872,7 +781,9 @@ const WeeklyPlanReviewPanel = ({
                                       <span className="qty-inline">
                                         <button
                                           type="button"
+                                          aria-label={`Remove ${block.title || subject.title} block`}
                                           onClick={() => handleBlockQuantityChange({ subjectId: subject.id, blockId: block.id, delta: -1 })}
+                                          disabled={!blocksAreEditable || busy}
                                           className="qi-btn"
                                         >
                                           -
@@ -880,7 +791,9 @@ const WeeklyPlanReviewPanel = ({
                                         <span className="qi-val">{quantity}</span>
                                         <button
                                           type="button"
+                                          aria-label={`Add ${block.title || subject.title} block`}
                                           onClick={() => handleBlockQuantityChange({ subjectId: subject.id, blockId: block.id, delta: 1 })}
+                                          disabled={!blocksAreEditable || busy}
                                           className="qi-btn"
                                         >
                                           +
@@ -915,11 +828,11 @@ const WeeklyPlanReviewPanel = ({
                 <div className="h-px bg-[rgba(255,255,255,0.08)]" />
                 <div className="space-y-1.5">
                   {selectedStudentSubjects.map((subject, index) => {
-                    const subjectBlocks = getSubjectCurriculumBlocks(subject);
+                    const subjectBlocks = getSubjectCurriculumBlocks(subject).filter((block) => block.is_active !== false);
                     const assignedCount = subjectBlocks.reduce((total, block) => (
                       total + toNonNegativeInt(blockQuantities[subject.id]?.[block.id])
                     ), 0);
-                    const target = getSubjectBlockCount(subject);
+                    const target = Object.values(defaultQuantities[subject.id] || {}).reduce((total, quantity) => total + toNonNegativeInt(quantity), 0);
                     const diff = assignedCount - target;
 
                     return (
@@ -943,7 +856,7 @@ const WeeklyPlanReviewPanel = ({
                   }}
                 >
                   {hasSubjectCountVariance
-                    ? 'Some subjects differ from their current weekly target.'
+                    ? 'Some subjects differ from this student’s default week.'
                     : `${planStatusMeta.label}: ${planStatusMeta.detail}`}
                 </div>
                 <div className="text-[9px] leading-4 text-[rgba(238,234,248,0.42)]">
@@ -956,15 +869,7 @@ const WeeklyPlanReviewPanel = ({
                   <Copy className="h-3.5 w-3.5" />
                   Copy to another week
                 </button>
-                <button
-                  type="button"
-                  className="op-proto-btn w-full"
-                  onClick={handleSaveAsDefaultWeek}
-                  disabled={savingDefaultWeek || loading || savingPlan || publishingPlan}
-                >
-                  <Star className="h-3.5 w-3.5" />
-                  {savingDefaultWeek ? 'Saving default...' : 'Save as default week'}
-                </button>
+
               </div>
             </aside>
           </div>

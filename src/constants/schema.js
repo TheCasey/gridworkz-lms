@@ -31,6 +31,8 @@ export const StudentSchema = {
   week_reset_hour: "number", // Public copy of school weekly rollover hour
   week_reset_minute: "number", // Public copy of school weekly rollover minute
   timezone: "string", // IANA timezone for weekly rollover
+  weekly_planning_version: "number", // Server-owned published-plan authority marker
+  weekly_planning_adopted_at: "timestamp", // First trusted publish
   lockdown_schedule: "object", // Optional student-bound lockdown schedule plus legacy off-hours resource windows used as migration input
   is_active: "boolean", // Whether student account is active
   created_at: "timestamp", // Student profile creation
@@ -917,6 +919,18 @@ export const WeeklyPlanDraftSchema = {
   revision: "number", // Positive private draft revision
   base_published_revision: "number", // 0 before first publication
   parent_notes: "string", // Private; never projected into weeklyPlans
+  block_identity_history: "object", // Retained removed identities; server-owned, private
+};
+
+export const WeeklyPlanningReceiptSchema = {
+  parent_id: "string",
+  student_id: "string",
+  schema_version: "number",
+  action: "string", // save, publish, defaults or archive
+  idempotency_key: "string",
+  request_fingerprint: "string", // SHA-256 of canonical action and full request
+  response: "object", // Original accepted response for safe uncertain retries
+  recorded_at: "timestamp",
 };
 
 export const StudentDefaultWeekSchema = {
@@ -1031,6 +1045,7 @@ export const Collections = {
   WEEKLY_PLANS: "weeklyPlans",
   WEEKLY_PLAN_DRAFTS: "weeklyPlanDrafts",
   STUDENT_DEFAULT_WEEKS: "studentDefaultWeeks",
+  WEEKLY_PLANNING_RECEIPTS: "weeklyPlanningReceipts",
   BLOCK_COMPLETION_STATES: "blockCompletionStates",
   PARENT_CORRECTION_EVENTS: "parentCorrectionEvents",
   WEEKLY_REPORT_AMENDMENTS: "weeklyReportAmendments",
@@ -1067,6 +1082,10 @@ export const Collections = {
 };
 
 export const TrustedFunctionNames = {
+  SAVE_WEEKLY_PLAN_DRAFT: "saveWeeklyPlanDraft",
+  PUBLISH_WEEKLY_PLAN: "publishWeeklyPlan",
+  SAVE_STUDENT_DEFAULT_WEEK: "saveStudentDefaultWeek",
+  ARCHIVE_WEEKLY_PLAN: "archiveWeeklyPlan",
   CREATE_STUDENT: "createStudent",
   CREATE_SUBJECT: "createSubject",
   GET_OPERATOR_SESSION: "getOperatorSession",

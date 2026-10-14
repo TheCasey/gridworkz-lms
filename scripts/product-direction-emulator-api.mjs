@@ -7,12 +7,13 @@ export const requireDirectionEmulators = () => {
     if (!/^127\.0\.0\.1:\d+$/.test(process.env[name] || '')) throw new Error(`${name} must point to a local emulator.`);
   }
 };
+let directionAdminSequence = 0;
 export const createDirectionAdmin = () => {
   requireDirectionEmulators();
   const require = createRequire(new URL('../functions/package.json', import.meta.url));
   const { initializeApp } = require('firebase-admin/app');
   const { getFirestore } = require('firebase-admin/firestore');
-  const app = initializeApp({ projectId: DIRECTION_PROJECT_ID }, 'direction-tests');
+  const app = initializeApp({ projectId: DIRECTION_PROJECT_ID }, `direction-tests-${++directionAdminSequence}`);
   return { app, db: getFirestore(app) };
 };
 export const callDirectionFunction = async (name, data, token = '') => {

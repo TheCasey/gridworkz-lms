@@ -294,3 +294,23 @@ export const initializeTrustedRoutineFirstAccount = async (payload = {}) => {
   const result = await httpsCallable(functions, TrustedFunctionNames.INITIALIZE_ROUTINE_FIRST_ACCOUNT)(payload);
   return result.data;
 };
+
+export const saveTrustedWeeklyPlanDraft = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.SAVE_WEEKLY_PLAN_DRAFT)(payload);
+  return result.data;
+};
+
+export const publishTrustedWeeklyPlan = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.PUBLISH_WEEKLY_PLAN)(payload);
+  return result.data;
+};
+
+export const saveTrustedStudentDefaultWeek = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.SAVE_STUDENT_DEFAULT_WEEK)(payload);
+  return result.data;
+};
+
+export const archiveTrustedWeeklyPlan = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.ARCHIVE_WEEKLY_PLAN)(payload);
+  return result.data;
+};

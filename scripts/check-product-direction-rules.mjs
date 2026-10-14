@@ -37,25 +37,36 @@ test('published plans are public while private drafts never are', async () => {
   await assertSucceeds(getDoc(doc(dbFor(parent), 'weeklyPlanDrafts', draft.id)));
 });
 
-test('owner edits private draft without changing student published work', async () => {
+test('private drafts cannot bypass trusted revisions with direct client writes', async () => {
   const ownerDb = dbFor(parent);
-  await assertSucceeds(updateDoc(doc(ownerDb, 'weeklyPlanDrafts', draft.id), { revision: 3, blocks: [] }));
+  await assertFails(updateDoc(doc(ownerDb, 'weeklyPlanDrafts', draft.id), { revision: 3, blocks: [] }));
+  await assertFails(setDoc(doc(ownerDb, 'weeklyPlanDrafts', `${parent}_new_draft`), draft.data));
   const live = await getDoc(doc(dbFor(), 'weeklyPlans', published.id));
   assert.deepEqual(live.data().blocks, published.data.blocks);
-  await assertFails(updateDoc(doc(ownerDb, 'weeklyPlanDrafts', draft.id), { revision: 3 }));
-  await assertFails(updateDoc(doc(ownerDb, 'weeklyPlanDrafts', draft.id), { revision: 4, student_id: 'another_student' }));
-  await assertFails(updateDoc(doc(ownerDb, 'weeklyPlanDrafts', draft.id), { revision: 4, parent_id: 'another_parent' }));
 });
 
-test('default week is student-scoped, private, and revision checked', async () => {
-  const ownerDb = dbFor(parent);
-  await assertSucceeds(setDoc(doc(ownerDb, 'studentDefaultWeeks', defaultId), defaultWeek));
+test('default week is owner-readable and server-writable only', async () => {
+  await env.withSecurityRulesDisabled(async (context) => setDoc(doc(context.firestore(), 'studentDefaultWeeks', defaultId), defaultWeek));
+  await assertSucceeds(getDoc(doc(dbFor(parent), 'studentDefaultWeeks', defaultId)));
   await assertFails(getDoc(doc(dbFor(), 'studentDefaultWeeks', defaultId)));
   await assertFails(getDoc(doc(dbFor('another_parent'), 'studentDefaultWeeks', defaultId)));
-  await assertFails(setDoc(doc(dbFor('another_parent'), 'studentDefaultWeeks', defaultId), defaultWeek));
-  await assertFails(updateDoc(doc(ownerDb, 'studentDefaultWeeks', defaultId), { revision: 1 }));
-  await assertSucceeds(updateDoc(doc(ownerDb, 'studentDefaultWeeks', defaultId), { revision: 2 }));
-  await assertFails(updateDoc(doc(ownerDb, 'studentDefaultWeeks', defaultId), { revision: 3, student_id: fixture.students[1].id }));
+  for (const uid of [parent, 'another_parent', null]) {
+    await assertFails(setDoc(doc(dbFor(uid), 'studentDefaultWeeks', defaultId), defaultWeek));
+    await assertFails(updateDoc(doc(dbFor(uid), 'studentDefaultWeeks', defaultId), { revision: 2 }));
+  }
+});
+
+test('published revisions and student adoption markers cannot be forged or downgraded', async () => {
+  const ownerDb = dbFor(parent);
+  await assertFails(updateDoc(doc(ownerDb, 'weeklyPlans', published.id), { blocks: [], revision: 2 }));
+  await assertFails(updateDoc(doc(ownerDb, 'weeklyPlans', published.id), { schema_version: 0 }));
+  const studentRef = doc(ownerDb, 'students', fixture.students[0].id);
+  await assertFails(updateDoc(studentRef, { weekly_planning_version: 1 }));
+  await env.withSecurityRulesDisabled(async (context) => updateDoc(doc(context.firestore(), 'students', fixture.students[0].id), { weekly_planning_version: 1 }));
+  await assertFails(updateDoc(studentRef, { weekly_planning_version: 0 }));
+  await assertSucceeds(updateDoc(studentRef, { name: 'Owner can still edit profile' }));
+  const legacy = { ...published.data, schema_version: 0, blocks: [] };
+  await assertFails(setDoc(doc(ownerDb, 'weeklyPlans', published.id), legacy));
 });
 
 test('parent private queries must be constrained to their own household', async () => {
@@ -65,7 +76,7 @@ test('parent private queries must be constrained to their own household', async 
 });
 
 test('correction, report amendment, routine snapshot and cosmetic authority deny client writes', async () => {
-  for (const name of ['blockCompletionStates', 'parentCorrectionEvents', 'weeklyReportAmendments', 'routineDaySnapshots', 'routineDayPointers', 'studentCosmeticStates', 'householdHistoryEvents']) {
+  for (const name of ['blockCompletionStates', 'parentCorrectionEvents', 'weeklyReportAmendments', 'routineDaySnapshots', 'routineDayPointers', 'studentCosmeticStates', 'householdHistoryEvents', 'weeklyPlanningReceipts']) {
     const ref = (database) => doc(database, name, 'authority_test');
     await env.withSecurityRulesDisabled(async (context) => setDoc(ref(context.firestore()), { parent_id: parent, student_id: fixture.students[0].id }));
     await assertSucceeds(getDoc(ref(dbFor(parent))));

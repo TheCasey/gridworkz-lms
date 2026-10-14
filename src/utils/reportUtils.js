@@ -385,13 +385,11 @@ export const buildStudentWeeklySnapshot = ({
         weekEnd,
         weeklyPlan,
       })
-    : buildSubjectWeeklySnapshot({
-        student,
-        subjects,
-        submissions,
-        weekStart,
-        weekEnd,
-      })
+    : Number(student?.weekly_planning_version) >= 1
+      && !(student?.weekly_planning_adopted_at && toComparableDate(student.weekly_planning_adopted_at) > weekEnd)
+      ? buildWeeklyPlanWeeklySnapshot({ student, subjects, submissions, weekStart, weekEnd,
+        weeklyPlan: { blocks: [], id: '' } })
+      : buildSubjectWeeklySnapshot({ student, subjects, submissions, weekStart, weekEnd })
 );
 
 export const buildWeeklyReportPayload = ({
@@ -430,7 +428,7 @@ export const buildWeeklyReportPayload = ({
   });
 
   const schoolYear = getSchoolYearMetadataForDate(weekEnd, parentSettings);
-  const weekKey = getWeekKey(weekStart);
+  const weekKey = getWeekKey(weekStart, parentSettings);
 
   return {
     student_id: student.id,

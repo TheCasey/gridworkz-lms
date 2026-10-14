@@ -9,7 +9,6 @@ import {
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp,
   where,
   writeBatch,
 } from 'firebase/firestore';
@@ -22,6 +21,7 @@ import {
 } from '../utils/reportUtils';
 import { buildWeeklyPlanDocumentId } from '../utils/weeklyPlanUtils';
 import { getWeekKey } from '../utils/weekUtils';
+import { archiveTrustedWeeklyPlan } from '../firebase/trustedOperations';
 
 export const useWeeklyReportRecords = ({
   currentUser = null,
@@ -79,7 +79,7 @@ export const useWeeklyReportRecords = ({
       return {};
     }
 
-    const weekKey = getWeekKey(weekStart);
+    const weekKey = getWeekKey(weekStart, parentSettings);
     const weeklyPlanEntries = await Promise.all(batchStudents.map(async (student) => {
       if (!student?.id) {
         return [student?.id || '', null];
@@ -101,7 +101,7 @@ export const useWeeklyReportRecords = ({
     }));
 
     return Object.fromEntries(weeklyPlanEntries.filter(([studentId]) => Boolean(studentId)));
-  }, [currentUser?.uid, db]);
+  }, [currentUser?.uid, db, parentSettings]);
 
   const buildRecordBatch = useCallback(({
     batchStudents,
@@ -115,6 +115,7 @@ export const useWeeklyReportRecords = ({
   }) => {
     const batch = writeBatch(db);
     let createdCount = 0;
+    const archivePlans = [];
 
     batchStudents.forEach((student) => {
       const snapshot = buildStudentWeeklySnapshot({
@@ -126,9 +127,13 @@ export const useWeeklyReportRecords = ({
         weeklyPlan: weeklyPlansByStudentId[student.id] || null,
       });
 
+      const weeklyPlan = weeklyPlansByStudentId[student.id] || null;
+      if (archivePublishedPlans && weeklyPlan?.status === WeeklyPlanStatuses.PUBLISHED) {
+        archivePlans.push(weeklyPlan);
+      }
       if (!snapshot || !canSaveWeeklyReportSnapshot(snapshot)) return;
 
-      const reportId = `${currentUser.uid}_${student.id}_${getWeekKey(weekStart)}`;
+      const reportId = `${currentUser.uid}_${student.id}_${getWeekKey(weekStart, parentSettings)}`;
       batch.set(doc(db, Collections.WEEKLY_REPORTS, reportId), buildWeeklyReportPayload({
         student,
         snapshot,
@@ -139,25 +144,10 @@ export const useWeeklyReportRecords = ({
         source,
       }), { merge: true });
 
-      const weeklyPlan = weeklyPlansByStudentId[student.id] || null;
-
-      if (
-        archivePublishedPlans
-        && snapshot.snapshotModel === 'weekly_plan'
-        && weeklyPlan?.id
-        && weeklyPlan.status === WeeklyPlanStatuses.PUBLISHED
-      ) {
-        batch.set(doc(db, Collections.WEEKLY_PLANS, weeklyPlan.id), {
-          status: WeeklyPlanStatuses.ARCHIVED,
-          archived_at: serverTimestamp(),
-          updated_at: serverTimestamp(),
-        }, { merge: true });
-      }
-
       createdCount += 1;
     });
 
-    return { batch, createdCount };
+    return { batch, createdCount, archivePlans };
   }, [currentUser?.uid, db, parentSettings]);
 
   const saveWeeklyRecordSnapshot = useCallback(async ({
@@ -250,7 +240,7 @@ export const useWeeklyReportRecords = ({
       batchStudents: activeStudents,
       weekStart,
     });
-    const { batch, createdCount } = buildRecordBatch({
+    const { batch, createdCount, archivePlans } = buildRecordBatch({
       batchStudents: activeStudents,
       batchSubjects: activeSubjects,
       batchSubmissions: rangeSubmissions,
@@ -265,6 +255,10 @@ export const useWeeklyReportRecords = ({
       await batch.commit();
     }
 
+    for (const plan of archivePlans) {
+      await archiveTrustedWeeklyPlan({ student_id: plan.student_id, week_key: plan.week_key,
+        expected_published_revision: plan.revision ?? 0, idempotency_key: `archive:${plan.id}:${plan.revision ?? 0}` });
+    }
     return createdCount;
   }, [buildRecordBatch, currentUser, db, loadWeeklyPlansByStudentId, students, subjects]);
 

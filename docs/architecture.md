@@ -72,7 +72,7 @@ Important modeling details:
 
 - Subjects support multi-student assignment through `student_ids`.
 - Student access is keyed by a generated slug and can be guarded by an optional `access_pin`.
-- `weeklyPlans` are the current student-week execution bridge; they are generated from active subject records, can be published by parents, and are preferred by the student portal and reporting surfaces when present.
+- `weeklyPlans` remain the published/archived student-week authority. The routine-first implementation keeps private drafts in `weeklyPlanDrafts` and per-student defaults in `studentDefaultWeeks`; trusted callables save current editor contents with revision checks and atomically publish an allowlisted snapshot. Private retry receipts remain owner-readable/server-writable. Production promotion is pending.
 - Weekly reports cache school-year and quarter labels for filtering and reporting, and weekly-plan-backed records can preserve assigned block snapshots in `assigned_blocks_snapshot`.
 - Timer sessions are stored in Firestore and mirrored in local storage for resilience.
 - `accountEntitlements/{uid}` is the server-owned plan and feature source for premium surfaces such as Lockdown.
@@ -90,7 +90,7 @@ Important modeling details:
 - Week calculations live in `src/utils/weekUtils.js`.
 - Parent settings define reset day, hour, minute, and timezone.
 - Rollover currently runs from the parent dashboard client and updates report state from there.
-- Reports prefer published or archived student-week `weeklyPlans` when available, then fall back to subject-derived snapshots for legacy or mixed-model weeks.
+- Reports use published/archived `weeklyPlans`; private drafts never become report input. Adopted current weeks without a publication have no assigned work. Pre-adoption subject history remains reportable. Rollover archives both legacy and v1 publications through the trusted adapter.
 - Report print builders escape report strings before writing print HTML.
 - `scripts/seed-reporting-validation.mjs --dry-run` generates the current manual QA fixture for incomplete-week records, assigned block snapshots, student portal checks, and rollover archival expectations.
 
@@ -98,7 +98,7 @@ Important modeling details:
 
 - Weekly-plan contracts and helpers live in `src/constants/schema.js` and `src/utils/weeklyPlanUtils.js`.
 - `src/hooks/useWeeklyPlanRecord.js` owns the parent review/publish record path.
-- `src/hooks/useStudentPortalWeeklyPlan.js` lets the student portal prefer a published weekly plan before falling back to subjects.
+- `src/hooks/useStudentPortalWeeklyPlan.js` refreshes its listener at the household weekly boundary. Server-owned per-student planning adoption prevents raw-subject fallback for empty/missing current publications; unadopted students retain legacy compatibility.
 - The current subject editor remains the compatibility input; persisted first-class curriculum templates and assignment management are not built out yet.
 
 ### Timers
@@ -106,7 +106,7 @@ Important modeling details:
 - Timer logic lives in `src/utils/timerUtils.js`.
 - Timers are based on target end time, not interval drift.
 - Student portal timers persist both locally and in `timerSessions`.
-- Timer sessions are scoped to their student week, published weekly plan, and block identity. The portal ignores and removes sessions for unavailable or already-completed blocks before evaluating the one-timer-at-a-time policy.
+- Timer sessions are scoped to their student week, published weekly plan, block identity and planned duration. The portal removes unavailable/completed sessions and sessions whose timer requirement or duration changed. Non-timed blocks show direct completion and may finish while a different block’s timer continues.
 
 ### Student portal access policy
 
@@ -164,7 +164,7 @@ This is sufficient for the current browser-extension launch path, but the broade
 ## Tooling State
 
 - Focused helper checks and an isolated Auth/Firestore/Functions + Chromium harness now support the routine-first execution. See [testing instructions](upgrades/product-direction-execution/testing.md).
-- New version-1 private draft/default, correction, amendment, routine snapshot, and cosmetic contracts are additive preparation; current production consumers have not been switched. See [contract boundaries](upgrades/product-direction-execution/contracts.md).
+- Routine/cosmetic and private draft/default authority and interfaces are locally implemented and verified. Correction/amendment contracts remain preparatory; production consumers have not been switched. See [contract boundaries](upgrades/product-direction-execution/contracts.md).
 - `npm run build` currently passes.
 - `npm run lint` currently passes with the root ESLint config.
 - A lightweight GitHub Actions workflow runs lint and build on push and pull request.

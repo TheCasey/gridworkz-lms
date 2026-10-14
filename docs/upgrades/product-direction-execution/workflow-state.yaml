@@ -4,20 +4,20 @@ workflow_summary: "Execute source phases 0\u20138 as operational phases 1\u20139
 workflow_status: "active"
 source_plan_path: "docs/upgrades/product-direction-execution-plan-2026-09.md"
 master_developer_start_prompt_path: "docs/upgrades/product-direction-execution/start-master-developer-chat.md"
-current_phase_number: 4
-current_phase_slug: "phase-04-ship-daily-routines-avatars-and-the-narrow-household-surface"
+current_phase_number: 5
+current_phase_slug: "phase-05-ship-correct-weekly-plan-persistence-and-conditional-timers"
 current_role: "master-developer"
-phase_status: "locally_verified"
+phase_status: "local_verified"
 owner: "master-developer"
 next_downstream_role: "none"
-last_completed_phase_number: 4
-last_completed_phase_slug: "phase-04-ship-daily-routines-avatars-and-the-narrow-household-surface"
+last_completed_phase_number: 5
+last_completed_phase_slug: "phase-05-ship-correct-weekly-plan-persistence-and-conditional-timers"
 last_completed_role: "tester"
-last_handoff_role: "developer"
+last_handoff_role: "tester"
 blocked_reason: "none"
-last_updated: "2026-10-13"
-active_phase_path: "docs/upgrades/product-direction-execution/phases/phase-04-ship-daily-routines-avatars-and-the-narrow-household-surface/phase.md"
-active_run_log_path: "docs/upgrades/product-direction-execution/phases/phase-04-ship-daily-routines-avatars-and-the-narrow-household-surface/run-log.md"
+last_updated: "2026-10-14"
+active_phase_path: "docs/upgrades/product-direction-execution/phases/phase-05-ship-correct-weekly-plan-persistence-and-conditional-timers/phase.md"
+active_run_log_path: "docs/upgrades/product-direction-execution/phases/phase-05-ship-correct-weekly-plan-persistence-and-conditional-timers/run-log.md"
 prompt_policy:
   read_first_max_items: 6
   allowed_discovery: "Start with the listed read-first files, then follow imports, routes, adjacent tests, and nearby implementation files only as needed. Do not preload broad workflow or product background unless the active phase exposes a concrete blocker."
@@ -57,11 +57,12 @@ active_phase_guidance:
     - "AGENTS.md"
     - "docs/upgrades/product-direction-execution-plan-2026-09.md"
     - "docs/upgrades/product-direction-execution/decisions.md"
-  automated_test_expectation: "Source Phase 3: implement complete Free routine/cosmetic and private household history UI; verify persisted reload/mobile/keyboard/error states, no suspended background mutations."
+  automated_test_expectation: "Source Phase4: trusted private draft/default writes, atomic publish revisions, stable block identities and authoritative empty/missing plans; integrate conditional timers and persisted UI/runtime QA."
   test_files:
-    - "tests/product-direction/routines.spec.js"
+    - "scripts/check-weekly-planning-callables.mjs"
+    - "tests/product-direction/planning.spec.js"
   test_cases:
-    - "Free setup/completion/award/unlock/equip/reload and parent-only history; mobile/keyboard/error/no-config cases"
+    - "Publish A/save draft B isolation; defaultstudent scope/futureweek; two-tab conflict/private reads/emptyweek; retained identities/archiveddenial; timed/non-timed completion/stalesessions"
   no_test_rationale: ""
   test_commands:
     - "npm run lint"
@@ -155,3 +156,5 @@ git:
 routine_authority_acceptance: "locally verified 2026-10-13;164 helper assertions,6 rules,4 compatibility callables,12 routine runtime,2 baseline browser passes; deployment/activation pending UI and release gates"
 
 routine_interface_acceptance: "locally verified 2026-10-13;166 backend+19 view assertions,7 rules,4 compatibility,13 authority/bootstrap,11 browser passes; production activation pending"
+
+weekly_planning_acceptance: "locally verified 2026-10-14; calendars/identities/readers,8 rules,4 compatibility,13 routine,8 planning and20 browser checks pass; mobile drawer/keyboard focused follow-up; deployment pending"

@@ -104,7 +104,9 @@ service cloud.firestore {
     match /students/{studentId} {
       allow read: if true;
       allow create: if false;
-      allow update, delete: if isOwner(resource.data.parent_id);
+      allow update: if isOwner(resource.data.parent_id) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["weekly_planning_version", "weekly_planning_adopted_at"]);
+      allow delete: if isOwner(resource.data.parent_id);
     }
 
     // Subjects: parents own their records; students need read access for the portal
@@ -141,7 +143,12 @@ service cloud.firestore {
         );
     }
 
-    // Weekly plans: parent-owned and identity-stable for one student-week planning
+    function allowsLegacyWeeklyPlanWrite(data) {
+      return !data.keys().hasAny(["schema_version"]) &&
+        get(/databases/$(database)/documents/students/$(data.student_id)).data.get("weekly_planning_version", 0) < 1;
+    }
+
+    // Versioned weekly plans are written atomically by trusted planning callables.
     match /weeklyPlans/{weeklyPlanId} {
       allow get: if isOwnerWeeklyPlanLookup(weeklyPlanId) ||
         (
@@ -153,50 +160,30 @@ service cloud.firestore {
         );
       allow list, delete: if false;
       allow create: if isAuth() &&
-        validWeeklyPlanData(request.resource.data, weeklyPlanId, request.auth.uid);
+        validWeeklyPlanData(request.resource.data, weeklyPlanId, request.auth.uid) &&
+        allowsLegacyWeeklyPlanWrite(request.resource.data);
       allow update: if isOwner(resource.data.parent_id) &&
         validWeeklyPlanData(request.resource.data, weeklyPlanId, resource.data.parent_id) &&
         request.resource.data.parent_id == resource.data.parent_id &&
         request.resource.data.student_id == resource.data.student_id &&
-        request.resource.data.week_key == resource.data.week_key;
+        request.resource.data.week_key == resource.data.week_key &&
+        allowsLegacyWeeklyPlanWrite(resource.data) && allowsLegacyWeeklyPlanWrite(request.resource.data);
     }
 
-    // Routine-first preparation: drafts/defaults stay outside portal-readable plans.
-    // These additive records are not activated by a client writer yet.
+    // Private planning records have server-owned revisions and identity history.
     match /weeklyPlanDrafts/{weeklyPlanId} {
       allow get: if (resource == null && isOwnerWeeklyPlanLookup(weeklyPlanId)) || isOwnerResource();
       allow list: if isOwnerResource();
-      allow create: if isAuth() &&
-        validWeeklyPlanData(request.resource.data, weeklyPlanId, request.auth.uid) &&
-        request.resource.data.status == "draft" &&
-        request.resource.data.schema_version == 1 &&
-        request.resource.data.revision is int && request.resource.data.revision >= 1 &&
-        request.resource.data.base_published_revision is int && request.resource.data.base_published_revision >= 0;
-      allow update: if isOwnerResource() &&
-        validWeeklyPlanData(request.resource.data, weeklyPlanId, request.auth.uid) &&
-        request.resource.data.status == "draft" &&
-        request.resource.data.schema_version == 1 &&
-        request.resource.data.revision is int && request.resource.data.revision == resource.data.revision + 1 &&
-        request.resource.data.base_published_revision is int && request.resource.data.base_published_revision >= 0 &&
-        request.resource.data.student_id == resource.data.student_id &&
-        request.resource.data.week_key == resource.data.week_key;
-      allow delete: if isOwnerResource();
+      allow write: if false;
     }
-
     match /studentDefaultWeeks/{defaultWeekId} {
       allow get: if (resource == null && isOwnerWeeklyPlanLookup(defaultWeekId)) || isOwnerResource();
       allow list: if isOwnerResource();
-      allow create: if isAuth() && request.resource.data.parent_id == request.auth.uid &&
-        studentOwnedByParent(request.resource.data.student_id, request.auth.uid) &&
-        defaultWeekId == request.auth.uid + "_" + request.resource.data.student_id &&
-        request.resource.data.default_block_quantities is map &&
-        request.resource.data.schema_version == 1 && request.resource.data.revision is int && request.resource.data.revision == 1;
-      allow update: if isOwnerResource() && request.resource.data.parent_id == resource.data.parent_id &&
-        request.resource.data.student_id == resource.data.student_id &&
-        request.resource.data.default_block_quantities is map &&
-        request.resource.data.schema_version == 1 &&
-        request.resource.data.revision is int && request.resource.data.revision == resource.data.revision + 1;
-      allow delete: if isOwnerResource();
+      allow write: if false;
+    }
+    match /weeklyPlanningReceipts/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
     }
 
     // Authority and sensitive history are server-written, parent-readable only.

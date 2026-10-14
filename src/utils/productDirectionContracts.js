@@ -1,15 +1,15 @@
 import {
-  Collections,
-  CustomFieldSchema,
   EffectiveBlockStatuses,
   ProductDirectionContractVersion,
-  ResourceSchema,
-  WeeklyBlockCategoryValues,
-  WeeklyBlockCompletionModeValues,
-  WeeklyBlockInstanceSchema,
   WeeklyPlanStatuses,
 } from '../constants/schema.js';
-import { buildWeeklyPlanDocumentId } from './weeklyPlanUtils.js';
+import { nextContractRevision } from '../../functions/src/weeklyPlanningFoundation.js';
+export {
+  buildStudentDefaultWeekId, buildStableWeeklyBlockId, nextContractRevision,
+  validateStudentDefaultWeek, buildStudentDefaultWeekWrite, validateWeeklyBlockInstances,
+  validatePrivateWeeklyPlanDraft, assertRetainedBlockIdentities,
+  adoptLegacyWeeklyBlockInstances, buildWeeklyPlanPublishWrites,
+} from '../../functions/src/weeklyPlanningFoundation.js';
 
 const fail = (code, message) => {
   const error = new Error(message);
@@ -35,15 +35,6 @@ const clone = (value) => {
 const pick = (value, keys) => Object.fromEntries(
   keys.filter((key) => Object.hasOwn(value, key)).map((key) => [key, clone(value[key])])
 );
-const projectTypedFields = (value, schema) => {
-  requireValue(record(value), 'invalid-public-field');
-  const result = pick(value, Object.keys(schema));
-  Object.entries(result).forEach(([key, item]) => {
-    const type = schema[key];
-    requireValue(type === 'array' ? Array.isArray(item) : typeof item === type, 'invalid-public-field');
-  });
-  return result;
-};
 const dateKey = (value) => {
   if (!text(value) || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00Z`);
@@ -71,11 +62,6 @@ const assertUniqueStrings = (values, code) => requireValue(
   Array.isArray(values) && values.every(text) && new Set(values).size === values.length, code
 );
 
-export const buildStudentDefaultWeekId = ({ parentId, studentId }) => {
-  requireValue(text(parentId) && text(studentId) && !parentId.includes('/') && !studentId.includes('/'), 'invalid-identity');
-  return `${parentId}_${studentId}`;
-};
-export const buildStableWeeklyBlockId = ({ assignmentId, instanceKey }) => scopedId('block', [assignmentId, instanceKey]);
 export const buildBlockCompletionStateId = ({ planId, blockId }) => scopedId('block-state', [planId, blockId]);
 export const buildParentCorrectionEventId = ({ parentId, idempotencyKey }) => scopedId('correction', [parentId, idempotencyKey]);
 export const buildRoutineDaySnapshotId = ({ parentId, studentId, date }) => {
@@ -84,143 +70,6 @@ export const buildRoutineDaySnapshotId = ({ parentId, studentId, date }) => {
 };
 export const buildStudentCosmeticStateId = ({ parentId, studentId }) => scopedId('cosmetics', [parentId, studentId]);
 
-export const nextContractRevision = ({ expectedRevision, currentRevision }) => {
-  requireValue(integer(expectedRevision) && integer(currentRevision), 'invalid-revision');
-  requireValue(expectedRevision === currentRevision, 'revision-conflict');
-  requireValue(currentRevision < Number.MAX_SAFE_INTEGER, 'revision-overflow');
-  return currentRevision + 1;
-};
-
-export const validateStudentDefaultWeek = (defaults, { parentId, studentId } = {}) => {
-  assertVersion(defaults);
-  requireValue(text(parentId) && text(studentId), 'invalid-identity');
-  requireValue(defaults.parent_id === parentId && defaults.student_id === studentId, 'scope-mismatch');
-  requireValue(integer(defaults.revision, 1), 'invalid-revision');
-  requireValue(record(defaults.default_block_quantities), 'invalid-default-quantities');
-  Object.entries(defaults.default_block_quantities).forEach(([subjectId, quantities]) => {
-    requireValue(text(subjectId) && record(quantities), 'invalid-default-quantities');
-    requireValue(Object.entries(quantities).every(([blockId, quantity]) => text(blockId) && integer(quantity)), 'invalid-default-quantities');
-  });
-  return true;
-};
-
-export const buildStudentDefaultWeekWrite = ({ parentId, studentId, defaultBlockQuantities, currentDefaults = null, expectedRevision, actorId, serverTime }) => {
-  assertTrustedContext(parentId, actorId, serverTime);
-  if (currentDefaults) validateStudentDefaultWeek(currentDefaults, { parentId, studentId });
-  const data = {
-    parent_id: parentId, student_id: studentId, schema_version: ProductDirectionContractVersion,
-    revision: nextContractRevision({ expectedRevision, currentRevision: currentDefaults?.revision ?? 0 }),
-    default_block_quantities: clone(defaultBlockQuantities),
-    created_at: currentDefaults?.created_at ?? serverTime, updated_at: serverTime,
-  };
-  validateStudentDefaultWeek(data, { parentId, studentId });
-  return { collection: Collections.STUDENT_DEFAULT_WEEKS, id: buildStudentDefaultWeekId({ parentId, studentId }), data };
-};
-
-export const validateWeeklyBlockInstances = (blocks, studentId) => {
-  requireValue(Array.isArray(blocks) && text(studentId), 'invalid-blocks');
-  const ids = new Set();
-  const instances = new Set();
-  blocks.forEach((block) => {
-    requireValue(record(block) && text(block.id) && text(block.assignment_id) && text(block.instance_key), 'missing-stable-block-identity');
-    requireValue(block.student_id === studentId, 'scope-mismatch');
-    const instance = buildStableWeeklyBlockId({ assignmentId: block.assignment_id, instanceKey: block.instance_key });
-    requireValue(!ids.has(block.id) && !instances.has(instance), 'duplicate-block-identity');
-    ids.add(block.id);
-    instances.add(instance);
-    requireValue(WeeklyBlockCategoryValues.includes(block.category), 'invalid-block-category');
-    requireValue(WeeklyBlockCompletionModeValues.includes(block.completion_mode), 'invalid-completion-mode');
-    requireValue(integer(block.planned_duration_minutes, 1), 'invalid-block-duration');
-    requireValue(typeof block.require_timer === 'boolean' && typeof block.require_input === 'boolean', 'invalid-block-requirements');
-    requireValue(typeof block.title === 'string' && typeof block.instruction === 'string', 'invalid-block-copy');
-    requireValue(Array.isArray(block.resources) && Array.isArray(block.custom_fields), 'invalid-block-inputs');
-  });
-  return true;
-};
-
-export const validatePrivateWeeklyPlanDraft = (draft) => {
-  assertVersion(draft);
-  requireValue(text(draft?.parent_id) && text(draft?.student_id) && dateKey(draft?.week_key), 'invalid-plan-scope');
-  requireValue(draft.id === buildWeeklyPlanDocumentId({ parentId: draft.parent_id, studentId: draft.student_id, weekKey: draft.week_key }), 'invalid-plan-identity');
-  requireValue(draft.status === WeeklyPlanStatuses.DRAFT, 'draft-status-required');
-  requireValue(integer(draft.revision, 1) && integer(draft.base_published_revision), 'invalid-revision');
-  requireValue(draft.published_at == null && draft.archived_at == null, 'draft-publish-separation');
-  requireValue(draft.week_start != null && draft.week_end != null, 'missing-week-range');
-  assertUniqueStrings(draft.assignment_ids, 'invalid-assignment-ids');
-  requireValue(Array.isArray(draft.weekly_exceptions), 'invalid-weekly-exceptions');
-  validateWeeklyBlockInstances(draft.blocks, draft.student_id);
-  requireValue(draft.blocks.every((block) => draft.assignment_ids.includes(block.assignment_id)), 'missing-assignment-reference');
-  return true;
-};
-
-export const assertRetainedBlockIdentities = (previousBlocks, nextBlocks) => {
-  const previousById = new Map(previousBlocks.map((block) => [block.id, block]));
-  const previousByInstance = new Map(previousBlocks.map((block) => [
-    buildStableWeeklyBlockId({ assignmentId: block.assignment_id, instanceKey: block.instance_key }), block,
-  ]));
-  nextBlocks.forEach((block) => {
-    const previous = previousById.get(block.id);
-    requireValue(!previous || (previous.assignment_id === block.assignment_id
-      && previous.instance_key === block.instance_key
-      && previous.curriculum_block_id === block.curriculum_block_id), 'block-identity-reused');
-    const sameInstance = previousByInstance.get(buildStableWeeklyBlockId({ assignmentId: block.assignment_id, instanceKey: block.instance_key }));
-    requireValue(!sameInstance || sameInstance.id === block.id, 'block-identity-renumbered');
-  });
-  return true;
-};
-
-// Preserve existing persisted ids; never regenerate them from a new quantity/order.
-export const adoptLegacyWeeklyBlockInstances = (plan) => {
-  requireValue(Array.isArray(plan?.blocks), 'invalid-blocks');
-  const blocks = plan.blocks.map((block) => {
-    requireValue(text(block?.id), 'missing-stable-block-identity');
-    return { ...clone(block), instance_key: block.instance_key ?? `legacy:${block.id}` };
-  });
-  validateWeeklyBlockInstances(blocks, plan.student_id);
-  return blocks;
-};
-
-// One transaction must read both documents and apply both writes. This only builds intent.
-export const buildWeeklyPlanPublishWrites = ({ draft, currentPublished = null, expectedDraftRevision, expectedPublishedRevision, actorId, serverTime }) => {
-  validatePrivateWeeklyPlanDraft(draft);
-  assertTrustedContext(draft.parent_id, actorId, serverTime);
-  const draftRevision = nextContractRevision({ expectedRevision: expectedDraftRevision, currentRevision: draft.revision });
-  const currentRevision = currentPublished?.revision ?? 0;
-  const publishedRevision = nextContractRevision({ expectedRevision: expectedPublishedRevision, currentRevision });
-  requireValue(draft.base_published_revision === currentRevision, 'published-base-conflict');
-  if (currentPublished) {
-    assertVersion(currentPublished);
-    requireValue(integer(currentPublished.revision, 1), 'invalid-revision');
-    requireValue(currentPublished.id === draft.id, 'scope-mismatch');
-    assertSameScope(draft, currentPublished, ['parent_id', 'student_id', 'week_key']);
-    requireValue(currentPublished.status === WeeklyPlanStatuses.PUBLISHED, 'archived-plan-immutable');
-    validateWeeklyBlockInstances(currentPublished.blocks, draft.student_id);
-    assertRetainedBlockIdentities(currentPublished.blocks, draft.blocks);
-  }
-  // Structured exceptions do not yet have a public schema; fail closed until one is adopted.
-  requireValue(draft.weekly_exceptions.every((item) => typeof item === 'string'), 'unsupported-weekly-exception');
-  const published = {
-    ...pick(draft, ['id', 'parent_id', 'student_id', 'week_key', 'week_start', 'week_end', 'assignment_ids', 'weekly_exceptions']),
-    schema_version: ProductDirectionContractVersion,
-    revision: publishedRevision,
-    status: WeeklyPlanStatuses.PUBLISHED,
-    blocks: draft.blocks.map((block) => ({
-      ...projectTypedFields(block, WeeklyBlockInstanceSchema),
-      resources: block.resources.map((resource) => projectTypedFields(resource, ResourceSchema)),
-      custom_fields: block.custom_fields.map((field) => projectTypedFields(field, CustomFieldSchema)),
-    })),
-    published_at: serverTime,
-    archived_at: null,
-    created_at: currentPublished?.created_at ?? serverTime,
-    updated_at: serverTime,
-  };
-  return [
-    { collection: Collections.WEEKLY_PLAN_DRAFTS, id: draft.id, data: { ...clone(draft), revision: draftRevision, base_published_revision: publishedRevision, updated_at: serverTime } },
-    { collection: Collections.WEEKLY_PLANS, id: draft.id, data: published },
-  ];
-};
-
-// No arbitrary first-match: callers must route ambiguous/missing legacy evidence to review.
 export const resolveLegacyWeeklyBlock = ({ plan, studentId, weekKey, subjectId, blockIndex }) => {
   requireValue(text(studentId) && dateKey(weekKey) && text(subjectId) && integer(blockIndex), 'invalid-legacy-reference');
   requireValue(plan?.student_id === studentId && plan?.week_key === weekKey, 'scope-mismatch');

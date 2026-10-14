@@ -26,3 +26,5 @@ Recorded: 2026-10-12. Authorization: the user instructed, “Okay go ahead and b
 ## Changes
 
 2026-10-12: adopted the execution plan defaults and bounded pending-obligation settlement as above. No production mutations or billing changes made.
+
+2026-10-14: Weekly Plan publish establishes server-owned per-student published authority, including missing/empty current weeks after a future publish. Publication copies canonical household reset/timezone to the public student record. Older households without a persisted timezone must save their school timezone in Settings before planning; the application surfaces this requirement rather than choosing different device/server defaults. Private drafts/defaults and v1 publication writes now require trusted revision adapters. Historical legacy publication archival uses the same trusted adapter after adoption. Current portal refreshes at weekly reset; removed or changed work invalidates open completion forms. Full trusted completion/correction authority follows in source Phase5.

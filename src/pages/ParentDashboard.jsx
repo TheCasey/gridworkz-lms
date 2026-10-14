@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getFirestore } from 'firebase/firestore';
@@ -292,6 +292,19 @@ const ParentDashboard = () => {
   const { currentUser, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const navigationRef = useRef(null);
+  const navigationToggleRef = useRef(null);
+  useEffect(() => {
+    if (!mobileNavigationOpen) return undefined;
+    navigationRef.current?.querySelector('a')?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') { setMobileNavigationOpen(false); navigationToggleRef.current?.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [mobileNavigationOpen]);
+  useEffect(() => { setMobileNavigationOpen(false); }, [location.pathname]);
   const [modalOpen, setModalOpen] = useState(false);
   const [viewingStudentProgress, setViewingStudentProgress] = useState(null);
   const [viewingStudentChoresProgress, setViewingStudentChoresProgress] = useState(null);
@@ -844,8 +857,9 @@ const ParentDashboard = () => {
     <div className="min-h-screen bg-[#1f1f32]" style={{ fontFamily: FONT }}>
       <div className="flex h-screen">
 
+        {mobileNavigationOpen ? <button type="button" aria-label="Close navigation" className="fixed inset-0 z-30 bg-black/50 md:hidden" onClick={() => setMobileNavigationOpen(false)} /> : null}
         {/* Sidebar */}
-        <div className="w-[190px] flex flex-col flex-shrink-0 border-r border-[rgba(255,255,255,0.08)] bg-[#181828]">
+        <div className={`w-[190px] flex-col flex-shrink-0 border-r border-[rgba(255,255,255,0.08)] bg-[#181828] ${mobileNavigationOpen ? 'fixed inset-y-0 left-0 z-40 flex md:static' : 'hidden md:flex'}`}>
           <div className="flex items-center gap-2 px-4 py-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
             <div className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center bg-[#7c6fd4]">
               <div className="h-3.5 w-2.5 border-b-[3px] border-white/90 border-l-[3px] border-r-[3px] border-l-white/40 border-r-white/60" />
@@ -858,7 +872,7 @@ const ParentDashboard = () => {
             </div>
           </div>
 
-          <nav key={location.pathname} className="flex-1 overflow-y-auto py-1.5">
+          <nav id="parent-navigation" ref={navigationRef} key={location.pathname} className="flex-1 overflow-y-auto py-1.5">
             <div className="space-y-0.5">
               {resolvedDashboardNavigation.map((section) => {
                 const Icon = section.icon;
@@ -994,11 +1008,12 @@ const ParentDashboard = () => {
         </div>
 
         {/* Main Content */}
-        <div className="relative flex-1 flex flex-col overflow-hidden bg-[#1f1f32]">
+        <div className="relative min-w-0 flex-1 flex flex-col overflow-hidden bg-[#1f1f32]">
           {/* Header */}
           <header className="flex-shrink-0 border-b border-[rgba(255,255,255,0.08)] bg-[#181828] px-4 py-2">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 md:flex md:flex-wrap md:items-center md:justify-between">
+              <button type="button" className="border border-white/20 px-2 py-1 text-[12px] text-white md:hidden" ref={navigationToggleRef} aria-label="Open navigation" aria-controls="parent-navigation" aria-expanded={mobileNavigationOpen} onClick={() => setMobileNavigationOpen(true)}>Menu</button>
+              <div className="min-w-0 flex-1">
                 <h2 style={{ fontSize: 14, fontWeight: 540, lineHeight: 1.1, letterSpacing: 0, color: 'rgba(250,249,255,0.96)' }}>
                   {activeFeature.header.title}
                 </h2>
@@ -1006,7 +1021,7 @@ const ParentDashboard = () => {
                   {activeFeature.header.description}
                 </p>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="col-span-2 flex flex-wrap items-center gap-1.5 md:col-span-1">
                 {activeFeatureShell.headerSlots.primaryAction && renderHeaderPrimaryAction(activeFeatureShell.headerSlots.primaryAction)}
                 {activeFeatureShell.headerSlots.filters.map((filterId) => (
                   <React.Fragment key={filterId}>

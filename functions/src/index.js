@@ -1,3 +1,4 @@
+import { resolvePlanningWeek } from './weeklyPlanningContracts.js';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
@@ -60,6 +61,7 @@ import {
   resolveRoutineRewardAccess,
 } from './routineRewardContracts.js';
 import { createRoutineRewardService } from './routineRewardAuthority.js';
+import { createWeeklyPlanningService } from './weeklyPlanningAuthority.js';
 
 initializeApp();
 
@@ -2533,16 +2535,6 @@ const buildLocalDateString = (year, month, day) => (
   `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 );
 
-const shiftLocalDatePartsByDays = (parts, dayOffset) => {
-  const shiftedDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
-  shiftedDate.setUTCDate(shiftedDate.getUTCDate() + dayOffset);
-
-  return {
-    year: shiftedDate.getUTCFullYear(),
-    month: shiftedDate.getUTCMonth() + 1,
-    day: shiftedDate.getUTCDate(),
-  };
-};
 
 const getDateTimePartsInTimeZone = (dateInput, timeZone) => {
   const date = resolveDateInput(dateInput);
@@ -2594,33 +2586,7 @@ const getDateTimePartsInTimeZone = (dateInput, timeZone) => {
 
 const resolveWeekKeyForDate = (dateInput, weekConfig = {}) => {
   const date = resolveDateInput(dateInput);
-  const timezone = trimString(weekConfig.timezone) || DEFAULT_PARENT_SETTINGS.timezone;
-  const resetDay = Number.isInteger(weekConfig.week_reset_day)
-    ? weekConfig.week_reset_day
-    : DEFAULT_PARENT_SETTINGS.week_reset_day;
-  const resetHour = Number.isInteger(weekConfig.week_reset_hour)
-    ? weekConfig.week_reset_hour
-    : DEFAULT_PARENT_SETTINGS.week_reset_hour;
-  const resetMinute = Number.isInteger(weekConfig.week_reset_minute)
-    ? weekConfig.week_reset_minute
-    : DEFAULT_PARENT_SETTINGS.week_reset_minute;
-  const localParts = getDateTimePartsInTimeZone(date, timezone);
-  const daysSinceReset = (localParts.weekday - resetDay + 7) % 7;
-  let boundaryDateParts = shiftLocalDatePartsByDays(localParts, -daysSinceReset);
-  const beforeBoundary = daysSinceReset === 0 && (
-    localParts.hour < resetHour
-    || (localParts.hour === resetHour && localParts.minute < resetMinute)
-  );
-
-  if (beforeBoundary) {
-    boundaryDateParts = shiftLocalDatePartsByDays(boundaryDateParts, -7);
-  }
-
-  return buildLocalDateString(
-    boundaryDateParts.year,
-    boundaryDateParts.month,
-    boundaryDateParts.day
-  );
+  return resolvePlanningWeek({ weekKey: '2000-01-03', settings: weekConfig, now: date }).currentKey;
 };
 
 const buildWeeklyPlanDocumentId = ({ parentId, studentId, weekKey }) => (
@@ -4941,6 +4907,21 @@ const syncEntitlementFromSubscription = async (stripe, subscription, eventType =
 };
 
 const routineRewardService = createRoutineRewardService({ db, Timestamp, HttpsError, resolveEntitlementRecord });
+const weeklyPlanningService = createWeeklyPlanningService({ db, Timestamp, HttpsError });
+
+export const saveWeeklyPlanDraft = onCall({ region: REGION }, async (request) => (
+  weeklyPlanningService.saveDraft({ parentId: ensureAuthenticated(request), payload: request.data })
+));
+export const publishWeeklyPlan = onCall({ region: REGION }, async (request) => (
+  weeklyPlanningService.publish({ parentId: ensureAuthenticated(request), payload: request.data })
+));
+export const saveStudentDefaultWeek = onCall({ region: REGION }, async (request) => (
+  weeklyPlanningService.saveDefaults({ parentId: ensureAuthenticated(request), payload: request.data })
+));
+export const archiveWeeklyPlan = onCall({ region: REGION }, async (request) => (
+  weeklyPlanningService.archive({ parentId: ensureAuthenticated(request), payload: request.data })
+));
+
 
 // Owner bootstrap is dormant until the coordinated release enables new accounts.
 // Existing entitlement records are never activated or overwritten by a client request.

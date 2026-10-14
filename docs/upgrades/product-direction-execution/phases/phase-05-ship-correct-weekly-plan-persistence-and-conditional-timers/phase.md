@@ -47,11 +47,17 @@ Add meaningful policy/persistence tests for the source phase cases; static sourc
 
 ## Test Files
 
-- Not listed yet. Add likely files before dispatching developer work if automated tests are expected.
+- `scripts/check-weekly-planning-helpers.mjs`
+- `scripts/check-weekly-planning-callables.mjs`
+- `tests/product-direction/planning.spec.js`
+- Existing timers/report/Lockdown checks
 
 ## Test Cases To Cover
 
-- Not listed yet. Add focused regression or behavior cases before dispatching developer work if the phase changes behavior.
+- Atomic on-screen draft/publish revisions, repeated/stable identities, concurrent tabs and archived denial.
+- Defaults update only selected student and future generation; owner/private boundaries.
+- Empty/missing authoritative plans never re-expose subjects; only published plans drive student/report/Lockdown.
+- Timed/non-timed launch/completion requirements, active republish/removal and stale sessions.
 
 ## No-Test Rationale
 

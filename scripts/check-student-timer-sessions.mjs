@@ -167,4 +167,14 @@ assert.deepEqual(
   'new timer sessions must persist plan, week, and block identity'
 );
 
+
+const nonTimedContext = buildPortalTimerBlockContext({ hasPublishedWeeklyPlan: true,
+  publishedWorkItems: publishedWorkItems.map((item) => item.id === 'chess_block_2' ? { ...item, requireTimer: false } : item),
+});
+assert.equal(getPortalTimerInvalidReason({ ...validationContext, blockContext: nonTimedContext, subjectId: 'chess', timer: baseTimer }), 'timer_not_required', 'removing the requirement releases the old timer lock');
+const durationContext = buildPortalTimerBlockContext({ hasPublishedWeeklyPlan: true,
+  publishedWorkItems: publishedWorkItems.map((item) => item.id === 'chess_block_2' ? { ...item, plannedDurationMinutes: 15 } : item),
+});
+assert.equal(getPortalTimerInvalidReason({ ...validationContext, blockContext: durationContext, subjectId: 'chess', timer: { ...baseTimer, initialDurationMs: 30 * 60_000 } }), 'timer_duration_changed', 'republish cannot reuse elapsed time from a different requirement');
+assert.equal(getPortalTimerInvalidReason({ ...validationContext, subjectId: 'chess', timer: { ...baseTimer, initialDurationMs: 30 * 60_000 } }), null, 'unchanged requirements preserve a current timer across revision-only publication');
 console.log('Student timer-session checks passed.');
