@@ -11,7 +11,8 @@ export const DIRECTION_RESET_COLLECTIONS = Object.freeze([
   'routineTemplates', 'routineCompletions', 'routineDaySnapshots', 'routineDayPointers', 'productDirectionMigrations', 'choreSettings', 'choreDefinitions',
   'choreClaims', 'choreCompletions', 'allowancePeriods', 'rewardSettings', 'rewardCatalogItems',
   'rewardRedemptions', 'pointLedgerEntries', 'studentPointWallets', 'studentCosmeticStates',
-  'blockCompletionStates', 'parentCorrectionEvents', 'entitlementAuditLogs', 'householdHistoryEvents',
+  'blockCompletionStates', 'parentCorrectionEvents', 'schoolExecutionSnapshots', 'schoolOperationReceipts', 'schoolStateHistory', 'schoolReportAmendmentHeads', 'schoolPublicationBridges',
+  'entitlementAuditLogs', 'householdHistoryEvents',
 ]);
 export const DIRECTION_SCENARIOS = Object.freeze({
   empty: { plan: 'free', students: 0, subjects: 0 },
@@ -21,6 +22,7 @@ export const DIRECTION_SCENARIOS = Object.freeze({
   lockdown: { plan: 'lockdown', students: 2, subjects: 3 },
   legacy: { plan: 'core', students: 2, subjects: 3 },
   routines: { plan: 'free', students: 2, subjects: 3, routineFirst: true },
+  corrections: { plan: 'free', students: 2, subjects: 3, routineFirst: true },
   routine_disabled: { plan: 'free', students: 1, subjects: 1, routineFirst: true, routinePointsDisabled: true },
 });
 
@@ -65,7 +67,7 @@ export const buildDirectionFixture = ({ scenario = 'free', referenceDate = new D
       const instanceKey = `fixture:${block.legacy_subject_id}:${block.legacy_block_index}`;
       return { ...block, instance_key: instanceKey, id: buildStableWeeklyBlockId({ assignmentId: block.assignment_id, instanceKey }) };
     });
-    const published = { ...buildPublishedWeeklyPlan(draft), schema_version: 1, revision: 1, published_at: referenceDate };
+    const published = { ...buildPublishedWeeklyPlan(draft), schema_version: 1, school_completion_version: 1, revision: 1, published_at: referenceDate };
     if (published.blocks.length) {
       documents.push({ collection: 'weeklyPlans', id: draft.id, data: published });
       documents.push({ collection: 'weeklyPlanDrafts', id: draft.id, data: {

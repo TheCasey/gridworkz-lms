@@ -47,11 +47,14 @@ Add meaningful policy/persistence tests for the source phase cases; static sourc
 
 ## Test Files
 
-- Not listed yet. Add likely files before dispatching developer work if automated tests are expected.
+- `scripts/check-school-authority-helpers.mjs`
+- `scripts/check-school-authority-callables.mjs`
+- `tests/product-direction/corrections.spec.js`
+- Existing rules/timers/planning/report/Lockdown suites
 
 ## Test Cases To Cover
 
-- Not listed yet. Add focused regression or behavior cases before dispatching developer work if the phase changes behavior.
+- Owner/PIN/sibling/forged actor/time denials; client projection/event bypass; correction and submission revision/idempotency races; undo/resubmit; parent complete without invented time/response; legacy provenance/ambiguous historical assignments; archived amendments preserve originals; equal portal/dashboard/report/Lockdown effective status.
 
 ## No-Test Rationale
 

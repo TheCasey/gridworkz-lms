@@ -1,6 +1,6 @@
 # GridWorkz Architecture
 
-Last updated: 2026-10-12
+Last updated: 2026-10-15
 
 ## Stack
 
@@ -74,7 +74,7 @@ Important modeling details:
 - Student access is keyed by a generated slug and can be guarded by an optional `access_pin`.
 - `weeklyPlans` remain the published/archived student-week authority. The routine-first implementation keeps private drafts in `weeklyPlanDrafts` and per-student defaults in `studentDefaultWeeks`; trusted callables save current editor contents with revision checks and atomically publish an allowlisted snapshot. Private retry receipts remain owner-readable/server-writable. Production promotion is pending.
 - Weekly reports cache school-year and quarter labels for filtering and reporting, and weekly-plan-backed records can preserve assigned block snapshots in `assigned_blocks_snapshot`.
-- Timer sessions are stored in Firestore and mirrored in local storage for resilience.
+- The routine-first implementation uses a trusted singleton school timer in `timerSessions/{studentId}`. Server-issued context and elapsed time govern completion; the student device renders the countdown against the returned server clock. Old local-storage/per-subject timer records remain compatibility inputs only before adoption. Production promotion is pending.
 - `accountEntitlements/{uid}` is the server-owned plan and feature source for premium surfaces such as Lockdown.
 - `supportOperators/{uid}` is the server-owned allowlist for operator callables.
 - `entitlementAuditLogs` stores billing and operator entitlement events.
@@ -177,3 +177,11 @@ This is sufficient for the current browser-extension launch path, but the broade
 - Feature docs: [features/README.md](features/README.md)
 - Implemented chores and rewards module: [specs/chores-and-rewards-module.md](specs/chores-and-rewards-module.md)
 - Upgrade docs: [upgrades/README.md](upgrades/README.md)
+
+## Trusted School Completion (routine-first implementation; release pending)
+
+`functions/src/schoolCompletionAuthority.js` owns PIN-verified school reads, student submissions/timers and authenticated parent corrections. Immutable evidence remains in `submissions`; `blockCompletionStates` stores effective status, and `parentCorrectionEvents` plus `schoolStateHistory` retain audit history. Commands use revision checks and private idempotency receipts. Public student markers invalidate reads across devices. The server returns the canonical household school week, so device clock skew cannot advance the assignment week or grant elapsed timer time.
+
+A missing legacy execution freezes separately in private `schoolExecutionSnapshots`. First publication uses a private immutable `schoolPublicationBridges` record and exact one-to-one `legacy_source_links` to preserve executed work. Ambiguous pre-existing draft identities require parent reconciliation. Canonical states take precedence over inherited baselines; publication-era blocks cannot inherit unrelated subject/index evidence. Missing/empty adopted weeks stay empty.
+
+`useParentSchoolState`, the student adapter, report snapshot builders and trusted Lockdown policy share effective state semantics. Parent corrections never fabricate student submissions or time. Saved original reports cannot update; explicit `weeklyReportAmendments` and private amendment heads provide versioned changes. Historical reports without reliable assignment attribution require review and retain their original numerical evidence. General public-read/session redesign remains separate scope.

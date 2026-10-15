@@ -1,3 +1,5 @@
+import { buildTrustedSchoolPolicyTimers } from './schoolLockdownFoundation.js';
+import { createSchoolCompletionService } from './schoolCompletionAuthority.js';
 import { resolvePlanningWeek } from './weeklyPlanningContracts.js';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
@@ -3369,7 +3371,8 @@ const selectActiveWeeklyPlanBlock = ({ weeklyPlan, timerSessions = [] }) => {
 
   const matchingCandidates = (Array.isArray(timerSessions) ? timerSessions : []).reduce((candidates, timerSession) => {
     const matchingBlock = blocks.find((block) => (
-      trimString(block?.legacy_subject_id) === trimString(timerSession?.subject_id)
+      (!timerSession?.authority_version || timerSession.authority_version === 1 && timerSession.weekly_plan_id === weeklyPlan?.id && timerSession.weekly_block_id === block.id)
+      && trimString(block?.legacy_subject_id) === trimString(timerSession?.subject_id)
       && Number.isInteger(block?.legacy_block_index)
       && block.legacy_block_index === timerSession?.block_index
     )) || null;
@@ -3443,6 +3446,7 @@ export const derivePublishedWeeklyPlanDevicePolicy = ({
   studentRecord = null,
   weeklyPlan = null,
   timerSessions = [],
+  schoolState = null,
   lockdownResourceLibrary = [],
   activeWorkSession = null,
   deviceStatus = '',
@@ -3458,7 +3462,9 @@ export const derivePublishedWeeklyPlanDevicePolicy = ({
   });
   const { activeBlock, activeTimerSession } = selectActiveWeeklyPlanBlock({
     weeklyPlan,
-    timerSessions,
+    timerSessions: studentRecord?.school_authority_version === 1
+      ? buildTrustedSchoolPolicyTimers({ schoolState, studentId: normalizedStudentId, nowMs: referenceDate.getTime() })
+      : timerSessions,
   });
   const assignedOffBlockResources = selectAssignedLockdownResources({
     resourceLibrary: lockdownResourceLibrary,
@@ -3799,13 +3805,15 @@ const buildTrustedDevicePolicyResponse = async ({ deviceRecord, deviceId }) => {
     allowImplicitSingleStudent: true,
     allowUnboundFallback: true,
   });
-  const weeklyPlan = await loadPublishedWeeklyPlanForStudent({
-    parentId: deviceRecord.parent_id,
-    studentRecord: binding.studentRecord,
-    referenceDate: new Date(),
+  const usesTrustedSchool = binding.studentRecord?.school_authority_version === 1;
+  const schoolState = usesTrustedSchool ? await schoolCompletionService.read({ payload: {
+    student_id: binding.studentId, access_pin: binding.studentRecord.access_pin || '',
+  } }) : null;
+  const weeklyPlan = usesTrustedSchool ? schoolState.weekly_plan : await loadPublishedWeeklyPlanForStudent({
+    parentId: deviceRecord.parent_id, studentRecord: binding.studentRecord, referenceDate: new Date(),
   });
   const [timerSessions, lockdownResourceLibrary] = await Promise.all([
-    loadStudentTimerSessions(binding.studentId),
+    usesTrustedSchool ? Promise.resolve([]) : loadStudentTimerSessions(binding.studentId),
     loadParentLockdownResourceLibrary(deviceRecord.parent_id),
   ]);
   const derivedPolicy = derivePublishedWeeklyPlanDevicePolicy({
@@ -3814,6 +3822,7 @@ const buildTrustedDevicePolicyResponse = async ({ deviceRecord, deviceId }) => {
     studentRecord: binding.studentRecord,
     weeklyPlan,
     timerSessions,
+    schoolState,
     lockdownResourceLibrary,
     deviceStatus: deviceRecord.status,
     bindingStatus: binding.bindingError,
@@ -4908,6 +4917,12 @@ const syncEntitlementFromSubscription = async (stripe, subscription, eventType =
 
 const routineRewardService = createRoutineRewardService({ db, Timestamp, HttpsError, resolveEntitlementRecord });
 const weeklyPlanningService = createWeeklyPlanningService({ db, Timestamp, HttpsError });
+const schoolCompletionService = createSchoolCompletionService({ db, Timestamp, HttpsError, resolveTrustedStudentContext });
+export const fileSchoolWeeklyReport = onCall({ region: REGION }, (request) => schoolCompletionService.fileReport({ parentId: ensureAuthenticated(request), payload: request.data }));
+export const getStudentSchoolState = onCall({ region: REGION }, (request) => schoolCompletionService.read({ payload: request.data }));
+export const correctSchoolBlock = onCall({ region: REGION }, (request) => schoolCompletionService.correct({ parentId: ensureAuthenticated(request), payload: request.data }));
+export const submitSchoolBlock = onCall({ region: REGION }, (request) => schoolCompletionService.submit({ payload: request.data }));
+export const commandStudentSchoolTimer = onCall({ region: REGION }, (request) => schoolCompletionService.timer({ payload: request.data }));
 
 export const saveWeeklyPlanDraft = onCall({ region: REGION }, async (request) => (
   weeklyPlanningService.saveDraft({ parentId: ensureAuthenticated(request), payload: request.data })

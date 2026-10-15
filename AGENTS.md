@@ -96,7 +96,10 @@ Important data conventions:
 
 - Timer logic lives in `src/utils/timerUtils.js`.
 - Timers are target-end-time based, not interval-drift based.
-- Timer state persists to local storage and is also synced through the `timerSessions` Firestore collection.
+- Current school clients use trusted singleton `timerSessions/{studentId}` sessions. Server-issued identity/context and elapsed time govern completion; device target-end-time ticks are display only. Legacy per-subject/local-storage paths remain compatibility code before adoption.
+- `functions/src/schoolCompletionAuthority.js` owns PIN-verified reads/submission/timers and owner correction/report filing. Parent consumers resolve canonical block state before any immutable publication bridge baseline.
+- First school-authority publication preserves legacy execution or older canonical publication state through private `schoolPublicationBridges`; differing instance identities require explicit source reconciliation. Never infer links from subject/index/title.
+- Official original reports are filed transactionally, never updated. Corrections append explicit report amendments; historical operations must not affect another week’s timer.
 
 ### Reporting
 
@@ -113,11 +116,13 @@ Current high-level posture:
 - `parents`: owner-only access
 - `students`: public read, trusted callable create, owner-controlled update/delete
 - `subjects`: public read, trusted callable create, owner-controlled update/delete
-- `submissions`: public read and create, authenticated update/delete
-- `timerSessions`: unauthenticated access with assignment and shape checks
-- `weeklyReports`: parent-scoped
+- `submissions`: public read; adopted students require trusted writes and immutable evidence. Legacy creates remain constrained to assigned scope before adoption.
+- `timerSessions`: trusted singleton server writes for adopted students; owner reads and PIN-safe callable projection. Legacy assignment/shape compatibility remains before adoption.
+- `weeklyReports`: parent-readable, trusted create, no original updates; owner deletion only before any amendment.
 - `accountEntitlements`: owner-readable, server-writable only
+- School states/events/history/executions/bridges/receipts and report amendments/heads are owner-readable and server-writable only.
 - Chores/routines/rewards writes use trusted callables; collection reads are parent-scoped.
+- `firestore.indexes.json` preserves production inventory plus authority queries. Emulator tests cannot validate cloud composite-index readiness; build indexes before coordinated release.
 
 If you touch the student portal or reporting architecture, check `firestore.rules` directly before making assumptions.
 

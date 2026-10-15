@@ -1,3 +1,5 @@
+import { buildBlockCompletionStateId, resolveEffectiveSchoolBlockState } from '../../functions/src/schoolCompletionFoundation.js';
+import { getInheritedSchoolPublicationState } from '../../functions/src/schoolPublicationBridge.js';
 import { serverTimestamp } from 'firebase/firestore';
 import { WeeklyPlanStatuses } from '../constants/schema.js';
 import { getWeekKey, isTimestampInWeek } from './weekUtils.js';
@@ -60,7 +62,7 @@ const buildSubmissionSummarySnapshot = (submission) => {
     submissionId: submission.id || '',
     summaryText: submission.summary_text || '',
     submittedAt: submission.timestamp || null,
-    durationMinutes: submission.block_duration || 30,
+    durationMinutes: submission.block_duration ?? null,
     manualOverride: Boolean(submission.manual_override),
     resourcesUsed: clonePlainArray(submission.resources_used),
     customFieldResponses: (
@@ -73,20 +75,20 @@ const buildSubmissionSummarySnapshot = (submission) => {
   };
 };
 
-const buildAssignedBlockSnapshots = ({ weeklyPlan, weekSubmissions }) => (
-  (Array.isArray(weeklyPlan?.blocks) ? weeklyPlan.blocks : []).map((block, index) => {
+const buildAssignedBlockSnapshots = ({ weeklyPlan, weekSubmissions, completionStates = [], publicationBridge = null }) => (
+  (Array.isArray(weeklyPlan?.blocks) ? weeklyPlan.blocks : []).map((rawBlock, index) => {
+    const block = { ...rawBlock, id: rawBlock.id || `block-${index + 1}` };
     const legacySubjectId = toNonEmptyString(block?.legacy_subject_id);
     const legacyBlockIndex = Number.isInteger(block?.legacy_block_index)
       ? block.legacy_block_index
       : null;
-    const matchedSubmissions = legacySubjectId && legacyBlockIndex !== null
-      ? sortSubmissionsByTimestamp(weekSubmissions.filter((submission) => (
-          submission.subject_id === legacySubjectId
-          && submission.block_index === legacyBlockIndex
-        )))
-      : [];
+    const state = resolveEffectiveSchoolBlockState({ plan: weeklyPlan, block,
+      state: completionStates.find((item) => item.id === buildBlockCompletionStateId({ planId: weeklyPlan.id, blockId: block.id })),
+      inheritedState: getInheritedSchoolPublicationState({ bridge: publicationBridge, plan: weeklyPlan, block }),
+      evidence: sortSubmissionsByTimestamp(weekSubmissions) });
+    const matchedSubmissions = sortSubmissionsByTimestamp(weekSubmissions.filter((item) => state.original_evidence_ids.includes(item.id)));
     const matchedSubmission = matchedSubmissions[matchedSubmissions.length - 1] || null;
-    const completed = Boolean(matchedSubmission);
+    const completed = state.status === 'completed';
 
     return {
       blockId: block?.id || `block-${index + 1}`,
@@ -99,7 +101,13 @@ const buildAssignedBlockSnapshots = ({ weeklyPlan, weekSubmissions }) => (
       requireTimer: Boolean(block?.require_timer),
       requireInput: Boolean(block?.require_input),
       completed,
-      completionStatus: completed ? 'completed' : 'incomplete',
+      completionStatus: state.status,
+      completionProvenance: state.provenance,
+      completionActorId: state.actor_id,
+      completedAt: state.completed_at,
+      stateRevision: state.revision,
+      correctionEventId: state.last_correction_event_id,
+      evidenceIds: state.original_evidence_ids,
       resources: clonePlainArray(block?.resources),
       legacySubjectId,
       legacySubjectTitle: toNonEmptyString(block?.legacy_subject_title),
@@ -207,7 +215,7 @@ const buildWeekSubmissionsForStudent = ({ studentId, submissions, weekStart, wee
 
 const getSubmissionMinutesTotal = (submissions) => (
   (Array.isArray(submissions) ? submissions : []).reduce(
-    (sum, submission) => sum + (submission.block_duration || 30),
+    (sum, submission) => sum + (submission.block_duration ?? 0),
     0
   )
 );
@@ -277,13 +285,23 @@ export const buildWeeklyPlanWeeklySnapshot = ({
   weekStart,
   weekEnd,
   weeklyPlan,
+  completionStates = [],
+  publicationBridge = null,
 }) => {
+  const recordedStart = toComparableDate(weeklyPlan?.week_start);
+  const recordedEnd = toComparableDate(weeklyPlan?.week_end);
   const weekSubmissions = buildWeekSubmissionsForStudent({
     studentId: student.id,
     submissions,
-    weekStart,
-    weekEnd,
+    weekStart: recordedStart || weekStart,
+    weekEnd: recordedEnd || weekEnd,
   });
+  const scopedPlan = { ...weeklyPlan,
+    parent_id: weeklyPlan?.parent_id || student.parent_id || weekSubmissions[0]?.parent_id || '',
+    student_id: weeklyPlan?.student_id || student.id,
+    week_key: weeklyPlan?.week_key || getWeekKey(weekStart, student),
+  };
+  const assignedBlocksSnapshot = buildAssignedBlockSnapshots({ weeklyPlan: scopedPlan, weekSubmissions, completionStates, publicationBridge });
   const subjectsById = Object.fromEntries(
     (Array.isArray(subjects) ? subjects : []).map((subject) => [subject.id, subject])
   );
@@ -329,32 +347,22 @@ export const buildWeeklyPlanWeeklySnapshot = ({
   });
 
   const subjectData = groupedPlanSubjects.map(({ subject, plannedBlocks }) => {
-    const plannedBlockKeys = new Set(plannedBlocks.map((plannedBlock) => plannedBlock.key));
-    const planMatchedSubmissions = sortSubmissionsByTimestamp(
-      weekSubmissions.filter((submission) => (
-        plannedBlockKeys.has(`${submission.subject_id}:${submission.block_index}`)
-      ))
-    );
-    const completedBlockKeys = new Set(
-      planMatchedSubmissions.map((submission) => `${submission.subject_id}:${submission.block_index}`)
-    );
+    const completedCount = assignedBlocksSnapshot.filter((item) => item.legacySubjectId === subject.id && item.completed).length;
+    const evidenceIds = new Set(assignedBlocksSnapshot.filter((item) => item.legacySubjectId === subject.id).flatMap((item) => item.evidenceIds));
+    const evidenceSubmissions = sortSubmissionsByTimestamp(weekSubmissions.filter((item) => evidenceIds.has(item.id)));
 
     return {
       subject,
-      blocks: planMatchedSubmissions,
-      completedCount: completedBlockKeys.size,
+      blocks: evidenceSubmissions,
+      completedCount,
       totalCount: plannedBlocks.length,
-      totalMinutes: getSubmissionMinutesTotal(planMatchedSubmissions),
+      totalMinutes: getSubmissionMinutesTotal(evidenceSubmissions),
     };
   });
 
   const totalBlocks = subjectData.reduce((sum, subjectDatum) => sum + subjectDatum.completedCount, 0);
   const goalBlocks = subjectData.reduce((sum, subjectDatum) => sum + subjectDatum.totalCount, 0);
   const totalMinutes = subjectData.reduce((sum, subjectDatum) => sum + subjectDatum.totalMinutes, 0);
-  const assignedBlocksSnapshot = buildAssignedBlockSnapshots({
-    weeklyPlan,
-    weekSubmissions,
-  });
 
   return {
     student,
@@ -375,6 +383,8 @@ export const buildStudentWeeklySnapshot = ({
   weekStart,
   weekEnd,
   weeklyPlan = null,
+  completionStates = [],
+  publicationBridge = null,
 }) => (
   isReportableWeeklyPlan(weeklyPlan)
     ? buildWeeklyPlanWeeklySnapshot({
@@ -384,6 +394,8 @@ export const buildStudentWeeklySnapshot = ({
         weekStart,
         weekEnd,
         weeklyPlan,
+        completionStates,
+        publicationBridge,
       })
     : Number(student?.weekly_planning_version) >= 1
       && !(student?.weekly_planning_adopted_at && toComparableDate(student.weekly_planning_adopted_at) > weekEnd)
@@ -421,7 +433,7 @@ export const buildWeeklyReportPayload = ({
           text: block.summary_text,
           blockNumber: (block.block_index ?? 0) + 1,
           date: block.timestamp?.toDate?.() || new Date(block.timestamp),
-          duration: block.block_duration || 30,
+          duration: block.block_duration ?? null,
           manualOverride: Boolean(block.manual_override),
         })),
     };

@@ -146,15 +146,25 @@ class HttpsError extends Error { constructor(code, message, details) { super(mes
 const stamp = (date) => ({ toDate: () => date, toMillis: () => date.getTime() });
 const Timestamp = { now: () => stamp(now), fromDate: stamp };
 const state = new Map([['parents/parent-a', { timezone: 'America/Chicago' }], ['students/student-a', { parent_id: parentId }], ['subjects/math', subjects[0]]]);
+const queryFor = (collection, constraints = [], maximum = Infinity) => ({ collection, constraints, maximum,
+  where: (key, operator, value) => queryFor(collection, [...constraints, [key, operator, value]], maximum),
+  limit: (nextMaximum) => queryFor(collection, constraints, nextMaximum),
+  doc: (id) => ({ path: `${collection}/${id}`, id }),
+});
 const db = {
-  collection: (collection) => ({ doc: (id) => ({ path: `${collection}/${id}`, id }), where: (key, operator, value) => ({ collection, key, operator, value }) }),
+  collection: (collection) => queryFor(collection),
   runTransaction: async (operation) => {
     const writes = [];
     const snapshot = (id, value) => ({ id, exists: value !== undefined, data: () => value });
     const transaction = {
       get: async (target) => {
         assert.equal(writes.length, 0, 'All transaction reads precede writes');
-        if (target.collection) return { docs: [...state.entries()].filter(([path, data]) => path.startsWith(`${target.collection}/`) && data[target.key] === target.value).map(([path, value]) => snapshot(path.split('/')[1], value)) };
+        if (target.collection) {
+          const docs = [...state.entries()].filter(([path, data]) => path.startsWith(`${target.collection}/`) && target.constraints.every(([key, operator, value]) =>
+            operator === 'array-contains' ? data[key]?.includes(value) : operator === '>=' ? data[key] >= value : operator === '<=' ? data[key] <= value : data[key] === value))
+            .slice(0, target.maximum).map(([path, value]) => snapshot(path.split('/')[1], value));
+          return { docs, size: docs.length };
+        }
         return snapshot(target.id, state.get(target.path));
       },
       set: (target, value) => writes.push({ target, value }),
@@ -167,7 +177,7 @@ const db = {
   },
 };
 const service = createWeeklyPlanningService({ db, Timestamp, HttpsError });
-const payload = { student_id: studentId, week_key: weekKey, candidate, expected_draft_revision: 0, expected_published_revision: 0, idempotency_key: 'network-key' };
+const payload = { student_id: studentId, week_key: weekKey, candidate: { ...candidate, legacy_source_links: Object.fromEntries(candidate.blocks.map((block) => [block.id, null])) }, expected_draft_revision: 0, expected_published_revision: 0, idempotency_key: 'network-key' };
 const result = await service.publish({ parentId, payload });
 assert.equal(result.published_revision, 1);
 assert.equal(state.get(`weeklyPlans/${planId}`).status, 'published');

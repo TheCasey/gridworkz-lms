@@ -4,20 +4,20 @@ workflow_summary: "Execute source phases 0\u20138 as operational phases 1\u20139
 workflow_status: "active"
 source_plan_path: "docs/upgrades/product-direction-execution-plan-2026-09.md"
 master_developer_start_prompt_path: "docs/upgrades/product-direction-execution/start-master-developer-chat.md"
-current_phase_number: 5
-current_phase_slug: "phase-05-ship-correct-weekly-plan-persistence-and-conditional-timers"
+current_phase_number: 7
+current_phase_slug: "phase-07-ship-simplified-reports-and-verified-print-output"
 current_role: "master-developer"
-phase_status: "local_verified"
+phase_status: "in_progress"
 owner: "master-developer"
-next_downstream_role: "none"
-last_completed_phase_number: 5
-last_completed_phase_slug: "phase-05-ship-correct-weekly-plan-persistence-and-conditional-timers"
+next_downstream_role: "developer"
+last_completed_phase_number: 6
+last_completed_phase_slug: "phase-06-ship-trusted-parent-completion-corrections"
 last_completed_role: "tester"
 last_handoff_role: "tester"
 blocked_reason: "none"
-last_updated: "2026-10-14"
-active_phase_path: "docs/upgrades/product-direction-execution/phases/phase-05-ship-correct-weekly-plan-persistence-and-conditional-timers/phase.md"
-active_run_log_path: "docs/upgrades/product-direction-execution/phases/phase-05-ship-correct-weekly-plan-persistence-and-conditional-timers/run-log.md"
+last_updated: "2026-10-15"
+active_phase_path: "docs/upgrades/product-direction-execution/phases/phase-07-ship-simplified-reports-and-verified-print-output/phase.md"
+active_run_log_path: "docs/upgrades/product-direction-execution/phases/phase-07-ship-simplified-reports-and-verified-print-output/run-log.md"
 prompt_policy:
   read_first_max_items: 6
   allowed_discovery: "Start with the listed read-first files, then follow imports, routes, adjacent tests, and nearby implementation files only as needed. Do not preload broad workflow or product background unless the active phase exposes a concrete blocker."
@@ -57,12 +57,13 @@ active_phase_guidance:
     - "AGENTS.md"
     - "docs/upgrades/product-direction-execution-plan-2026-09.md"
     - "docs/upgrades/product-direction-execution/decisions.md"
-  automated_test_expectation: "Source Phase4: trusted private draft/default writes, atomic publish revisions, stable block identities and authoritative empty/missing plans; integrate conditional timers and persisted UI/runtime QA."
+  automated_test_expectation: "SourcePhase6: simplified student/week reports with effective counts and explicit original/amended print/PDF output; Letter/A4 long-content visual QA"
   test_files:
-    - "scripts/check-weekly-planning-callables.mjs"
-    - "tests/product-direction/planning.spec.js"
+    - "scripts/check-reporting-safety.mjs"
+    - "scripts/check-school-report-view.mjs"
+    - "tests/product-direction/reports.spec.js"
   test_cases:
-    - "Publish A/save draft B isolation; defaultstudent scope/futureweek; two-tab conflict/private reads/emptyweek; retained identities/archiveddenial; timed/non-timed completion/stalesessions"
+    - "Screen/saved/export/print parity; long names/responses/many blocks; zero completion/legacy/unknown duration; original/amendment versions; household reset/archive; Letter/A4 no clipping or unexpected blanks"
   no_test_rationale: ""
   test_commands:
     - "npm run lint"
@@ -158,3 +159,7 @@ routine_authority_acceptance: "locally verified 2026-10-13;164 helper assertions
 routine_interface_acceptance: "locally verified 2026-10-13;166 backend+19 view assertions,7 rules,4 compatibility,13 authority/bootstrap,11 browser passes; production activation pending"
 
 weekly_planning_acceptance: "locally verified 2026-10-14; calendars/identities/readers,8 rules,4 compatibility,13 routine,8 planning and20 browser checks pass; mobile drawer/keyboard focused follow-up; deployment pending"
+
+last_checkpoint_commit: "60e9e8f"
+
+school_authority_acceptance: "locally verified 2026-10-15;12 rules,4 compatibility,13 routine,8 planning,14 school API and26 browser cases plus1 mobile keyboard case pass; independent review findings repaired; production pending"

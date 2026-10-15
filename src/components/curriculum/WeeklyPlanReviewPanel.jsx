@@ -14,6 +14,9 @@ import {
   Send,
   Star,
 } from 'lucide-react';
+import SchoolBlockDetails from '../school/SchoolBlockDetails';
+import useWeeklyActivity from '../../hooks/useWeeklyActivity';
+import { schoolExecutionContentSignature } from '../../../functions/src/schoolPublicationBridge.js';
 import useWeeklyPlanRecord from '../../hooks/useWeeklyPlanRecord';
 import {
   WeeklyPlanStatuses,
@@ -283,6 +286,7 @@ const WeeklyPlanReviewPanel = ({
   );
   const {
     buildDraftPreview,
+    frozenExecution,
     clearError,
     draftPlan,
     studentDefaultWeek,
@@ -305,6 +309,7 @@ const WeeklyPlanReviewPanel = ({
     enabled: Boolean(currentUser && selectedStudentId),
   });
 
+  const [legacySourceLinks, setLegacySourceLinks] = useState({});
   const generatedPlanPreview = useMemo(
     () => buildDraftPreview() || null,
     [buildDraftPreview]
@@ -317,7 +322,15 @@ const WeeklyPlanReviewPanel = ({
     () => getStudentSubjects(activeSubjects, selectedStudentId),
     [activeSubjects, selectedStudentId]
   );
-  const sourcePlan = weeklyPlan?.status === WeeklyPlanStatuses.ARCHIVED ? weeklyPlan : draftPlan || weeklyPlan || generatedPlanPreview;
+  const schoolStudents = useMemo(() => selectedStudent ? [selectedStudent] : [], [selectedStudent]);
+  const { schoolWeeksByStudentId, reloadSchoolState, loading: schoolLoading, error: schoolError } = useWeeklyActivity({ currentUser,
+    students: schoolStudents, subjects: activeSubjects, weekConfig: parentSettings, weekOffset: selectedWeekOffset, enabled: Boolean(selectedStudent) });
+  const schoolWeek = schoolWeeksByStudentId[selectedStudentId];
+  const reconciliationSource = weeklyPlan && weeklyPlan.school_completion_version !== 1 && weeklyPlan.status === 'published'
+    ? weeklyPlan : !weeklyPlan ? frozenExecution || (schoolWeek?.plan?.authority_kind === 'legacy_execution' ? schoolWeek.plan : null) : null;
+  const initialLegacyPreview = useMemo(() => !studentDefaultWeek && reconciliationSource?.authority_kind === 'legacy_execution'
+    ? { ...reconciliationSource, id: planId, status: 'draft' } : generatedPlanPreview, [studentDefaultWeek, reconciliationSource, planId, generatedPlanPreview]);
+  const sourcePlan = weeklyPlan?.status === WeeklyPlanStatuses.ARCHIVED ? weeklyPlan : draftPlan || weeklyPlan || initialLegacyPreview;
   const defaultQuantities = useMemo(() => buildStudentDefaultQuantities({ subjects: selectedStudentSubjects, defaults: studentDefaultWeek }), [selectedStudentSubjects, studentDefaultWeek]);
   const differsFromDefaults = weeklyPlanValueSignature(blockQuantities) !== weeklyPlanValueSignature(defaultQuantities);
   const differsFromPublished = weeklyPlan?.status !== WeeklyPlanStatuses.PUBLISHED || weeklyPlanContentSignature({ ...sourcePlan, blocks: editableBlocks, parent_notes: '' }) !== weeklyPlanContentSignature({ ...weeklyPlan, parent_notes: '' });
@@ -372,6 +385,7 @@ const WeeklyPlanReviewPanel = ({
       ...(weeklyPlan?.blocks || []),
       ...Object.entries(draftPlan?.block_identity_history || {}).map(([id, identity]) => ({ ...identity, id })),
     ];
+    setLegacySourceLinks(sourcePlan.legacy_source_links || {});
     setEditableBlocks(normalizeEditableBlocks(sourcePlan.blocks).map((block) => ({ ...block, instance_key: block.instance_key ?? `legacy:${block.id}` })));
     setBlockQuantities(deriveQuantitiesFromBlocks({ blocks: sourcePlan.blocks, subjects: selectedStudentSubjects }));
     setHasUnsavedEdits(false);
@@ -386,6 +400,7 @@ const WeeklyPlanReviewPanel = ({
     editorCandidate.current = sourcePlan;
     baseline.current = { draft: draftPlan?.revision || 0, published: weeklyPlan?.revision || 0, defaults: studentDefaultWeek?.revision || 0 };
     localIdentityHistory.current = [...(sourcePlan?.blocks || []), ...(weeklyPlan?.blocks || []), ...Object.entries(draftPlan?.block_identity_history || {}).map(([id, identity]) => ({ ...identity, id }))];
+    setLegacySourceLinks(sourcePlan?.legacy_source_links || {});
     setEditableBlocks(normalizeEditableBlocks(sourcePlan?.blocks).map((block) => ({ ...block, instance_key: block.instance_key ?? `legacy:${block.id}` })));
     setBlockQuantities(deriveQuantitiesFromBlocks({ blocks: sourcePlan?.blocks, subjects: selectedStudentSubjects }));
   };
@@ -473,7 +488,7 @@ const WeeklyPlanReviewPanel = ({
     candidate: editorCandidate.current,
     expectedDraftRevision: baseline.current.draft,
     expectedPublishedRevision: baseline.current.published,
-    planOverrides: { blocks: normalizeEditableBlocks(editableBlocks) },
+    planOverrides: { blocks: normalizeEditableBlocks(editableBlocks), legacy_source_links: legacySourceLinks },
   });
   const studentWeekLabel = `${selectedStudent?.name} · ${selectedWeekOption?.displayText || formatWeekRange(selectedWeekRange.weekStart, selectedWeekRange.weekEnd)}`;
 
@@ -487,6 +502,9 @@ const WeeklyPlanReviewPanel = ({
   };
 
   const handlePublish = async () => {
+    if (reconciliationSource && editableBlocks.some((block) => !Object.hasOwn(legacySourceLinks, block.id) && !reconciliationSource.blocks.some((source) => source.id === block.id && schoolExecutionContentSignature(source) === schoolExecutionContentSignature(block)))) {
+      setFeedback({ tone: 'error', text: 'Review the earlier assignment link for every block, or explicitly choose new work, before publishing.' }); return;
+    }
     const empty = editableBlocks.length === 0;
     if (!window.confirm(`Publish ${studentWeekLabel}? ${empty ? 'This is an empty week. The student will have no schoolwork blocks for this week.' : `${editableBlocks.length} blocks from the current selections will become the student’s week.`}`)) return;
     const result = await publishWeeklyPlan(mutationOptions());
@@ -684,6 +702,27 @@ const WeeklyPlanReviewPanel = ({
               </div>
 
               {renderMessage()}
+              {reconciliationSource && editableBlocks.length > 0 && (
+                <section className="mt-3 rounded-lg border border-parchment bg-white text-charcoal-ink p-4" aria-label="Legacy completion reconciliation">
+                  <h3 className="text-sm font-display">Preserve this week’s completion history</h3>
+                  <p className="text-xs my-2">Review each link to the frozen assignment before first publication. Choose new work when completion should start empty. Each earlier block can be linked once.</p>
+                  {editableBlocks.map((block) => {
+                    const exact = reconciliationSource.blocks.find((source) => source.id === block.id && schoolExecutionContentSignature(source) === schoolExecutionContentSignature(block));
+                    const hasChoice = Object.hasOwn(legacySourceLinks, block.id);
+                    const value = hasChoice ? legacySourceLinks[block.id] === null ? '__new__' : legacySourceLinks[block.id] : exact?.id || '';
+                    const choices = reconciliationSource.blocks.filter((source) => schoolExecutionContentSignature(source) === schoolExecutionContentSignature(block));
+                    return <label key={block.id} className="block text-xs my-3">{block.title || 'School block'} · {(block.legacy_block_index ?? 0) + 1}
+                      <select aria-label={`Earlier assignment for ${block.title || 'block'} ${(block.legacy_block_index ?? 0) + 1}`} value={value} disabled={busy}
+                        onChange={(event) => { setLegacySourceLinks((previous) => ({ ...previous, [block.id]: event.target.value === '__new__' ? null : event.target.value })); setHasUnsavedEdits(true); }} className="block border border-parchment rounded w-full p-2 mt-1">
+                        <option value="" disabled>Choose earlier assignment or new work</option>
+                        <option value="__new__">New work — no earlier completion</option>
+                        {choices.map((source) => <option key={source.id} value={source.id} disabled={editableBlocks.some((other) => other.id !== block.id && (Object.hasOwn(legacySourceLinks, other.id) ? legacySourceLinks[other.id] : reconciliationSource.blocks.find((earlier) => earlier.id === other.id && schoolExecutionContentSignature(earlier) === schoolExecutionContentSignature(other))?.id) === source.id)}>{source.title || 'School block'} · earlier block {(source.legacy_block_index ?? 0) + 1}{exact?.id === source.id ? ' (same identity)' : ''}</option>)}
+                      </select>
+                    </label>;
+                  })}
+                </section>
+              )}
+
               {hasUnavailableBlocks && blocksAreEditable ? (
                 <div className="mt-3 border-l-2 border-[#f59e0b] px-3 py-2 text-[11px] text-[#f59e0b]" role="status">
                   Some saved blocks are no longer available in Curriculum. Their published history is retained.
@@ -812,6 +851,8 @@ const WeeklyPlanReviewPanel = ({
                   })}
                 </div>
               )}
+              {schoolError && <p role="alert" className="text-sm mt-3">Unable to load completion history: {schoolError.message}</p>}
+              <SchoolBlockDetails schoolWeek={schoolWeeksByStudentId[selectedStudentId]} onReload={reloadSchoolState} disabled={schoolLoading || Boolean(schoolError)} />
             </main>
 
             <aside className="op-weekly-summary">

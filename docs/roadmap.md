@@ -1,10 +1,10 @@
 # GridWorkz Roadmap
 
-Last updated: 2026-10-12
+Last updated: 2026-10-15
 
 ## Current Snapshot
 
-- Routine-first product-direction execution started on 2026-10-12. Defaults, shared contracts/runtime QA, dormant routine authority, and the complete Free Daily Routines/cosmetic/Household History interfaces are locally verified. Weekly Plan private drafts, student defaults, atomic publish, calendar boundaries and conditional timers are locally verified. Trusted parent completion corrections are next; production changes remain pending release gates.
+- Routine-first product-direction execution started on 2026-10-12. Defaults, shared contracts/runtime QA, dormant routine authority, and the complete Free Daily Routines/cosmetic/Household History interfaces are locally verified. Weekly Plan private drafts, student defaults, atomic publish, calendar boundaries and conditional timers are locally verified. Trusted school completion/timers, parent corrections, preserved evidence, report amendments and atomic official filing are locally verified. Simplified reports/print and live Core billing follow; production changes remain pending release gates.
 
 - `npm run build` and `npm run lint` both pass as of 2026-05-22.
 - A lightweight GitHub Actions workflow now runs build and lint on push and pull request.

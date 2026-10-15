@@ -54,6 +54,8 @@ const StudentsRoute = () => {
     loading,
     openAddStudentModal,
     studentLimitReached,
+    schoolWeeksByStudentId = {},
+    schoolActivityLoading,
     students,
     subjects,
   } = useOutletContext();
@@ -243,7 +245,7 @@ const StudentsRoute = () => {
                       </div>
                       <div className="op-mini-stat-grid">
                         <div className="op-mini-stat"><div className="num">{selectedStudentSubjects.length}</div><div className="lab">subjects</div></div>
-                        <div className="op-mini-stat"><div className="num">{selectedStudentSubjects.reduce((sum, subject) => sum + Number(subject.block_count || subject.total_blocks || 0), 0)}</div><div className="lab">weekly blocks</div></div>
+                        <div className="op-mini-stat"><div className="num">{schoolActivityLoading ? '…' : schoolWeeksByStudentId[selectedStudent.id]?.total ?? 0}</div><div className="lab">weekly blocks</div></div>
                         <div className="op-mini-stat"><div className="num">{getCredentialMeta(selectedStudent).label}</div><div className="lab">credential</div></div>
                       </div>
                     </section>

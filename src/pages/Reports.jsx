@@ -4,7 +4,8 @@ import { AlertTriangle, FileText, Calendar, Archive, Trash2, Printer, ChevronDow
 import useStudents from '../hooks/useStudents';
 import useSubjects from '../hooks/useSubjects';
 import useWeeklyActivity from '../hooks/useWeeklyActivity';
-import useWeeklyPlansForWeek from '../hooks/useWeeklyPlansForWeek';
+import SchoolBlockDetails from '../components/school/SchoolBlockDetails';
+import SavedSchoolReportDetails from '../components/school/SavedSchoolReportDetails';
 import useWeeklyReportRecords from '../hooks/useWeeklyReportRecords';
 import {
   getWeekRangeByOffset,
@@ -57,7 +58,7 @@ const printWeekReport = (students, weekStart, weekEnd, studentDataMap) => {
         const date = b.timestamp?.toDate?.() || new Date(b.timestamp);
         const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
         const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-        const duration = b.block_duration || 30;
+        const duration = b.block_duration ?? 0;
         const blockNumber = escapeReportHtml((b.block_index ?? 0) + 1);
         const escapedDateStr = escapeReportHtml(dateStr);
         const escapedTimeStr = escapeReportHtml(timeStr);
@@ -225,7 +226,7 @@ const SubjectRow = ({ subjectDatum }) => {
                     </span>
                   )}
                   <span className="ml-auto text-[11px]" style={{ color: 'rgba(238,234,248,0.42)', fontWeight: 460 }}>
-                    {dateStr} at {timeStr} &bull; {b.block_duration || 30} min
+                    {dateStr} at {timeStr} &bull; {b.block_duration ?? 0} min
                   </span>
                 </div>
                 {b.summary_text
@@ -247,6 +248,8 @@ const Reports = ({ parentSettings = {} }) => {
   const { currentUser } = useAuth();
   const [weekOffset, setWeekOffset] = useState(0);
   const [showRecords, setShowRecords] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [recordVersions, setRecordVersions] = useState({});
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState([]);
   const [selectedSchoolYear, setSelectedSchoolYear] = useState('all');
@@ -255,6 +258,7 @@ const Reports = ({ parentSettings = {} }) => {
     parentSettings.week_reset_day,
     parentSettings.week_reset_hour,
     parentSettings.week_reset_minute,
+    parentSettings.timezone,
   ]);
   const { students, loading: studentsLoading } = useStudents({
     parentId: currentUser?.uid,
@@ -271,6 +275,9 @@ const Reports = ({ parentSettings = {} }) => {
   });
   const {
     submissions,
+    schoolWeeksByStudentId,
+    reloadSchoolState,
+    error: schoolError,
     loading: submissionsLoading,
   } = useWeeklyActivity({
     currentUser,
@@ -279,13 +286,16 @@ const Reports = ({ parentSettings = {} }) => {
     students,
     subjects,
     weekConfig,
+    weekOffset,
   });
   const {
     deleteWeeklyReportRecord,
+    error: reportRecordError,
     loading: weeklyReportsLoading,
     saveWeeklyRecordSnapshot,
     savingRecord,
     weeklyReports,
+    reportAmendments,
   } = useWeeklyReportRecords({
     currentUser,
     parentSettings,
@@ -295,30 +305,23 @@ const Reports = ({ parentSettings = {} }) => {
   });
   // Derive selected week range
   const { weekStart, weekEnd } = getWeekRangeByOffset(weekOffset, weekConfig);
-  const {
-    weeklyPlansByStudentId,
-    loading: weeklyPlansLoading,
-  } = useWeeklyPlansForWeek({
-    currentUser,
-    students,
-    weekStart,
-    enabled: Boolean(currentUser),
-  });
-  const loading = studentsLoading || subjectsLoading || submissionsLoading || weeklyReportsLoading || weeklyPlansLoading;
+  const loading = studentsLoading || subjectsLoading || submissionsLoading || weeklyReportsLoading;
 
   const studentDataMap = useMemo(() => (
     Object.fromEntries(students.map((student) => [
       student.id,
-      buildStudentWeeklySnapshot({
+      schoolWeeksByStudentId[student.id] && !schoolWeeksByStudentId[student.id].reviewRequired ? buildStudentWeeklySnapshot({
         student,
         subjects,
         submissions,
         weekStart,
         weekEnd,
-        weeklyPlan: weeklyPlansByStudentId[student.id] || null,
-      }),
+        weeklyPlan: schoolWeeksByStudentId[student.id]?.plan || null,
+        completionStates: schoolWeeksByStudentId[student.id]?.completionStates || [],
+        publicationBridge: schoolWeeksByStudentId[student.id]?.publicationBridge || null,
+      }) : null,
     ]))
-  ), [students, subjects, submissions, weekStart, weekEnd, weeklyPlansByStudentId]);
+  ), [students, subjects, submissions, weekStart, weekEnd, schoolWeeksByStudentId]);
   const weekHasReportableData = useMemo(
     () => Object.values(studentDataMap).some(canSaveWeeklyReportSnapshot),
     [studentDataMap]
@@ -360,9 +363,9 @@ const Reports = ({ parentSettings = {} }) => {
 
     if (saved) {
       setShowRecords(true);
-      alert('Official record saved.');
+      alert('Official record saved. Existing originals stay unchanged; later corrections appear as amendments.');
     } else {
-      alert('Failed to save record. Please try again.');
+      alert('The record could not be saved. Reload the official records before retrying; another tab may have already filed the original.');
     }
   };
 
@@ -382,7 +385,9 @@ const Reports = ({ parentSettings = {} }) => {
     const weekRangeText = formatWeekRange(ws, we);
     const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-    const subjectsHtml = report.subjects_data
+    const subjectsHtml = report.completion_counts_require_review
+      ? '<p>Completion counts require review. Original numerical totals are retained; no corrected total is claimed.</p>'
+      : report.subjects_data
       ? Object.values(report.subjects_data).map(sd => `
           <div class="subject-section">
             <div class="subject-header">
@@ -404,7 +409,8 @@ const Reports = ({ parentSettings = {} }) => {
       hours: report.total_hours || 0,
       pct,
       subjectsHtml,
-    }]);
+      countsRequireReview: report.completion_counts_require_review,
+    }], report.completion_counts_require_review ? 'Report amendment — counts require review; original totals retained' : `Weekly Progress Report — Version ${report.report_version || 1}`);
 
     const pw = window.open('', '_blank');
     if (pw) { pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 400); }
@@ -418,6 +424,10 @@ const Reports = ({ parentSettings = {} }) => {
     ));
   };
 
+  const selectedReportVersion = (report) => {
+    const amendment = reportAmendments.find((item) => item.original_report_id === report.id && item.id === recordVersions[report.id]);
+    return amendment ? { ...amendment.snapshot, id: report.id, report_version: amendment.report_version } : report;
+  };
   const normalizedWeeklyReports = useMemo(() => (
     weeklyReports.map(report => {
       if (report.school_year_label && report.school_quarter_label) return report;
@@ -491,7 +501,8 @@ const Reports = ({ parentSettings = {} }) => {
       selectedQuarter !== 'all' ? `Q${selectedQuarter}` : null,
     ].filter(Boolean).join(' • ') || 'All official records';
 
-    const studentRows = filteredWeeklyReports.map(report => {
+    const studentRows = filteredWeeklyReports.map(original => {
+      const report = selectedReportVersion(original);
       const pct = report.weekly_goal > 0 ? Math.round((report.total_blocks / report.weekly_goal) * 100) : 0;
       const subjectsHtml = report.subjects_data
         ? Object.values(report.subjects_data)
@@ -516,6 +527,8 @@ const Reports = ({ parentSettings = {} }) => {
         hours: report.total_hours || 0,
         pct,
         subjectsHtml,
+        countsRequireReview: report.completion_counts_require_review,
+        versionLabel: `Version ${report.report_version || 1}`,
       };
     });
 
@@ -666,6 +679,9 @@ const Reports = ({ parentSettings = {} }) => {
 
         <div className="op-report-body">
           <div className="op-report-area">
+            {Object.values(schoolWeeksByStudentId).some((week) => week.reviewRequired) && <p role="status" className="p-3 text-sm">Historical assignments require review. Open the original official report; completion totals were not inferred from today’s curriculum.</p>}
+            {reportRecordError && <p role="alert" className="p-3 text-sm">Official records could not be loaded or saved: {reportRecordError.message}. Reload the record list before retrying; existing originals are preserved.</p>}
+            {schoolError && <p role="alert" className="p-3 text-sm">Unable to load trusted school status: {schoolError.message}</p>}
             {readinessTotals.checkedStudentCount > 0 ? (
               <section className={`op-weekly-banner ${hasReadinessWarnings ? 'is-modified' : ''}`}>
                 <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
@@ -760,6 +776,7 @@ const Reports = ({ parentSettings = {} }) => {
                         ) : data.subjectData.map(sd => (
                           <SubjectRow key={sd.subject.id} subjectDatum={sd} />
                         ))}
+                        <SchoolBlockDetails schoolWeek={schoolWeeksByStudentId[student.id]} onReload={reloadSchoolState} disabled={submissionsLoading || Boolean(schoolError)} />
                         {data.totalBlocks === 0 ? (
                           <p className="px-4 py-3 text-[11px] text-[rgba(238,234,248,0.38)]">
                             No blocks completed {weekOffset === 0 ? 'this week yet' : 'during this week'}.
@@ -816,6 +833,8 @@ const Reports = ({ parentSettings = {} }) => {
                       No official records match the current filters.
                     </p>
                   ) : filteredWeeklyReports.map(report => {
+                    const selectedVersion = selectedReportVersion(report);
+                    const versions = reportAmendments.filter((item) => item.original_report_id === report.id).sort((a, b) => a.report_version - b.report_version);
                     const ws = report.week_start?.toDate?.() || new Date(report.week_start);
                     const we = report.week_ending?.toDate?.() || new Date(report.week_ending);
 
@@ -826,6 +845,14 @@ const Reports = ({ parentSettings = {} }) => {
                           <p className="mt-1 truncate text-[9px] text-[rgba(238,234,248,0.42)]">
                             {formatWeekRange(ws, we)}
                           </p>
+                          <label className="block mt-2 text-xs">Version
+                            <select className="block w-full bg-[#292744] text-white p-1" value={recordVersions[report.id] || report.id} onChange={(event) => setRecordVersions((previous) => ({ ...previous, [report.id]: event.target.value }))}>
+                              <option value={report.id}>Original · Version 1</option>
+                              {versions.map((item) => <option key={item.id} value={item.id}>Amendment · Version {item.report_version}</option>)}
+                            </select>
+                          </label>
+                          <button type="button" className="text-xs underline mt-2" onClick={() => setSelectedRecord(report)}>Details &amp; corrections</button>
+                          {selectedVersion.completion_counts_require_review && <p className="text-xs mt-1 text-amber-300">Completion counts require review; original totals retained.</p>}
                           {report.school_quarter_label ? (
                             <p className="mt-1 truncate text-[9px] text-[#b8adff]">
                               {report.school_quarter_label}{report.school_year_label ? ` · ${report.school_year_label}` : ''}
@@ -833,12 +860,12 @@ const Reports = ({ parentSettings = {} }) => {
                           ) : null}
                         </div>
                         <span className="text-[10px] text-[rgba(238,234,248,0.52)]">
-                          {report.total_blocks}/{report.weekly_goal}
+                          {selectedVersion.completion_counts_require_review ? 'Review' : `${selectedVersion.total_blocks}/${selectedVersion.weekly_goal}`}
                         </span>
-                        <button onClick={() => handlePrintRecord(report)} className="op-proto-icon-btn" title="Print">
+                        <button onClick={() => handlePrintRecord(selectedVersion)} className="op-proto-icon-btn" title="Print">
                           <Printer className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => handleDeleteRecord(report.id)} className="op-proto-icon-btn" title="Delete">
+                        <button onClick={() => handleDeleteRecord(report.id)} disabled={versions.length > 0} className="op-proto-icon-btn disabled:opacity-30" title={versions.length ? 'Original retained with its amendments' : 'Delete'}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -862,6 +889,9 @@ const Reports = ({ parentSettings = {} }) => {
           </aside>
         </div>
       </div>
+      {selectedRecord && <SavedSchoolReportDetails key={selectedRecord.id} original={selectedRecord} amendments={reportAmendments}
+        student={students.find((student) => student.id === selectedRecord.student_id)} parentId={currentUser.uid} parentSettings={parentSettings}
+        subjects={subjects} submissions={submissions} onClose={() => setSelectedRecord(null)} onPrint={handlePrintRecord} />}
     </div>
   );
 };
@@ -879,6 +909,7 @@ function buildPrintHtml(weekRangeText, generatedDate, studentRows, reportTitle =
     const goalBlocks = escapeReportHtml(r.goalBlocks ?? 0);
     const hours = escapeReportHtml(r.hours ?? 0);
 
+    if (r.countsRequireReview) return `<div class="student-section"><h2>${escapeReportHtml(r.name)}</h2><p>${escapeReportHtml(r.versionLabel || 'Report amendment')} — Completion counts require review. Original numerical totals are retained as historical evidence; no corrected total is claimed.</p>${r.subjectsHtml || ''}</div>`;
     return `
     <div class="student-section">
       <div class="student-header">

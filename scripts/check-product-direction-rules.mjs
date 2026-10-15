@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { after, before, test } from 'node:test';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 import { buildDirectionFixture, DIRECTION_PROJECT_ID } from './product-direction-fixtures.mjs';
 
 let env;
@@ -106,4 +106,62 @@ test('rollout configuration and migration receipts are never client-readable or 
       await assertFails(setDoc(doc(dbFor(uid), name, 'private'), { parent_id: parent, new_accounts_enabled: true }));
     }
   }
+});
+
+test('school execution, bridges, receipts, history and amendment heads stay private and server-owned', async () => {
+  for (const name of ['schoolExecutionSnapshots', 'schoolPublicationBridges', 'schoolOperationReceipts', 'schoolStateHistory', 'schoolReportAmendmentHeads']) {
+    await env.withSecurityRulesDisabled(async (context) => setDoc(doc(context.firestore(), name, 'school_test'), { parent_id: parent, student_id: fixture.students[0].id }));
+    await assertSucceeds(getDocs(query(collection(dbFor(parent), name), where('parent_id', '==', parent))));
+    for (const uid of [null, 'another_parent']) await assertFails(getDoc(doc(dbFor(uid), name, 'school_test')));
+    for (const uid of [parent, null, 'another_parent']) await assertFails(setDoc(doc(dbFor(uid), name, 'school_test'), { parent_id: parent }));
+  }
+});
+
+test('activated school authority blocks stale completion, timer and planning clients and marker downgrades', async () => {
+  const student = fixture.students[0];
+  const subject = fixture.subjects[0];
+  const evidenceId = 'preserved_school_evidence'; const timerId = `${student.id}_${subject.id}`;
+  const evidence = { parent_id: parent, student_id: student.id, subject_id: subject.id, block_index: 0, summary_text: 'Original evidence', timestamp: new Date() };
+  const timer = { parent_id: parent, student_id: student.id, subject_id: subject.id, block_index: 0, start_time: Date.now(), duration_ms: 60000,
+    duration_minutes: 1, target_end_time: Date.now() + 60000, initial_duration_ms: 60000, remaining_time: 60000, is_running: true, saved_at: Date.now() };
+  await assertSucceeds(setDoc(doc(dbFor(), 'timerSessions', timerId), timer));
+  await assertSucceeds(setDoc(doc(dbFor(), 'submissions', evidenceId), evidence));
+  await assertFails(updateDoc(doc(dbFor(parent), 'students', student.id), { school_authority_version: 1 }));
+  await env.withSecurityRulesDisabled(async (context) => updateDoc(doc(context.firestore(), 'students', student.id), { school_authority_version: 1, school_state_revision: 1 }));
+  for (const uid of [parent, null]) {
+    await assertFails(setDoc(doc(dbFor(uid), 'submissions', 'forged_school_evidence'), evidence));
+    await assertFails(updateDoc(doc(dbFor(uid), 'submissions', evidenceId), { summary_text: 'rewritten' }));
+    await assertFails(deleteDoc(doc(dbFor(uid), 'submissions', evidenceId)));
+    await assertFails(setDoc(doc(dbFor(uid), 'timerSessions', 'forged_timer'), timer));
+    await assertFails(updateDoc(doc(dbFor(uid), 'timerSessions', timerId), { remaining_time: 0 }));
+    await assertFails(deleteDoc(doc(dbFor(uid), 'timerSessions', timerId)));
+  }
+  await assertFails(getDoc(doc(dbFor(), 'timerSessions', timerId)));
+  await assertSucceeds(getDoc(doc(dbFor(parent), 'timerSessions', timerId)));
+  await assertFails(updateDoc(doc(dbFor(parent), 'students', student.id), { school_authority_version: 0, school_state_revision: 0 }));
+  await assertFails(updateDoc(doc(dbFor(parent), 'students', student.id), { parent_id: 'another_parent' }));
+});
+
+test('trusted evidence and timer context cannot be forged even before adoption; amended originals are locked', async () => {
+  const student = fixture.students[1]; const subject = fixture.subjects[1];
+  await assertFails(setDoc(doc(dbFor(), 'submissions', 'forged_authority'), { parent_id: parent, student_id: student.id, subject_id: subject.id,
+    block_index: 0, authority_version: 1, actor_id: student.id }));
+  await assertFails(setDoc(doc(dbFor(), 'timerSessions', 'forged_trusted_timer'), { parent_id: parent, student_id: student.id, subject_id: subject.id,
+    authority_version: 1, session_id: 'forged', context_signature: 'forged' }));
+  const id = 'locked_original_report';
+  await env.withSecurityRulesDisabled(async (context) => {
+    const database = context.firestore();
+    await setDoc(doc(database, 'weeklyReports', id), { parent_id: parent, student_id: student.id, total_blocks: 2 });
+    await setDoc(doc(database, 'schoolReportAmendmentHeads', id), { parent_id: parent, original_report_id: id, report_version: 2 });
+  });
+  await assertSucceeds(getDoc(doc(dbFor(parent), 'weeklyReports', id)));
+  await assertFails(setDoc(doc(dbFor(parent), 'weeklyReports', 'forged_first_report'), { parent_id: parent, student_id: student.id, total_blocks: 500 }));
+  await assertFails(updateDoc(doc(dbFor(parent), 'weeklyReports', id), { total_blocks: 0 }));
+  await assertFails(deleteDoc(doc(dbFor(parent), 'weeklyReports', id)));
+});
+
+test('weekly plan queries are owner-scoped, including empty query results', async () => {
+  await assertSucceeds(getDocs(query(collection(dbFor(parent), 'weeklyPlans'), where('parent_id', '==', parent), where('student_id', '==', fixture.students[0].id))));
+  await assertFails(getDocs(collection(dbFor(parent), 'weeklyPlans')));
+  await assertFails(getDocs(query(collection(dbFor('another_parent'), 'weeklyPlans'), where('parent_id', '==', parent))));
 });

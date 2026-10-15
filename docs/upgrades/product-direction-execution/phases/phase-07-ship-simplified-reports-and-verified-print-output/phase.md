@@ -47,11 +47,17 @@ Add meaningful policy/persistence tests for the source phase cases; static sourc
 
 ## Test Files
 
-- Not listed yet. Add likely files before dispatching developer work if automated tests are expected.
+- `scripts/check-reporting-safety.mjs`
+- `scripts/check-school-report-view.mjs`
+- `tests/product-direction/reports.spec.js`
+- Browser-generated Letter/A4 PDFs and rendered page images under ignored `tmp/product-direction/`.
 
 ## Test Cases To Cover
 
-- Not listed yet. Add focused regression or behavior cases before dispatching developer work if the phase changes behavior.
+- Screen/saved/print totals and correction provenance agree; original versus amended versions remain explicit.
+- Long names/responses, many blocks/subjects, zero completions, unknown legacy duration, missing required responses, notes and evidence references.
+- US Letter and A4 rendered PDFs: no clipped/overlapping content, oversized unbreakable sections or unexpected blank pages.
+- Archived reports survive curriculum edits; custom reset/rollover preserves original/amendment scope and server-recorded calendar.
 
 ## No-Test Rationale
 

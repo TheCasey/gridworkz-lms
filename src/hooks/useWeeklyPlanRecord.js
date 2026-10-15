@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { doc, getFirestore, onSnapshot } from 'firebase/firestore';
+import { collection, doc, getFirestore, onSnapshot, query, where } from 'firebase/firestore';
 import { nanoid } from 'nanoid';
 import { app } from '../firebase/firebaseConfig';
 import { Collections } from '../constants/schema';
@@ -20,6 +20,7 @@ const candidateForWrite = (plan, identity, blocks) => ({
   weekly_exceptions: plan?.weekly_exceptions || [],
   blocks,
   parent_notes: plan?.parent_notes || '',
+  legacy_source_links: plan?.legacy_source_links || {},
 });
 const uncertainFailure = (error) => !['aborted', 'invalid-argument', 'permission-denied', 'unauthenticated', 'failed-precondition', 'not-found', 'already-exists'].includes(String(error?.code || '').replace(/^functions\//, ''));
 
@@ -35,7 +36,7 @@ export const useWeeklyPlanRecord = ({ currentUser = null, studentId = '', subjec
   }) : null, [currentUser?.uid, studentId, referenceDate, parentSettings?.week_reset_day, parentSettings?.week_reset_hour, parentSettings?.week_reset_minute, parentSettings?.timezone]);
   const scope = weekIdentity?.planId || '';
   const visible = records.scope === scope ? records : { published: null, draft: null, defaults: null, loaded: [] };
-  const loading = Boolean(listen && enabled && scope && visible.loaded.length < 3);
+  const loading = Boolean(listen && enabled && scope && !error && visible.loaded.length < 4);
 
   useEffect(() => {
     setError(null);
@@ -54,13 +55,17 @@ export const useWeeklyPlanRecord = ({ currentUser = null, studentId = '', subjec
         loaded: [...new Set([...previous.loaded, key])],
       }));
     }, (nextError) => { if (active) setError(nextError); }));
+    subscriptions.push(onSnapshot(query(collection(db, 'schoolExecutionSnapshots'), where('parent_id', '==', currentUser.uid), where('student_id', '==', studentId), where('week_key', '==', weekIdentity.weekKey)), (snapshot) => {
+      if (active) setRecords((previous) => ({ ...previous, execution: snapshot.docs.find((item) => item.id === `legacy-execution:${scope}`)?.data() || null,
+        loaded: [...new Set([...previous.loaded, 'execution'])] }));
+    }, (nextError) => { if (active) setError(nextError); }));
     return () => { active = false; subscriptions.forEach((unsubscribe) => unsubscribe()); };
-  }, [db, scope, enabled, listen, currentUser?.uid, studentId]);
+  }, [db, scope, enabled, listen, currentUser?.uid, studentId, weekIdentity?.weekKey]);
 
-  const generatedPreview = useMemo(() => scope ? buildWeeklyPlanDraft({
+  const generatedPreview = useMemo(() => scope ? (!visible.draft && !visible.published && visible.execution ? { ...visible.execution, id: scope, status: 'draft' } : buildWeeklyPlanDraft({
     parentId: currentUser.uid, studentId, subjects, referenceDate: weekIdentity.weekStart,
     weekConfig: parentSettings, defaults: visible.defaults,
-  }) : null, [scope, subjects, visible.defaults, parentSettings, currentUser?.uid, studentId, weekIdentity?.weekStart]);
+  })) : null, [scope, subjects, visible.defaults, visible.execution, visible.draft, visible.published, parentSettings, currentUser?.uid, studentId, weekIdentity?.weekStart]);
   const buildDraftPreview = useCallback(() => generatedPreview, [generatedPreview]);
 
   const perform = useCallback(async (kind, payload, callable) => {
@@ -90,7 +95,7 @@ export const useWeeklyPlanRecord = ({ currentUser = null, studentId = '', subjec
     const blocks = options.planOverrides?.blocks ?? source?.blocks ?? [];
     const payload = {
       student_id: studentId, week_key: weekIdentity.weekKey,
-      candidate: candidateForWrite(source, weekIdentity, blocks),
+      candidate: candidateForWrite({ ...source, legacy_source_links: options.planOverrides?.legacy_source_links ?? source?.legacy_source_links }, weekIdentity, blocks),
       // Callers editing a local candidate must provide the baseline captured when it loaded.
       expected_draft_revision: options.expectedDraftRevision ?? visible.draft?.revision ?? 0,
       expected_published_revision: options.expectedPublishedRevision ?? visible.published?.revision ?? 0,
@@ -112,7 +117,7 @@ export const useWeeklyPlanRecord = ({ currentUser = null, studentId = '', subjec
 
   return {
     buildDraftPreview, error, clearError: () => setError(null), loading, planId: scope, weekIdentity,
-    weeklyPlan: visible.published, draftPlan: visible.draft, studentDefaultWeek: visible.defaults,
+    frozenExecution: visible.execution, weeklyPlan: visible.published, draftPlan: visible.draft, studentDefaultWeek: visible.defaults,
     publishWeeklyPlan, saveDraftWeeklyPlan, saveDefaultWeek,
     savingPlan: action === 'save', publishingPlan: action === 'publish', savingDefaultWeek: action === 'defaults',
   };

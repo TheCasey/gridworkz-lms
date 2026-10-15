@@ -1,3 +1,4 @@
+import { validateLegacySourceLinks } from './schoolPublicationBridge.js';
 import {
   adoptLegacyWeeklyBlockInstances,
   assertRetainedBlockIdentities,
@@ -150,7 +151,7 @@ export const buildPlanningCandidate = ({ candidate, currentDraft, currentPublish
   nextContractRevision({ expectedRevision: expectedPublishedRevision, currentRevision: publishedRevision });
   if (currentDraft) requireWeeklyPlanning(currentDraft.base_published_revision === publishedRevision, 'published-base-conflict');
   assertPlanningWeekEditable(weekKey, range);
-  const allowed = ['id', 'parent_id', 'student_id', 'week_key', 'week_start', 'week_end', 'status', 'schema_version', 'revision', 'base_published_revision', 'assignment_ids', 'weekly_exceptions', 'blocks', 'parent_notes', 'published_at', 'archived_at', 'created_at', 'updated_at'];
+  const allowed = ['id', 'parent_id', 'student_id', 'week_key', 'week_start', 'week_end', 'status', 'schema_version', 'revision', 'base_published_revision', 'assignment_ids', 'weekly_exceptions', 'blocks', 'parent_notes', 'legacy_source_links', 'published_at', 'archived_at', 'created_at', 'updated_at'];
   requireWeeklyPlanning(record(candidate) && Object.keys(candidate).every((key) => allowed.includes(key)), 'unsupported-candidate-field');
   assertPlanningScope({ ...candidate, schema_version: undefined, revision: undefined }, { parentId, studentId, weekKey, planId });
   requireWeeklyPlanning(candidate.schema_version == null || candidate.schema_version === 1, 'unsupported-contract-version');
@@ -173,6 +174,14 @@ export const buildPlanningCandidate = ({ candidate, currentDraft, currentPublish
     blocks, parent_notes: candidate.parent_notes ?? '', published_at: null, archived_at: null,
     created_at: currentDraft?.created_at ?? serverTime, updated_at: serverTime,
   };
+  const requestedLinks = candidate.legacy_source_links === undefined ? {} : candidate.legacy_source_links;
+  validateLegacySourceLinks(requestedLinks);
+  requireWeeklyPlanning(Object.keys(requestedLinks).every((id) => blocks.some((block) => block.id === id)
+    || Object.hasOwn(currentDraft?.block_identity_history || {}, id) || Object.hasOwn(currentDraft?.legacy_source_links || {}, id)), 'invalid-legacy-source-links');
+  const retainedLinks = currentDraft?.legacy_source_links || {};
+  Object.entries(requestedLinks).forEach(([id, source]) => requireWeeklyPlanning(!currentPublished || currentPublished.status === 'draft' || !Object.hasOwn(retainedLinks, id) || retainedLinks[id] === source, 'legacy-source-remap'));
+  draft.legacy_source_links = { ...retainedLinks, ...requestedLinks };
+  validateLegacySourceLinks(draft.legacy_source_links);
   validatePrivateWeeklyPlanDraft(draft);
   projectPublicWeeklyBlocks(draft.blocks);
   requireWeeklyPlanning(draft.weekly_exceptions.every((item) => typeof item === 'string'), 'unsupported-weekly-exception');

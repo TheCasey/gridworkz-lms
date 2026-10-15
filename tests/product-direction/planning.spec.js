@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import { buildDirectionFixture } from '../../scripts/product-direction-fixtures.mjs';
+import { resolvePlanningWeek } from '../../functions/src/weeklyPlanningContracts.js';
 import { createDirectionAdmin } from '../../scripts/product-direction-emulator-api.mjs';
 
 const { app, db } = createDirectionAdmin();
@@ -164,7 +165,7 @@ test('only timed blocks show controls; non-timed same-subject completion preserv
   await expect(page.getByTestId('school-block-timer')).toBeVisible();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
-  const timerId = `${fixture.students[0].id}_${fixture.subjects[0].id}`;
+  const timerId = fixture.students[0].id;
   await expect.poll(async () => Boolean(await record('timerSessions', timerId))).toBe(true);
   await page.locator('.student-block-chip').nth(1).click();
   await expect(page.getByTestId('school-block-timer')).toHaveCount(0);
@@ -177,7 +178,7 @@ test('only timed blocks show controls; non-timed same-subject completion preserv
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
   await db.collection('weeklyPlans').doc(id).update({ revision: 2, blocks: blocks.map((block) => ({ ...block, require_timer: false })) });
   await expect(page.getByTestId('school-block-timer')).toHaveCount(0);
-  await expect.poll(async () => await record('timerSessions', timerId)).toBeUndefined();
+  await expect.poll(async () => (await record('timerSessions', timerId))?.status).toBe('released');
   await page.screenshot({ path: 'tmp/product-direction/browser-planning-no-timer.png', fullPage: true });
 });
 
@@ -198,30 +199,30 @@ test('republishing removed work closes an open completion form without writing e
   expect((await db.collection('submissions').where('student_id', '==', fixture.students[0].id).get()).size).toBe(0);
 });
 
-test('open portal crosses a custom reset and replaces plan and completion listeners', async ({ page }) => {
+test('server school calendar controls the week despite device clock skew and refreshes after household reset changes', async ({ page }) => {
   const fixture = await reset();
   const id = planId(fixture);
   const live = await record('weeklyPlans', id);
-  const custom = { timezone: 'America/Chicago', week_reset_day: 3, week_reset_hour: 14, week_reset_minute: 30, weekly_planning_version: 1 };
-  const beforeKey = '2026-10-07';
-  const afterKey = '2026-10-14';
-  const scopedId = (key) => `${fixture.parentId}_${fixture.students[0].id}_${key}`;
   const blocks = live.blocks.filter((block) => block.legacy_subject_id === fixture.subjects[0].id).slice(0, 2)
     .map((block) => ({ ...block, require_timer: false, require_input: false }));
-  await db.collection('students').doc(fixture.students[0].id).update(custom);
-  await db.collection('weeklyPlans').doc(scopedId(beforeKey)).set({ ...live, id: scopedId(beforeKey), week_key: beforeKey, blocks });
-  await db.collection('weeklyPlans').doc(scopedId(afterKey)).set({ ...live, id: scopedId(afterKey), week_key: afterKey,
-    blocks: blocks.map((block) => ({ ...block, title: 'New week reading' })) });
-  await db.collection('submissions').doc('direction_boundary_prior').set({ parent_id: fixture.parentId, student_id: fixture.students[0].id,
-    subject_id: fixture.subjects[0].id, block_index: blocks[0].legacy_block_index, timestamp: new Date('2026-10-14T19:28Z') });
-  await page.clock.install({ time: new Date('2026-10-14T19:29Z') });
+  await db.collection('weeklyPlans').doc(id).update({ blocks });
+  await page.clock.install({ time: new Date(Date.now() + 8 * 86400000) });
   await student(page, fixture.students[0]);
-  await expect(page.getByRole('button', { name: /Subject 1.*1 of 2 blocks complete/ })).toBeVisible();
-  await page.clock.fastForward(61000);
   await expect(page.getByRole('button', { name: /Subject 1.*0 of 2 blocks complete/ })).toBeVisible();
+  // A persisted household reset change must invalidate the open portal's calendar.
+  const localDay = new Date().getUTCDay();
+  const settings = { ...fixture.settings, week_reset_day: (localDay + 1) % 7 };
+  const current = resolvePlanningWeek({ weekKey: '2026-01-05', settings, now: new Date() }).currentKey;
+  const nextId = `${fixture.parentId}_${fixture.students[0].id}_${current}`;
+  await db.collection('weeklyPlans').doc(nextId).set({ ...live, id: nextId, week_key: current, school_completion_version: 1,
+    blocks: blocks.map((block) => ({ ...block, title: 'New calendar reading' })) });
+  await db.collection('parents').doc(fixture.parentId).update(settings);
+  const currentStudent = await record('students', fixture.students[0].id);
+  await db.collection('students').doc(fixture.students[0].id).update({ school_state_revision: currentStudent.school_state_revision + 1 });
+  await expect.poll(async () => (await record('students', fixture.students[0].id)).week_reset_day).toBe(settings.week_reset_day);
   await page.getByRole('button', { name: /Subject 1.*0 of 2 blocks complete/ }).click();
   await page.locator('.student-block-chip').first().click();
-  await expect(page.getByRole('heading', { name: 'New week reading', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'New calendar reading', exact: true })).toBeVisible();
 });
 
 test('timed work survives pause/resume and completes only after its timer finishes', async ({ page }) => {
@@ -238,8 +239,14 @@ test('timed work survives pause/resume and completes only after its timer finish
   await expect(page.getByRole('button', { name: 'Complete', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
+  const resumed = responseTo(page, 'commandStudentSchoolTimer');
   await page.getByRole('button', { name: 'Resume', exact: true }).click();
-  await page.clock.fastForward(61000);
+  expect((await (await resumed).json()).result).toBeTruthy();
+  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  // Backdate only the Admin-owned emulator fixture; browser clock changes cannot grant elapsed time.
+  await db.collection('timerSessions').doc(fixture.students[0].id).update({ started_at_ms: Date.now() - 61000, target_end_ms: Date.now() - 1000 });
+  const timerStudent = await record('students', fixture.students[0].id);
+  await db.collection('students').doc(fixture.students[0].id).update({ school_state_revision: timerStudent.school_state_revision + 1 });
   await page.getByRole('button', { name: 'Complete', exact: true }).click();
   await page.locator('#summary').fill('I worked through the assigned practice and checked each answer carefully. I reviewed the steps that were difficult and explained what I learned in my own words.');
   await page.getByRole('button', { name: 'Finish Block', exact: true }).click();
@@ -265,4 +272,22 @@ test('planning actions remain reachable on a small screen', async ({ page }) => 
   await page.getByLabel('Week', { exact: true }).focus();
   await expect(page.getByLabel('Week', { exact: true })).toBeFocused();
   await page.screenshot({ path: 'tmp/product-direction/browser-planning-mobile.png', fullPage: true });
+});
+
+test('server week refresh uses a relative server interval under device date skew', async ({ page }) => {
+  const fixture = await reset();
+  await page.clock.install({ time: new Date(Date.now() - 8 * 86400000) });
+  let reads = 0;
+  await page.route('**/getStudentSchoolState', async (route) => {
+    const response = await route.fetch(); const body = await response.json();
+    if (body.result) { reads++; body.result.week_end_ms = body.result.server_now_ms + 2000; }
+    await route.fulfill({ response, json: body });
+  });
+  await student(page, fixture.students[0]);
+  await expect(page.getByRole('button', { name: /Subject 1.*0 of 2 blocks complete/ })).toBeVisible();
+  const before = reads;
+  const refreshed = responseTo(page, 'getStudentSchoolState');
+  await page.clock.fastForward(2100);
+  expect((await (await refreshed).json()).result.week_key).toBe(buildDirectionFixture({ scenario: 'free' }).documents.find((item) => item.collection === 'weeklyPlans').data.week_key);
+  expect(reads).toBeGreaterThan(before);
 });

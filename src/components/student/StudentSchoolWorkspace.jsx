@@ -167,7 +167,7 @@ const StudentSchoolWorkspace = ({
         <header className="student-page-heading">
           <div>
             <h1>This week&apos;s school</h1>
-            <p>{hasPublishedWeeklyPlan ? 'Published weekly plan' : 'Current subject plan'} · Choose any available block in any order</p>
+            <p>{hasPublishedWeeklyPlan ? 'Your school week' : 'Current subject plan'} · Choose any available block in any order</p>
           </div>
           <span className="student-status-chip">Current week</span>
         </header>
@@ -217,7 +217,7 @@ const StudentSchoolWorkspace = ({
                             type="button"
                             className={`student-block-chip ${completed ? 'is-complete' : ''} ${selected ? 'is-selected' : ''}`}
                             onClick={() => selectItem(group, item)}
-                            disabled={completed || locked || blockedByTimer || isSubmissionLocked(item.subject.id, item.blockIndex)}
+                            disabled={submitting || completed || locked || blockedByTimer || isSubmissionLocked(item.subject.id, item.blockIndex)}
                             title={item.title}
                           >
                             {completed ? <Check /> : index + 1}
@@ -246,16 +246,16 @@ const StudentSchoolWorkspace = ({
                           <strong>{timerMatchesSelection ? formatRemainingTime(selectedTimer.remainingTime) : `${String(selectedItem.duration).padStart(2, '0')}:00`}</strong>
                           <div>
                             {!timerMatchesSelection ? (
-                              <button type="button" className="student-button is-primary" disabled={!canStartTimer} onClick={() => onStartTimer(selectedSubject, selectedItem.blockIndex)}><Play /> Start</button>
+                              <button type="button" className="student-button is-primary" disabled={!canStartTimer || submitting} onClick={() => onStartTimer(selectedSubject, selectedItem.blockIndex)}><Play /> Start</button>
                             ) : selectedTimer.remainingTime > 0 ? (
                               <>
-                                <button type="button" className="student-button is-primary" onClick={() => selectedTimer.isRunning ? onPauseTimer(selectedSubject) : onResumeTimer(selectedSubject)}>{selectedTimer.isRunning ? <Pause /> : <Play />}{selectedTimer.isRunning ? 'Pause' : 'Resume'}</button>
-                                <button type="button" className="student-button is-icon" onClick={() => onResetTimer(selectedSubject)} aria-label="Reset timer"><RotateCcw /></button>
+                                <button type="button" className="student-button is-primary" disabled={submitting} onClick={() => selectedTimer.isRunning ? onPauseTimer(selectedSubject) : onResumeTimer(selectedSubject)}>{selectedTimer.isRunning ? <Pause /> : <Play />}{selectedTimer.isRunning ? 'Pause' : 'Resume'}</button>
+                                <button type="button" className="student-button is-icon" disabled={submitting} onClick={() => onResetTimer(selectedSubject)} aria-label="Reset timer"><RotateCcw /></button>
                               </>
                             ) : (
                               <>
                                 <button type="button" className="student-button is-success" disabled={!timerPolicy?.canSubmitBlock?.allowed || submitting} onClick={completeSelected}>Complete</button>
-                                <button type="button" className="student-button is-icon" onClick={() => onResetTimer(selectedSubject)} aria-label="Reset timer"><RotateCcw /></button>
+                                <button type="button" className="student-button is-icon" disabled={submitting} onClick={() => onResetTimer(selectedSubject)} aria-label="Reset timer"><RotateCcw /></button>
                               </>
                             )}
                           </div>

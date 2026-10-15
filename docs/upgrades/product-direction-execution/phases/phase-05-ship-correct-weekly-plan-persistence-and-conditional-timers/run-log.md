@@ -67,7 +67,7 @@
 
 ## Git Checkpoint
 
-- Pending
+- `60e9e8f` — Implement private Weekly Plans, student defaults and conditional timers. Pushed to the existing draft PR #10; CI/Cloudflare preview status tracked on that commit.
 
 ## Next Handoff
 

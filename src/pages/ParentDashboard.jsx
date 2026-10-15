@@ -4,7 +4,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { getFirestore } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
 import {
-  BookOpen,
   ChevronDown,
   FileText,
   Heart,
@@ -13,7 +12,6 @@ import {
   Clock,
   X,
   Info,
-  Check,
   Download,
   Calendar,
   Lock,
@@ -38,11 +36,11 @@ import useStudentMutations from '../hooks/useStudentMutations';
 import useStudents from '../hooks/useStudents';
 import useSubjects from '../hooks/useSubjects';
 import useChoreSetup from '../hooks/useChoreSetup';
+import SchoolBlockDetails from '../components/school/SchoolBlockDetails';
 import useWeeklyActivity from '../hooks/useWeeklyActivity';
 import useWeeklyReportRecords from '../hooks/useWeeklyReportRecords';
 import useWeeklyRollover from '../hooks/useWeeklyRollover';
 import {
-  getCurrentWeekRange,
   getWeekRangeByOffset,
   formatWeekRange,
   getWeekLabel,
@@ -256,9 +254,10 @@ const DashboardLivePulseDrawer = ({
                       <div className="min-w-0 flex-1">
                         <p className="text-[13px]" style={{ color: colors.charcoal, fontWeight: 460 }}>
                           <span style={{ fontWeight: 540 }}>{studentNameById[submission.student_id] || 'Unknown'}</span>
-                          {' '}completed{' '}
+                          {' '}{submission.activity_kind === 'parent_correction' ? `parent correction: ${submission.new_status}` : 'submitted evidence for'}{' '}
                           <span style={{ color: colors.amethyst }}>{submission.subject_name}</span>
                         </p>
+                        {submission.effective_status && <p className="text-xs mt-1">Current status: {submission.effective_status}</p>}
                         {submission.custom_field_responses && Object.keys(submission.custom_field_responses).length > 0 ? (
                           <div className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5" style={{ backgroundColor: '#f0eaff' }}>
                             <Info className="h-3 w-3" style={{ color: colors.amethyst }} />
@@ -308,11 +307,7 @@ const ParentDashboard = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [viewingStudentProgress, setViewingStudentProgress] = useState(null);
   const [viewingStudentChoresProgress, setViewingStudentChoresProgress] = useState(null);
-  const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [viewingSummary, setViewingSummary] = useState(null);
-  const [manualCompleteBlock, setManualCompleteBlock] = useState(null);
-  const [parentNote, setParentNote] = useState('');
-  const [showManualConfirm, setShowManualConfirm] = useState(false);
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
   const [expandedSectionId, setExpandedSectionId] = useState(null);
   const [isLivePulseOpen, setIsLivePulseOpen] = useState(false);
@@ -350,11 +345,8 @@ const ParentDashboard = () => {
     parentSettings.week_reset_day,
     parentSettings.week_reset_hour,
     parentSettings.week_reset_minute,
+    parentSettings.timezone,
   ]);
-  const currentWeekStart = useMemo(
-    () => getCurrentWeekRange(new Date(), weekConfig).weekStart,
-    [weekConfig]
-  );
   const {
     plan,
     entitlementDoc,
@@ -388,15 +380,15 @@ const ParentDashboard = () => {
     studentLimitCheck,
   });
   const {
-    completeBlockManually,
     downloadWeeklyReport,
     getCustomFieldLabel,
+    schoolWeeksByStudentId,
+    reloadSchoolState,
+    error: schoolActivityError,
     getRealTimeWeeklyProgress,
-    getWeeklyProgress,
-    getWeekSubmissions,
+    getWeekActivity,
     isGeneratingReport,
     loading: activityLoading,
-    resetSubmission,
   } = useWeeklyActivity({
     currentUser,
     parentId: currentUser?.uid,
@@ -404,7 +396,7 @@ const ParentDashboard = () => {
     students,
     subjects,
     weekConfig,
-    startAt: currentWeekStart,
+    weekOffset: selectedWeekOffset,
   });
   const { createWeeklyRecordsForRange } = useWeeklyReportRecords({
     currentUser,
@@ -551,7 +543,7 @@ const ParentDashboard = () => {
       return [];
     }
 
-    const weekSubmissions = getWeekSubmissions(selectedWeekOffset);
+    const weekSubmissions = getWeekActivity(selectedWeekOffset);
     if (livePulseStudentFilter === LIVE_PULSE_ALL_STUDENTS) {
       return weekSubmissions;
     }
@@ -560,7 +552,7 @@ const ParentDashboard = () => {
       (submission) => submission.student_id === livePulseStudentFilter
     );
   }, [
-    getWeekSubmissions,
+    getWeekActivity,
     livePulseDomainFilter,
     livePulseStudentFilter,
     selectedWeekOffset,
@@ -608,73 +600,16 @@ const ParentDashboard = () => {
 
   const handleCloseStudentProgress = () => {
     setViewingStudentProgress(null);
-    setSelectedSubmission(null);
   };
 
   const handleViewChoresProgress = (student) => {
     if (entitlementDoc?.product_direction_version >= 1) { navigate('/dashboard/chores/daily-routines'); return; }
-    setSelectedSubmission(null);
     setViewingStudentProgress(null);
     setViewingStudentChoresProgress(student);
   };
 
   const handleCloseStudentChoresProgress = () => {
     setViewingStudentChoresProgress(null);
-  };
-
-  const handleResetBlock = async (submissionId) => {
-    if (!window.confirm('Are you sure you want to reset this block? This will delete the submission and the student will need to redo it.')) return;
-
-    const reset = await resetSubmission(submissionId);
-    if (reset) {
-      setSelectedSubmission(null);
-      alert('Block reset successfully! The student can now redo this block.');
-    } else {
-      alert('Failed to reset block. Please try again.');
-    }
-  };
-
-  const handleManualComplete = (subject, blockIndex) => {
-    setManualCompleteBlock({ subject, blockIndex });
-    setParentNote('');
-    setShowManualConfirm(true);
-  };
-
-  const confirmManualComplete = async () => {
-    if (!manualCompleteBlock || !viewingStudentProgress) return;
-
-    const completed = await completeBlockManually({
-      studentId: viewingStudentProgress.id,
-      subject: manualCompleteBlock.subject,
-      blockIndex: manualCompleteBlock.blockIndex,
-      parentNote,
-    });
-
-    if (completed) {
-      setShowManualConfirm(false);
-      setManualCompleteBlock(null);
-      setParentNote('');
-      alert('Block marked as completed successfully!');
-    } else {
-      alert('Failed to mark block complete. Please try again.');
-    }
-  };
-
-  const cancelManualComplete = () => {
-    setShowManualConfirm(false);
-    setManualCompleteBlock(null);
-    setParentNote('');
-  };
-
-  const getStudentProgressForSubject = (subjectId) => {
-    const weekSubmissions = getWeekSubmissions(selectedWeekOffset);
-    return weekSubmissions
-      .filter(s => s.student_id === viewingStudentProgress?.id && s.subject_id === subjectId)
-      .map(s => s.block_index);
-  };
-
-  const isBlockCompletedForStudent = (subjectId, blockIndex) => {
-    return getStudentProgressForSubject(subjectId).includes(blockIndex);
   };
 
   const handleLogout = async () => {
@@ -1104,6 +1039,8 @@ const ParentDashboard = () => {
                 db,
                 entitlementSummary,
                 featureShellState: activeFeature.shellState,
+                schoolWeeksByStudentId,
+                schoolActivityLoading: activityLoading,
                 handleDeleteStudent,
                 handleSaveSettings,
                 handleViewChoresProgress,
@@ -1157,7 +1094,7 @@ const ParentDashboard = () => {
           <div className="bg-white rounded-2xl w-full max-w-md mx-4 border border-parchment">
             <div className="flex items-center justify-between p-6 border-b border-parchment">
               <h2 style={{ fontSize: 17, fontWeight: 540, color: '#292827' }}>
-                {viewingSummary.subject_name} Summary
+                {viewingSummary.subject_name} {viewingSummary.activity_kind === 'parent_correction' ? 'Parent Correction' : 'Original Evidence'}
               </h2>
               <button onClick={() => setViewingSummary(null)} className="text-charcoal-ink/30 hover:text-charcoal-ink transition-colors">
                 <X className="w-5 h-5" />
@@ -1176,7 +1113,7 @@ const ParentDashboard = () => {
               </div>
               <div className="rounded-xl p-4" style={{ backgroundColor: C.cream }}>
                 <p className="text-[14px] whitespace-pre-wrap" style={{ color: C.charcoal, fontWeight: 460 }}>
-                  {viewingSummary.summary_text}
+                  {viewingSummary.activity_kind === 'parent_correction' ? `${viewingSummary.reason}${viewingSummary.note ? ` — ${viewingSummary.note}` : ''}` : viewingSummary.summary_text}
                 </p>
               </div>
               {viewingSummary.custom_field_responses && Object.keys(viewingSummary.custom_field_responses).length > 0 && (
@@ -1240,107 +1177,8 @@ const ParentDashboard = () => {
                 </div>
               </div>
 
-              {(() => {
-                const studentSubjects = subjects.filter(subject => {
-                  if (subject.student_ids && Array.isArray(subject.student_ids)) return subject.student_ids.includes(viewingStudentProgress.id);
-                  return subject.student_id === viewingStudentProgress.id;
-                });
-
-                if (studentSubjects.length === 0) {
-                  return (
-                    <div className="text-center py-12">
-                      <div className="w-14 h-14 bg-[#f0eaff] rounded-full flex items-center justify-center mx-auto mb-4">
-                        <BookOpen className="w-7 h-7 text-amethyst-link/50" />
-                      </div>
-                      <h3 className="text-[16px] font-display text-charcoal-ink mb-2">No subjects assigned</h3>
-                      <p className="text-[14px] font-body text-charcoal-ink/40">This student hasn't been assigned any subjects yet.</p>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="space-y-5">
-                    {studentSubjects.map((subject) => {
-                      const progress = getWeeklyProgress(viewingStudentProgress.id, subject.id, selectedWeekOffset);
-
-                      return (
-                        <div key={subject.id} className="bg-white rounded-2xl border border-parchment p-6">
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2.5 mb-1">
-                                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: subject.color || '#cbb7fb' }} />
-                                <h3 style={{ fontSize: 16, fontWeight: 540, color: '#292827' }}>{subject.title}</h3>
-                              </div>
-                              <div className="flex items-center gap-3 text-[13px] font-body text-charcoal-ink/50">
-                                <span>Progress: {progress.completed}/{progress.total} blocks</span>
-                                <span className="text-amethyst-link font-label">{progress.percentage}%</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Progress Bar */}
-                          <div className="w-full rounded-full h-2 overflow-hidden mb-5" style={{ backgroundColor: C.parchment }}>
-                            <div
-                              className="h-full rounded-full transition-all duration-500"
-                              style={{ width: `${progress.percentage}%`, backgroundColor: C.lavender }}
-                            />
-                          </div>
-
-                          {/* Blocks Grid */}
-                          <div>
-                            <p className="text-[11px] font-label uppercase tracking-wider text-charcoal-ink/40 mb-3">
-                              {getWeekLabel(selectedWeekOffset)} Blocks
-                            </p>
-                            <div className="flex gap-2 flex-wrap">
-                              {Array.from({ length: progress.total }, (_, index) => {
-                                const isCompleted = isBlockCompletedForStudent(subject.id, index);
-                                const weekSubmissions = getWeekSubmissions(selectedWeekOffset);
-                                const submission = weekSubmissions.find(s =>
-                                  s.student_id === viewingStudentProgress.id &&
-                                  s.subject_id === subject.id &&
-                                  s.block_index === index
-                                );
-
-                                return (
-                                  <div key={index} className="flex items-center gap-1">
-                                    <button
-                                      onClick={() => isCompleted && setSelectedSubmission(submission)}
-                                      disabled={!isCompleted}
-                                      className="w-11 h-11 rounded-lg font-label text-[13px] transition-all"
-                                      style={{
-                                        backgroundColor: isCompleted ? '#f0eaff' : '#ffffff',
-                                        border: `1px solid ${isCompleted ? C.lavender : C.parchment}`,
-                                        color: isCompleted ? C.amethyst : 'rgba(41,40,39,0.3)',
-                                        cursor: isCompleted ? 'pointer' : 'not-allowed',
-                                      }}
-                                      title={isCompleted ? 'Click to view details' : 'Not completed'}
-                                    >
-                                      {isCompleted ? '✓' : index + 1}
-                                    </button>
-
-                                    {!isCompleted && (
-                                      <button
-                                        onClick={() => handleManualComplete(subject, index)}
-                                        className="w-8 h-11 rounded-lg transition-all flex items-center justify-center"
-                                        style={{ backgroundColor: C.cream, border: `1px solid ${C.parchment}`, color: 'rgba(41,40,39,0.4)' }}
-                                        onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#f0eaff'; e.currentTarget.style.borderColor = C.lavender; e.currentTarget.style.color = C.amethyst; }}
-                                        onMouseLeave={e => { e.currentTarget.style.backgroundColor = C.cream; e.currentTarget.style.borderColor = C.parchment; e.currentTarget.style.color = 'rgba(41,40,39,0.4)'; }}
-                                        title="Mark as complete (Parent-led session)"
-                                      >
-                                        <Check className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
+              {schoolActivityError && <p role="alert" className="text-sm">Unable to load trusted school status. {schoolActivityError.message}</p>}
+              <SchoolBlockDetails schoolWeek={schoolWeeksByStudentId[viewingStudentProgress.id]} onReload={reloadSchoolState} disabled={activityLoading || Boolean(schoolActivityError)} />
             </div>
           </div>
         </div>
@@ -1581,163 +1419,6 @@ const ParentDashboard = () => {
       })()}
 
       {/* Submission Details Modal */}
-      {selectedSubmission && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl w-full max-w-md mx-4 border border-parchment">
-            <div className="flex items-center justify-between p-6 border-b border-parchment">
-              <h2 style={{ fontSize: 17, fontWeight: 540, color: '#292827' }}>
-                Block {selectedSubmission.block_index + 1} Details
-              </h2>
-              <button onClick={() => setSelectedSubmission(null)} className="text-charcoal-ink/30 hover:text-charcoal-ink transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div>
-                <p className={labelCls}>Subject</p>
-                <p className="text-[15px] font-body text-charcoal-ink">{selectedSubmission.subject_name}</p>
-              </div>
-
-              <div>
-                <p className={labelCls}>Completed</p>
-                <p className="text-[14px] font-body text-charcoal-ink/60">
-                  {selectedSubmission.timestamp?.toDate?.()
-                    ? new Date(selectedSubmission.timestamp.toDate()).toLocaleString()
-                    : 'Unknown time'}
-                </p>
-              </div>
-
-              {selectedSubmission.summary_text && (
-                <div>
-                  <p className={labelCls}>Student Summary</p>
-                  <div className="bg-warm-cream rounded-xl p-4">
-                    <p className="text-[14px] font-body text-charcoal-ink whitespace-pre-wrap">
-                      {selectedSubmission.summary_text}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {selectedSubmission.custom_field_responses && Object.keys(selectedSubmission.custom_field_responses).length > 0 && (
-                <div>
-                  <p className={labelCls}>Custom Details</p>
-                  <div className="bg-[#f0eaff]/50 rounded-xl p-4 border border-lavender-glow/40">
-                    <div className="space-y-2">
-                      {Object.entries(selectedSubmission.custom_field_responses).map(([fieldId, value]) => (
-                        <div key={fieldId}>
-                          <span className="text-[11px] font-label uppercase tracking-wider text-amethyst-link/70">
-                            {getCustomFieldLabel(fieldId, selectedSubmission.subject_id)}
-                          </span>
-                          <p className="text-[14px] font-body text-charcoal-ink mt-0.5">{value}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {selectedSubmission.resources_used && selectedSubmission.resources_used.length > 0 && (
-                <div>
-                  <p className={labelCls}>Resources Used</p>
-                  <div className="space-y-1">
-                    {selectedSubmission.resources_used.map((resourceIndex, index) => {
-                      const subject = subjects.find(s => s.id === selectedSubmission.subject_id);
-                      const resource = subject?.resources?.[resourceIndex];
-                      return resource ? (
-                        <p key={index} className="text-[14px] font-body text-charcoal-ink/60">• {resource.name}</p>
-                      ) : null;
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setSelectedSubmission(null)}
-                  className="flex-1 px-4 py-2.5 rounded-lg transition-colors"
-                  style={{ backgroundColor: C.cream, color: C.charcoal, fontSize: 14, fontWeight: 700 }}
-                  onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
-                  onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}
-                >
-                  Close
-                </button>
-                <button
-                  onClick={() => handleResetBlock(selectedSubmission.id)}
-                  className="flex-1 px-4 py-2.5 text-white bg-red-500 hover:bg-red-600 rounded-lg font-label text-[14px] transition-colors"
-                >
-                  Reset Block
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Manual Complete Modal */}
-      {showManualConfirm && manualCompleteBlock && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl w-full max-w-md mx-4 border border-parchment">
-            <div className="flex items-center justify-between p-6 border-b border-parchment">
-              <h2 style={{ fontSize: 17, fontWeight: 540, color: '#292827' }}>
-                Mark Block {manualCompleteBlock.blockIndex + 1} Complete
-              </h2>
-              <button onClick={cancelManualComplete} className="text-charcoal-ink/30 hover:text-charcoal-ink transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <p className="text-[14px] font-body text-charcoal-ink">
-                  <span style={{ fontWeight: 540 }}>{manualCompleteBlock.subject.title}</span> — Block {manualCompleteBlock.blockIndex + 1}
-                </p>
-                <p className="text-[12px] font-body text-charcoal-ink/40 mt-0.5">
-                  Parent-led completion (no timer required)
-                </p>
-              </div>
-
-              <div>
-                <label className={labelCls}>Quick Note <span className="normal-case font-body">(optional)</span></label>
-                <textarea
-                  value={parentNote}
-                  onChange={(e) => setParentNote(e.target.value)}
-                  placeholder="e.g., Parent-led session, Reviewed material together, etc."
-                  className="w-full px-3 py-2.5 rounded-lg focus:outline-none text-[14px] resize-none transition-colors"
-                  style={{ border: '1px solid #dcd7d3', color: '#292827', fontWeight: 460 }}
-                  onFocus={e => e.target.style.borderColor = '#292827'}
-                  onBlur={e => e.target.style.borderColor = '#dcd7d3'}
-                  rows={3}
-                />
-              </div>
-
-              <p className="text-[13px] font-body text-charcoal-ink/50">
-                This will create a submission marked as "parent_completed" and bypass the timer requirement.
-              </p>
-
-              <div className="flex gap-3 pt-1">
-                <button
-                  onClick={cancelManualComplete}
-                  className="flex-1 px-4 py-2.5 rounded-lg transition-colors"
-                  style={{ backgroundColor: C.cream, color: C.charcoal, fontSize: 14, fontWeight: 700 }}
-                  onMouseEnter={e => e.currentTarget.style.backgroundColor = C.parchment}
-                  onMouseLeave={e => e.currentTarget.style.backgroundColor = C.cream}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmManualComplete}
-                  className="flex-1 px-4 py-2.5 rounded-lg transition-colors"
-                  style={{ backgroundColor: C.charcoal, color: '#fff', fontSize: 14, fontWeight: 700 }}
-                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3a3937'}
-                  onMouseLeave={e => e.currentTarget.style.backgroundColor = C.charcoal}
-                >
-                  Mark Complete
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

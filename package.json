@@ -14,7 +14,7 @@
     "check:direction-rules": "node --test scripts/check-product-direction-rules.mjs",
     "seed:direction": "node scripts/seed-product-direction-fixtures.mjs --scenario=all --write",
     "check:direction-callables": "node --test scripts/check-product-direction-callables.mjs",
-    "check:direction-emulators": "firebase emulators:exec --only auth,firestore,functions --project demo-gridworkz-direction \"npm run check:direction-rules && npm run seed:direction && npm run check:direction-callables && npm run check:routine-reward-callables && npm run check:weekly-planning-callables && npm run check:direction-browser\"",
+    "check:direction-emulators": "firebase emulators:exec --only auth,firestore,functions --project demo-gridworkz-direction \"npm run check:direction-rules && npm run seed:direction && npm run check:direction-callables && npm run check:routine-reward-callables && npm run check:weekly-planning-callables && npm run check:school-authority-callables && npm run check:direction-browser\"",
     "check:direction-browser": "playwright test --config playwright.direction.config.js",
     "check:direction-fixtures": "node --test scripts/check-product-direction-fixtures.mjs",
     "check:routine-reward-helpers": "node scripts/check-routine-reward-helpers.mjs",
@@ -22,7 +22,9 @@
     "check:routine-reward-callables": "node --test scripts/check-routine-reward-callables.mjs",
     "check:routine-view-model": "node scripts/check-routine-view-model.mjs",
     "check:weekly-planning-helpers": "node scripts/check-weekly-planning-helpers.mjs && node scripts/check-weekly-plan-view-model.mjs && node scripts/check-weekly-authority-readers.mjs",
-    "check:weekly-planning-callables": "node --test scripts/check-weekly-planning-callables.mjs"
+    "check:weekly-planning-callables": "node --test scripts/check-weekly-planning-callables.mjs",
+    "check:school-authority-helpers": "node scripts/check-school-authority-helpers.mjs && node scripts/check-school-timer-view.mjs && node scripts/check-school-report-view.mjs && node scripts/check-parent-school-view.mjs",
+    "check:school-authority-callables": "node --test scripts/check-school-authority-callables.mjs"
   },
   "dependencies": {
     "firebase": "^10.8.0",

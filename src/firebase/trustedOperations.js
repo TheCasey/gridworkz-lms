@@ -314,3 +314,25 @@ export const archiveTrustedWeeklyPlan = async (payload) => {
   const result = await httpsCallable(functions, TrustedFunctionNames.ARCHIVE_WEEKLY_PLAN)(payload);
   return result.data;
 };
+
+export const getTrustedStudentSchoolState = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.GET_STUDENT_SCHOOL_STATE)(payload);
+  return result.data;
+};
+export const correctTrustedSchoolBlock = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.CORRECT_SCHOOL_BLOCK)(payload);
+  return result.data;
+};
+export const submitTrustedSchoolBlock = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.SUBMIT_SCHOOL_BLOCK)(payload);
+  return result.data;
+};
+export const commandTrustedStudentSchoolTimer = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.COMMAND_STUDENT_SCHOOL_TIMER)(payload);
+  return result.data;
+};
+
+export const fileTrustedSchoolWeeklyReport = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.FILE_SCHOOL_WEEKLY_REPORT)(payload);
+  return result.data;
+};

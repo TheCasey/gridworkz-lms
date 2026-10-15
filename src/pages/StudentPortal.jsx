@@ -29,6 +29,7 @@ import {
 } from '../utils/timerUtils';
 import useStudentAccessPolicy, { StudentAccessPolicyReasonCodes } from '../hooks/useStudentAccessPolicy';
 import useStudentPortalWeeklyPlan from '../hooks/useStudentPortalWeeklyPlan';
+import useStudentSchoolState from '../hooks/useStudentSchoolState';
 import {
   getLockdownStateGuidance,
   getRequestAccessGuidance,
@@ -124,7 +125,7 @@ const StudentPortal = () => {
   const [expandedBlockIndex, setExpandedBlockIndex] = useState(null);
   const [summaryText, setSummaryText] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [completedBlocks, setCompletedBlocks] = useState({});
+  const [legacyCompletedBlocks, setCompletedBlocks] = useState({});
   const [selectedResources, setSelectedResources] = useState([]);
   const [activeTimers, setActiveTimers] = useState({});
   const [alarmSound, setAlarmSound] = useState(ALARM_SOUNDS[0].file);
@@ -144,6 +145,11 @@ const StudentPortal = () => {
   const timerRemovalInFlightRef = useRef({});
   const timerRemovalPromisesRef = useRef({});
 
+  useEffect(() => {
+    setIsAuthenticated(false); setPin(''); setSelectedSubject(null); setSelectedBlockIndex(null);
+    completionIdentityRef.current = null; submissionLocksRef.current = {};
+  }, [slug, student?.id, student?.access_pin]);
+
   const db = getFirestore(app);
   const rawSubjectMap = useMemo(() => Object.fromEntries(subjects.map(subject => [subject.id, subject])), [subjects]);
   const weekConfig = useMemo(() => getWeekConfig(student || {}), [
@@ -153,15 +159,35 @@ const StudentPortal = () => {
     student?.timezone,
   ]);
   const {
-    weekIdentity,
-    weeklyPlan: publishedWeeklyPlan,
-    loading: publishedWeeklyPlanLoading,
-    usesWeeklyPlanAuthority,
-    error: publishedWeeklyPlanError,
+    weekIdentity: deviceWeekIdentity,
+    weeklyPlan: publicWeeklyPlan,
+    loading: publicWeeklyPlanLoading,
+    usesWeeklyPlanAuthority: publicWeeklyPlanAuthority,
+    error: publicWeeklyPlanError,
   } = useStudentPortalWeeklyPlan({
     student,
     enabled: Boolean(student?.id && student?.parent_id),
   });
+  // All current clients read and command schoolwork through the trusted adapter.
+  // The public plan listener supplies publication/reset invalidation only.
+  const usesTrustedSchool = Boolean(student?.id);
+  const schoolEnabled = Boolean(student?.id && (!student.access_pin || isAuthenticated));
+  const school = useStudentSchoolState({ student, slug, pin, weekKey: deviceWeekIdentity?.weekKey || '',
+    sourceRevision: `${publicWeeklyPlanLoading}:${publicWeeklyPlan?.status || ''}:${publicWeeklyPlan?.revision || 0}`,
+    enabled: schoolEnabled && !publicWeeklyPlanLoading });
+  const weekIdentity = useMemo(() => school.data ? {
+    weekKey: school.data.week_key,
+    weekStart: new Date(school.data.week_start_ms), weekEnd: new Date(school.data.week_end_ms),
+  } : deviceWeekIdentity, [school.data, deviceWeekIdentity]);
+  const publishedWeeklyPlan = usesTrustedSchool ? school.data?.weekly_plan || null : publicWeeklyPlan;
+  const usesWeeklyPlanAuthority = usesTrustedSchool || publicWeeklyPlanAuthority;
+  const publishedWeeklyPlanLoading = publicWeeklyPlanLoading || school.loading;
+  const publishedWeeklyPlanError = school.error || publicWeeklyPlanError;
+  const completedBlocks = usesTrustedSchool ? school.completedBlocks : legacyCompletedBlocks;
+  useEffect(() => {
+    if (!usesTrustedSchool) return;
+    setActiveTimers(school.timer ? { [school.timer.subjectId]: school.timer } : {});
+  }, [usesTrustedSchool, school.timer]);
   const timerValidationWorkItems = useMemo(() => (
     publishedWeeklyPlan
       ? buildPublishedWeeklyPlanPortalWorkItems({
@@ -408,7 +434,7 @@ const StudentPortal = () => {
 
   useEffect(() => {
     setCompletedBlocks({});
-    if (!student?.id || !weekIdentity?.weekStart) return undefined;
+    if (usesTrustedSchool || !student?.id || !weekIdentity?.weekStart) return undefined;
     const submissionsQuery = query(collection(db, 'submissions'),
       where('student_id', '==', student.id), where('timestamp', '>=', weekIdentity.weekStart),
       where('timestamp', '<=', weekIdentity.weekEnd), orderBy('timestamp', 'desc'));
@@ -421,10 +447,10 @@ const StudentPortal = () => {
       });
       setCompletedBlocks(next);
     });
-  }, [db, student?.id, weekIdentity?.weekStart, weekIdentity?.weekEnd]);
+  }, [db, student?.id, weekIdentity?.weekStart, weekIdentity?.weekEnd, usesTrustedSchool]);
 
   useEffect(() => {
-    if (!student?.id) return undefined;
+    if (usesTrustedSchool || !student?.id) return undefined;
     if (!portalSubjectIdsKey) {
       setActiveTimers((prev) => (Object.keys(prev).length > 0 ? {} : prev));
       return;
@@ -499,7 +525,7 @@ const StudentPortal = () => {
     });
 
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [db, portalSubjectIdsKey, student?.id]);
+  }, [db, portalSubjectIdsKey, student?.id, usesTrustedSchool]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -663,7 +689,7 @@ const StudentPortal = () => {
   };
 
   const persistTimer = async (subject, timer, includeCreatedAt = false) => {
-    if (!student || !subject || !timer) return;
+    if (usesTrustedSchool || !student || !subject || !timer) return;
 
     await setDoc(
       doc(db, 'timerSessions', getTimerSessionDocId(student.id, subject.id)),
@@ -676,6 +702,11 @@ const StudentPortal = () => {
 
   const removeTimer = async (subjectId) => {
     if (!student || !subjectId) return;
+    if (usesTrustedSchool) {
+      const timer = currentActiveTimers[subjectId];
+      if (timer && school.ready && !school.busy) await school.commandTimer({ action: 'reset', blockId: timer.blockId, timerSessionId: timer.sessionId });
+      return;
+    }
     if (timerRemovalPromisesRef.current[subjectId]) {
       await timerRemovalPromisesRef.current[subjectId];
       return;
@@ -730,6 +761,17 @@ const StudentPortal = () => {
 
     await primeAlarmAudio();
     const candidateBlock = timerStartPolicy.meta?.candidateBlockIndex;
+    if (usesTrustedSchool) {
+      if (!school.ready || school.busy) return;
+      const item = getLauncherWorkItemForSubject(subject, candidateBlock);
+      if (!item) return;
+      const response = await school.commandTimer({ action: 'start', blockId: item.id });
+      if (response) {
+        setExpandedSubjectId(subject.id); setExpandedBlockIndex(candidateBlock);
+        delete completionNotifiedRef.current[subject.id];
+      }
+      return;
+    }
 
     const config = {
       ...createTimerConfig(subject?.block_length || 30),
@@ -760,6 +802,10 @@ const StudentPortal = () => {
 
   const pauseTimer = async (subject) => {
     const current = currentActiveTimers[subject.id];
+    if (usesTrustedSchool) {
+      if (current && school.ready && !school.busy) await school.commandTimer({ action: 'pause', blockId: current.blockId, timerSessionId: current.sessionId });
+      return;
+    }
     const config = {
       ...current,
       remainingTime: current?.isRunning && !current?.pausedAt
@@ -780,6 +826,10 @@ const StudentPortal = () => {
 
   const resumeTimer = async (subject) => {
     const current = currentActiveTimers[subject.id];
+    if (usesTrustedSchool) {
+      if (current && school.ready && !school.busy) await school.commandTimer({ action: 'resume', blockId: current.blockId, timerSessionId: current.sessionId });
+      return;
+    }
     const now = Date.now();
     const config = current.pausedAt
       ? { ...current, isRunning: true, targetEndTime: current.targetEndTime + (now - current.pausedAt), pausedAt: null, resumedAt: now }
@@ -796,6 +846,7 @@ const StudentPortal = () => {
 
   const resetTimer = async (subject) => {
     stopAlarm();
+    if (usesTrustedSchool) { await removeTimer(subject.id); return; }
     setActiveTimers(prev => { const u = { ...prev }; delete u[subject.id]; return u; });
 
     try {
@@ -807,7 +858,7 @@ const StudentPortal = () => {
   };
 
   useEffect(() => {
-    if (!student?.id || publishedWeeklyPlanLoading || publishedWeeklyPlanError || !staleTimerSubjectIdsKey) return;
+    if (usesTrustedSchool || !student?.id || publishedWeeklyPlanLoading || publishedWeeklyPlanError || !staleTimerSubjectIdsKey) return;
 
     staleTimerSubjectIds.forEach((subjectId) => {
       if (timerRemovalInFlightRef.current[subjectId]) return;
@@ -823,7 +874,7 @@ const StudentPortal = () => {
         console.warn('Unable to delete stale timer session:', cleanupError);
       });
     });
-  }, [staleTimerSubjectIdsKey, student?.id, publishedWeeklyPlanLoading, publishedWeeklyPlanError]);
+  }, [staleTimerSubjectIdsKey, student?.id, publishedWeeklyPlanLoading, publishedWeeklyPlanError, usesTrustedSchool]);
 
   const setSubmissionLock = (subjectId, blockIndex) => { submissionLocksRef.current[`${subjectId}_${blockIndex}`] = true; };
   const clearSubmissionLock = (subjectId, blockIndex) => { delete submissionLocksRef.current[`${subjectId}_${blockIndex}`]; };
@@ -1015,7 +1066,7 @@ const StudentPortal = () => {
   const validateLiveCompletion = (subject, blockIndex) => {
     const live = liveCompletionContextRef.current;
     const captured = completionIdentityRef.current;
-    const currentKey = getWeekKey(getCurrentWeekRange(new Date(), live?.weekConfig).weekStart, live?.weekConfig);
+    const currentKey = usesTrustedSchool ? school.data?.week_key : getWeekKey(getCurrentWeekRange(new Date(), live?.weekConfig).weekStart, live?.weekConfig);
     if (!live || live.loading || live.error || captured?.studentId !== live.student?.id
       || captured?.weekKey !== currentKey || captured.weekKey !== live.weekKey) return null;
     if (!live.authority) return { subject, policy: live.getSubjectPolicy(subject, { blockIndex, ignoreSubmissionLock: true }) };
@@ -1040,6 +1091,20 @@ const StudentPortal = () => {
     setSubmissionLock(subject.id, blockIndex);
     setSubmitting(true);
     try {
+      if (usesTrustedSchool) {
+        if (!school.ready || school.busy) return;
+        const item = getLauncherWorkItemForSubject(current.subject, blockIndex);
+        if (!item) throw new Error('This block changed. Reload the school week.');
+        const timer = currentActiveTimers[subject.id];
+        const response = await school.submit({ blockId: item.id, summaryText: summary,
+          resourcesUsed: selectedResources, customFieldResponses,
+          timerSessionId: timer?.blockId === item.id ? timer.sessionId : null });
+        if (response) {
+          setSelectedSubject(null); setSelectedBlockIndex(null);
+          setSummaryText(''); setSelectedResources([]); resetCustomFieldResponses();
+        }
+        return;
+      }
       const { weekStart } = getCurrentWeekRange(new Date(), weekConfig);
       const existing = await getDocs(query(collection(db, 'submissions'),
         where('student_id', '==', student.id), where('subject_id', '==', subject.id),
@@ -1082,6 +1147,7 @@ const StudentPortal = () => {
       setError('Failed to submit. Please try again.');
       clearSubmissionLock(subject.id, blockIndex);
     } finally {
+      clearSubmissionLock(subject.id, blockIndex);
       setSubmitting(false);
     }
   };
@@ -1160,6 +1226,7 @@ const StudentPortal = () => {
       <main className="student-portal-content">
         {studentChores.error && !studentChores.choreState ? <div role="alert" className="student-list-empty"><p>{studentChores.error.message}</p><button type="button" className="student-button" disabled={studentChores.loading} onClick={studentChores.refresh}>Retry loading</button></div> : null}
 
+        {activeWorkspace === 'school' && school.error ? <div role="alert" className="student-list-empty"><p>{school.error.message}</p><button type="button" className="student-button" disabled={school.loading || school.busy} onClick={() => school.refresh()}>Retry loading school</button></div> : null}
         {activeWorkspace === 'school' ? (
           <StudentSchoolWorkspace
             student={student}
@@ -1174,7 +1241,7 @@ const StudentPortal = () => {
             activeTimers={currentActiveTimers}
             expandedSubjectId={expandedSubjectId}
             expandedBlockIndex={expandedBlockIndex}
-            submitting={submitting}
+            submitting={submitting || school.busy || (schoolEnabled && !school.ready)}
             currentWorkGuidance={currentWorkGuidance}
             isBlockCompleted={isBlockCompleted}
             isSubmissionLocked={isSubmissionLocked}

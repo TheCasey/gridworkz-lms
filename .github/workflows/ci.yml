@@ -48,6 +48,9 @@ jobs:
       - name: Check weekly planning calendars, identities and authority readers
         run: npm run check:weekly-planning-helpers
 
+      - name: Check trusted school completion, timer and report views
+        run: npm run check:school-authority-helpers
+
       - name: Check product direction contracts
         run: npm run check:direction-contracts
 

@@ -31,6 +31,9 @@ export const StudentSchema = {
   week_reset_hour: "number", // Public copy of school weekly rollover hour
   week_reset_minute: "number", // Public copy of school weekly rollover minute
   timezone: "string", // IANA timezone for weekly rollover
+  school_authority_version: "number", // Server-owned completion/timer authority marker
+  school_state_revision: "number", // Student-safe change signal; no private audit details
+  school_authority_adopted_at: "timestamp", // First trusted school authority use
   weekly_planning_version: "number", // Server-owned published-plan authority marker
   weekly_planning_adopted_at: "timestamp", // First trusted publish
   lockdown_schedule: "object", // Optional student-bound lockdown schedule plus legacy off-hours resource windows used as migration input
@@ -319,6 +322,10 @@ export const WeeklyReportSchema = {
   school_year_end: "timestamp", // Cached school year range end
   school_quarter: "number", // Cached quarter index
   school_quarter_label: "string", // Cached quarter label
+  authority_version: "number", // 1 for transactionally filed official snapshots
+  school_state_revision: "number", // Effective-state change watermark at filing
+  report_version: "number", // Original version 1; amendments are separate records
+  original_report_id: "string", // Canonical original ID, unchanged by amendments
   record_source: "string", // manual or automatic archival path
   created_at: "timestamp"
 };
@@ -911,6 +918,7 @@ export const PublishedWeeklyPlanV1Schema = {
   ...WeeklyPlanSchema,
   schema_version: "number",
   revision: "number", // Positive server-checked published revision; archived is immutable
+  school_completion_version: "number", // 1 disables raw subject/index completion fallback
 };
 
 export const WeeklyPlanDraftSchema = {
@@ -919,6 +927,7 @@ export const WeeklyPlanDraftSchema = {
   revision: "number", // Positive private draft revision
   base_published_revision: "number", // 0 before first publication
   parent_notes: "string", // Private; never projected into weeklyPlans
+  legacy_source_links: "object", // Private reviewed first-publication source IDs, or null for new work
   block_identity_history: "object", // Retained removed identities; server-owned, private
 };
 
@@ -954,7 +963,63 @@ export const BlockCompletionStateSchema = {
   revision: "number", // 0 for initial state; transaction increments on each accepted change
   status: "string", // EffectiveBlockStatuses; evidence remains separate and immutable
   original_evidence_ids: "array", // References to original submissions, including after undo
+  provenance: "string", // student, parent_correction, legacy_student or legacy_parent
+  actor_id: "string", // Trusted actor; unknown legacy actor stays null
+  completed_at: "timestamp", // Effective completion timestamp, nullable
+  last_submission_id: "string", // Latest immutable student evidence, optional
   last_correction_event_id: "string",
+  updated_at: "timestamp",
+};
+
+export const SchoolStateHistorySchema = {
+  ...BlockCompletionStateSchema,
+  recorded_at: "timestamp",
+  event_id: "string", // Optional correction event reference
+  submission_id: "string", // Optional immutable student evidence reference
+};
+
+export const SchoolExecutionSnapshotSchema = {
+  ...WeeklyPlanSchema,
+  schema_version: "number",
+  authority_kind: "string", // legacy_execution; separate from published planning authority
+  original_report_ids: "array", // Historical assignment anchors when unambiguous
+  recorded_at: "timestamp",
+};
+
+export const SchoolPublicationBridgeSchema = {
+  id: "string", // Canonical published plan ID
+  parent_id: "string",
+  student_id: "string",
+  week_key: "string",
+  weekly_plan_id: "string",
+  source_execution_id: "string", // Actual legacy execution or prior canonical publication ID
+  source_kind: "string", // legacy_execution or published
+  source_revision: "number", // Prior publication revision, nullable for legacy
+  schema_version: "number",
+  legacy_source_links: "object", // target block ID -> exact source block ID, or null
+  inherited_states: "object", // Full canonical state ID -> immutable normalized baseline
+  source_blocks: "object", // Exact source block IDs -> frozen execution definitions
+  recorded_at: "timestamp",
+};
+
+export const SchoolOperationReceiptSchema = {
+  parent_id: "string",
+  student_id: "string",
+  action: "string",
+  schema_version: "number",
+  request_fingerprint: "string",
+  response: "object",
+  recorded_at: "timestamp",
+};
+
+export const SchoolReportAmendmentHeadSchema = {
+  parent_id: "string",
+  student_id: "string",
+  week_key: "string",
+  weekly_plan_id: "string",
+  original_report_id: "string", // Document ID matches this field, rules can lock original
+  latest_amendment_id: "string",
+  report_version: "number",
   updated_at: "timestamp",
 };
 
@@ -1047,6 +1112,11 @@ export const Collections = {
   STUDENT_DEFAULT_WEEKS: "studentDefaultWeeks",
   WEEKLY_PLANNING_RECEIPTS: "weeklyPlanningReceipts",
   BLOCK_COMPLETION_STATES: "blockCompletionStates",
+  SCHOOL_EXECUTION_SNAPSHOTS: "schoolExecutionSnapshots",
+  SCHOOL_PUBLICATION_BRIDGES: "schoolPublicationBridges",
+  SCHOOL_OPERATION_RECEIPTS: "schoolOperationReceipts",
+  SCHOOL_STATE_HISTORY: "schoolStateHistory",
+  SCHOOL_REPORT_AMENDMENT_HEADS: "schoolReportAmendmentHeads",
   PARENT_CORRECTION_EVENTS: "parentCorrectionEvents",
   WEEKLY_REPORT_AMENDMENTS: "weeklyReportAmendments",
   ROUTINE_DAY_SNAPSHOTS: "routineDaySnapshots",
@@ -1082,6 +1152,11 @@ export const Collections = {
 };
 
 export const TrustedFunctionNames = {
+  FILE_SCHOOL_WEEKLY_REPORT: "fileSchoolWeeklyReport",
+  GET_STUDENT_SCHOOL_STATE: "getStudentSchoolState",
+  CORRECT_SCHOOL_BLOCK: "correctSchoolBlock",
+  SUBMIT_SCHOOL_BLOCK: "submitSchoolBlock",
+  COMMAND_STUDENT_SCHOOL_TIMER: "commandStudentSchoolTimer",
   SAVE_WEEKLY_PLAN_DRAFT: "saveWeeklyPlanDraft",
   PUBLISH_WEEKLY_PLAN: "publishWeeklyPlan",
   SAVE_STUDENT_DEFAULT_WEEK: "saveStudentDefaultWeek",
