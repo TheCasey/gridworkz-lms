@@ -1,6 +1,6 @@
 # GridWorkz Architecture
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 ## Stack
 
@@ -72,9 +72,9 @@ Important modeling details:
 
 - Subjects support multi-student assignment through `student_ids`.
 - Student access is keyed by a generated slug and can be guarded by an optional `access_pin`.
-- `weeklyPlans` remain the published/archived student-week authority. The routine-first implementation keeps private drafts in `weeklyPlanDrafts` and per-student defaults in `studentDefaultWeeks`; trusted callables save current editor contents with revision checks and atomically publish an allowlisted snapshot. Private retry receipts remain owner-readable/server-writable. Production promotion is pending.
+- `weeklyPlans` remain the published/archived student-week authority. The routine-first implementation keeps private drafts in `weeklyPlanDrafts` and per-student defaults in `studentDefaultWeeks`; trusted callables save current editor contents with revision checks and atomically publish an allowlisted snapshot. Private retry receipts remain owner-readable/server-writable. Deployed for the selected internal-testing household; adoption remains gated.
 - Weekly reports cache school-year and quarter labels for filtering and reporting, and weekly-plan-backed records can preserve assigned block snapshots in `assigned_blocks_snapshot`.
-- The routine-first implementation uses a trusted singleton school timer in `timerSessions/{studentId}`. Server-issued context and elapsed time govern completion; the student device renders the countdown against the returned server clock. Old local-storage/per-subject timer records remain compatibility inputs only before adoption. Production promotion is pending.
+- The routine-first implementation uses a trusted singleton school timer in `timerSessions/{studentId}`. Server-issued context and elapsed time govern completion; the student device renders the countdown against the returned server clock. Old local-storage/per-subject timer records remain compatibility inputs only before adoption. Deployed for the selected internal-testing household; adoption remains gated.
 - `accountEntitlements/{uid}` is the server-owned plan and feature source for premium surfaces such as Lockdown.
 - `supportOperators/{uid}` is the server-owned allowlist for operator callables.
 - `entitlementAuditLogs` stores billing and operator entitlement events.
@@ -164,7 +164,7 @@ This is sufficient for the current browser-extension launch path, but the broade
 ## Tooling State
 
 - Focused helper checks and an isolated Auth/Firestore/Functions + Chromium harness now support the routine-first execution. See [testing instructions](upgrades/product-direction-execution/testing.md).
-- Routine/cosmetic and private draft/default authority and interfaces are locally implemented and verified. Correction/amendment contracts remain preparatory; production consumers have not been switched. See [contract boundaries](upgrades/product-direction-execution/contracts.md).
+- Routine/cosmetic, private draft/default, trusted school completion/correction and report amendment authority are deployed for the selected internal-testing household. Actual cloud QA passes; new-account activation remains off. See [contract boundaries](upgrades/product-direction-execution/contracts.md).
 - `npm run build` currently passes.
 - `npm run lint` currently passes with the root ESLint config.
 - A lightweight GitHub Actions workflow runs lint and build on push and pull request.
@@ -178,7 +178,7 @@ This is sufficient for the current browser-extension launch path, but the broade
 - Implemented chores and rewards module: [specs/chores-and-rewards-module.md](specs/chores-and-rewards-module.md)
 - Upgrade docs: [upgrades/README.md](upgrades/README.md)
 
-## Trusted School Completion (routine-first implementation; release pending)
+## Trusted School Completion (selected-household internal testing live)
 
 `functions/src/schoolCompletionAuthority.js` owns PIN-verified school reads, student submissions/timers and authenticated parent corrections. Immutable evidence remains in `submissions`; `blockCompletionStates` stores effective status, and `parentCorrectionEvents` plus `schoolStateHistory` retain audit history. Commands use revision checks and private idempotency receipts. Public student markers invalidate reads across devices. The server returns the canonical household school week, so device clock skew cannot advance the assignment week or grant elapsed timer time.
 
@@ -186,14 +186,18 @@ A missing legacy execution freezes separately in private `schoolExecutionSnapsho
 
 `useParentSchoolState`, the student adapter, report snapshot builders and trusted Lockdown policy share effective state semantics. Parent corrections never fabricate student submissions or time. Saved original reports cannot update; explicit `weeklyReportAmendments` and private amendment heads provide versioned changes. Historical reports without reliable assignment attribution require review and retain their original numerical evidence. General public-read/session redesign remains separate scope.
 
-## Shared report presentation (routine-first implementation; release pending)
+## Shared report presentation (selected-household internal testing live)
 
 `src/utils/reportPresentation.js` normalizes live school snapshots and saved original/amendment records for both `ReportSnapshotDetails` and every Reports print button. Effective counts remain separate from immutable evidence/time. New trusted filings freeze exact minutes, original evidence/custom responses/resources, publication revision, correction event snapshots/watermark and household timezone. Historical display uses recorded assignment boundaries; exact legacy duplicate projections are paired for presentation while unmatched history remains visible. Student/subject filters select whole weekly records. PDF generation and visual QA are separate from cloud release and physical printer acceptance.
 
-## Core billing authority (implementation/integration; release pending)
+## Core billing authority (implemented; payment rollout deferred)
 
 `functions/src/coreBillingAuthority.js` coordinates authenticated Core Checkout, billing portal sessions and provider-current webhook reconciliation. Private billingAccounts bindings and immutable billingCheckoutIntents/billingCheckoutAttempts/billingEventReceipts records are server-only. A per-account fenced lease covers provider work outside Firestore transactions; the final entitlement/audit/receipt commit rereads current overrides and usage transactionally. Known customer ownership must be provider-verified; owner-writable parent fields never establish a billing association.
 
 The client uses the three trusted billing adapters through `useCoreBilling`. Purchase availability is server-reported and defaults off; live checkout has a separate approval gate. Uncertain checkout keeps an exact account-scoped intent across reload. Provider navigation and success redirects grant no entitlement. Settings preserves current access while billing loads or fails, exposes subscription management after downgrade and keeps new Lockdown purchase disabled. The current [billing operations runbook](upgrades/product-direction-execution/billing-operations.md) distinguishes local/provider simulations from actual sandbox and production acceptance.
 
 Quota-increasing student/subject creates and subject reactivation share a private `quotaMutationState/{parentId}` transaction coordinator. Transactions resolve fresh entitlements and count actual owner records, including legacy active curriculum; they do not trust usage snapshots or create fallback entitlement records. `reactivateSubject` is the only inactive-to-active subject transition; direct edits retain immutable ownership and ordinary existing-work/archive/delete access.
+
+## Internal testing deployment boundary
+
+The owner-authorized 2026-10-16 rollout deployed 49 nonpayment Functions, matching Firestore rules, 26 READY indexes and the compatible Cloudflare frontend. Exactly one existing household is activated without changing its plan. Purchase and portal creation exports remain absent; the pre-existing webhook is unchanged. New-account activation remains off. See the [release record](upgrades/product-direction-execution/internal-testing-release-2026-10-16.md).

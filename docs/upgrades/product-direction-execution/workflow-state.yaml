@@ -47,8 +47,8 @@ coordination:
         reasoning_effort: "medium"
     escalation_rules:
       - "Use gpt-6-astra high only for a bounded trust/migration/payment review or reproducible unresolved hard failure."
-foundation_acceptance: "source phases 0/1 locally verified; Cloudflare production metadata remains a carry-forward release dependency"
-production_status: "internal_testing_deploy_in_progress"
+foundation_acceptance: "source phases 0/1 verified; Cloudflare metadata and coordinated nonpayment production rollout verified 2026-10-16"
+production_status: "live_for_selected_household_internal_testing"
 external_release_dependencies:
   - "Stripe lifecycle/live payment and full observation apply to later paid launch, not internal testing"
   - "Owner-authorized live-mode payment after checkout is concrete and reviewable"
@@ -171,3 +171,5 @@ report_presentation_acceptance: "locally verified 2026-10-15;14 school APIs and3
 billing_implementation_acceptance: "locally verified 2026-10-15:70 policy,22 persisted billing,4 billing HTTP,9 quota persistence,6 quota rules,4 quota HTTP; full runtime API/rules passes.Clean CI run38846955531 passes all36 browsers, all emulator checks and PDF generation; lint/build and Cloudflare preview green. Actual test-mode provider sessions/expiration pass, no payment/subscription. Live Phase8 acceptance pending."
 
 internal_testing_scope: "Owner authorized2026-10-16: deploy nonpayment app and activate one selected existing household; preserve plan/history; keep billing webhook and purchase creation unchanged/unavailable; new-account gate off."
+
+internal_testing_acceptance: "2026-10-16: compatible production UI,49 nonpayment Functions,rules and26 READY indexes deployed; one selected household activated preserving its current plan and original data; nine actual cloud QA stages pass and disposable account cleaned. Stripe and broad observation acceptance remain deferred. See internal-testing-release-2026-10-16.md."

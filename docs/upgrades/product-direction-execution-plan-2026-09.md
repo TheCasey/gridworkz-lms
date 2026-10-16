@@ -2,7 +2,7 @@
 
 Created: 2026-10-12
 
-Status: Execution started 2026-10-12. Phase 0 baseline/decisions and Phase 1 contracts/runtime QA are locally verified; Cloudflare metadata is pending and production rollout has not started. Live state and accepted decisions: [execution workflow](product-direction-execution/workflow-plan.md), [decision log](product-direction-execution/decisions.md).
+Status: Nonpayment production rollout and selected-household activation completed 2026-10-16 for the owner's internal family testing. All nine disposable cloud smoke stages pass. Stripe is deferred by the owner; full paid-launch and observation acceptance remain open. See the [internal release record](product-direction-execution/internal-testing-release-2026-10-16.md), [execution workflow](product-direction-execution/workflow-plan.md) and [decision log](product-direction-execution/decisions.md).
 
 Source: [September working notes](../product-direction-working-notes-2026-09.md). The original note is preserved. The user authorized beginning execution on 2026-10-12; recommended defaults are recorded in the decision log.
 

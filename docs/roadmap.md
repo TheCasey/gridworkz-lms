@@ -1,10 +1,10 @@
 # GridWorkz Roadmap
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 ## Current Snapshot
 
-- Routine-first product-direction execution started on 2026-10-12. Defaults, shared contracts/runtime QA, dormant routine authority, and the complete Free Daily Routines/cosmetic/Household History interfaces are locally verified. Weekly Plan private drafts, student defaults, atomic publish, calendar boundaries and conditional timers are locally verified. Trusted school completion/timers, parent corrections, preserved evidence, report amendments and atomic official filing are locally verified. Simplified reports/shared print are locally verified, including Letter/A4 PDF inspection; a physical spot check remains pending. Core billing implementation is under integrated validation: focused backend/UI checks and actual test-mode checkout/portal session creation/expiration pass; full isolated payment lifecycle and live acceptance remain pending. Production changes remain pending release gates.
+- The nonpayment routine-first app is live for the owner-selected existing household as of 2026-10-16. School planning, trusted completion/timers/corrections, preserved evidence, report amendments/print, Daily Routines, points and built-in cosmetics are deployed; all nine disposable cloud smoke stages pass. Existing plan access and original family records are preserved. Stripe is deferred by the owner, with purchase/portal creation unavailable and new-account activation off. See the [release record](upgrades/product-direction-execution/internal-testing-release-2026-10-16.md) and [family-testing guide](upgrades/product-direction-execution/internal-family-testing.md). Full paid-launch and observation acceptance remain open.
 
 - `npm run build` and `npm run lint` both pass as of 2026-05-22.
 - A lightweight GitHub Actions workflow now runs build and lint on push and pull request.
@@ -18,7 +18,7 @@ Last updated: 2026-10-15
 - Subscription enforcement is now live end to end in sandbox mode: shared entitlements, plan-aware UI, trusted callable creates, Firestore-rule backstops, Stripe webhook billing sync, and the operator entitlement console MVP are all deployed.
 - The immediate paid-launch stance is now Core-first: stand up the `$5/month` Core path, treat Lockdown `$10/month` as `coming soon`, and finish tightening the current app surface before reopening broader Lockdown launch work.
 - The baseline product redesign is now the top planning priority: weekly autonomy, layered planning, projects, student workspace, and narrow AI need to be locked in before wider rollout.
-- The chores and rewards module is implemented after Phase 9 validation: Free accounts get daily routines only, while Core/Pro and Lockdown include chore pools, weekly/monthly chores, allowance tracking, points, rewards, redemptions, and placeholder cosmetics.
+- For the activated routine-first household, Free includes Daily Routines, daily points and built-in cosmetics; Core sells unlimited scale. Broad chores, allowance and rewards setup are suspended, while original records and permitted obligation settlements remain in Household History. Unactivated households retain compatibility behavior.
 
 ## Immediate Release Stance
 
@@ -45,7 +45,7 @@ Related doc:
 | Firestore security posture | Partial | Subscription enforcement paths are now trusted, but public student portal flows and timer/submission exposure still need broader hardening |
 | Subscription + entitlement model | Partial | Billing sandbox, trusted entitlement authority, live UI gating, Stripe webhook sync, and operator support tooling are now live; projects UI and live-mode billing rollout are still open |
 | Lockdown browser controls | Partial | The browser-extension launch path is live: entitlement-gated parent management, trusted device pairing, secure policy reads, cached fallback, approved-origin and approved-creator enforcement, and downgrade-safe read-only behavior are current state. Kiosk mode and broader rollout hardening remain follow-on scope. |
-| Chores and rewards | Done | Daily routines are free; paid chore pools, allowance, points, reward store, redemptions, and placeholder cosmetics are included in Core/Pro and Lockdown. All trusted callables are deployed; local seeded E2E and non-mutating production endpoint smoke pass. Destructive production QA should use a disposable household. |
+| Routines and preserved household history | Internal testing live | Activated household gets complete routine/points/cosmetic loop and parent-only history; broad setup is suspended. Original records and settlement access are preserved. New-account activation remains off. |
 | AI assistance | Future | AI planning is now defined narrowly around curriculum chunking, worksheet drafting, and bounded student help |
 | Tooling baseline | Done | Build and lint both pass, and GitHub Actions runs them as a lightweight CI gate |
 | Mobile apps | Future | Planning docs exist, no mobile workspace yet |
@@ -58,7 +58,7 @@ Related doc:
 - Prioritize school planning/student work and complete Daily Routines on Free; Core sells unlimited scale.
 - Preserve tabled household data while hiding broad chore/allowance/reward surfaces through the accepted transition contract.
 - Implement correct draft/default/publish separation, conditional timers, auditable parent corrections, simplified reports/print, and live Core billing in the recorded phase order.
-- Use [execution state](upgrades/product-direction-execution/workflow-state.yaml) and [accepted decisions](upgrades/product-direction-execution/decisions.md). Production acceptance, payment verification, and rollover observation remain required.
+- Use [execution state](upgrades/product-direction-execution/workflow-state.yaml) and [accepted decisions](upgrades/product-direction-execution/decisions.md). Selected-household internal testing is live; full paid-launch payment verification and rollover observation remain later gates.
 - Treat the older priorities below as compatible background/follow-on work; the routine-first release has precedence for immediate implementation.
 
 ### 2. Re-baseline the product around weekly autonomy

@@ -91,3 +91,11 @@
 ## Scope Steering: Internal Family Testing — 2026-10-16
 
 The owner restored Cloudflare access and deferred Stripe, requesting the app ready for their own family. Proceed with the nonpayment internal-testing rollout independently from paid-launch acceptance. Cloudflare/Firebase target and existing household were verified; selected sign-in identifier stays local. Initial cloud migration dry run succeeds after repairing SDK credential compatibility. Additive indexes and all updated nonpayment functions are deploying; webhook and purchase/portal exports remain outside this deployment. Selected migration is explicit byUID and preserves current plan, billing/override/usage and family records. No global activation is authorized.
+
+## Internal testing milestone — 2026-10-16
+
+- PR 10 merged as `1fe41e1`, green main CI `38942291325`; compatible Pages production `a4427c0f-9154-4eb7-b840-ee53ee532076` is live on both hosts. Deployed 49 nonpayment Functions and matching rules; all 26 indexes READY. Existing webhook source unchanged; purchase/portal exports absent.
+- One selected household activated with original records and protected plan/billing/support/usage preserved. Four additional allowance periods appeared during rollout and were retained; all 16 original records hash identically. QA never invoked owner allowance synchronization or edited/published family schoolwork.
+- Nine actual production cloud smoke stages pass through real browser/Auth/callables/Firestore. Disposable QA household fully cleaned. Harness login matching, empty curriculum setup and new routine-ID assumptions were corrected before the successful run; these were test-harness issues, not concealed product failures.
+- Real parent routine/history contrast defect found during visual inspection. Added existing palette wrapper to content and access loading/error branches, with computed contrast assertions in parent save/history browser scenarios; both focused cases pass. Independent Sol-medium read-only review has no blocking findings. Node 20 lint/build pass.
+- Internal family testing is ready independently from Stripe. Guide and release record added. Paid billing and full observation remain deferred by the owner; Phase 8 is not falsely marked complete.
