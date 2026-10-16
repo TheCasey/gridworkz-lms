@@ -87,3 +87,7 @@
 - Cloudflare local sign-in was rechecked and is still expired. No new local environment/secret file is present; isolated Stripe sandbox setup is unconfirmed. Prior setup questions remain pending. No payment, subscription, production migration/activation or deploy performed.
 - Root-owned test emulators were stopped after verification. Existing development port3000 was untouched. Production observation and physical print feedback remain open. Phase8 remains in progress; last completed phase stays7.
 - Next dependent action: establish isolated provider/webhook target and renew Cloudflare access, then complete actual provider lifecycle/release validation. Separately authorized live purchase and actual48-hour/weekly-reset observation follow the concrete deployment path.
+
+## Scope Steering: Internal Family Testing — 2026-10-16
+
+The owner restored Cloudflare access and deferred Stripe, requesting the app ready for their own family. Proceed with the nonpayment internal-testing rollout independently from paid-launch acceptance. Cloudflare/Firebase target and existing household were verified; selected sign-in identifier stays local. Initial cloud migration dry run succeeds after repairing SDK credential compatibility. Additive indexes and all updated nonpayment functions are deploying; webhook and purchase/portal exports remain outside this deployment. Selected migration is explicit byUID and preserves current plan, billing/override/usage and family records. No global activation is authorized.

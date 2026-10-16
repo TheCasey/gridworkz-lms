@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict';
 import { isDeepStrictEqual } from 'node:util';
 import { createHash } from 'node:crypto';
-import fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import apiv2 from 'firebase-tools/lib/apiv2.js';
-import cliAuth from 'firebase-tools/lib/requireAuth.js';
+import { createCliFirestore } from './firebase-cli-cloud.mjs';
 
 const args = process.argv.slice(2);
 const option = (name) => args.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -37,14 +35,8 @@ process.env.GCLOUD_PROJECT = projectId;
 const require = createRequire(new URL('../functions/package.json', import.meta.url));
 const { initializeApp, deleteApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
-let credential;
-if (target !== 'emulator') {
-  const config = JSON.parse(await fs.readFile(`${process.env.HOME}/.config/configstore/firebase-tools.json`, 'utf8'));
-  await cliAuth.requireAuth({ project: projectId, user: config.user, tokens: config.tokens });
-  credential = { getAccessToken: async () => ({ access_token: await apiv2.getAccessToken(), expires_in: 300 }) };
-}
-const app = initializeApp({ projectId, ...(credential ? { credential } : {}) }, 'routine-first-migration');
-const db = getFirestore(app);
+const app = target === 'emulator' ? initializeApp({ projectId }, 'routine-first-migration') : null;
+const db = app ? getFirestore(app) : await createCliFirestore(projectId);
 const { buildRoutineFirstEntitlementPatch } = await import('../functions/src/index.js');
 const parents = option('parents')?.split(',').filter(Boolean);
 const accounts = parents
@@ -113,4 +105,7 @@ try {
     }
   }
   console.log(JSON.stringify(summary, null, 2));
-} finally { await deleteApp(app); }
+} finally {
+  if (app) await deleteApp(app);
+  else await db.terminate();
+}

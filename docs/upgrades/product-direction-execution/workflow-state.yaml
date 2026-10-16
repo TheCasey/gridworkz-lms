@@ -14,7 +14,7 @@ last_completed_phase_number: 7
 last_completed_phase_slug: "phase-07-ship-simplified-reports-and-verified-print-output"
 last_completed_role: "tester"
 last_handoff_role: "tester"
-blocked_reason: "Local implementation verified; full provider lifecycle needs isolated Stripe sandbox, and production release needs renewed Cloudflare access. Owner setup requested; physical print/live purchase/observation gates remain open."
+blocked_reason: "none for owner-authorized internal family testing; Stripe/payment and broad launch acceptance explicitly deferred"
 last_updated: "2026-10-16"
 active_phase_path: "docs/upgrades/product-direction-execution/phases/phase-08-ship-live-core-billing-and-consistent-product-copy/phase.md"
 active_run_log_path: "docs/upgrades/product-direction-execution/phases/phase-08-ship-live-core-billing-and-consistent-product-copy/run-log.md"
@@ -48,9 +48,9 @@ coordination:
     escalation_rules:
       - "Use gpt-6-astra high only for a bounded trust/migration/payment review or reproducible unresolved hard failure."
 foundation_acceptance: "source phases 0/1 locally verified; Cloudflare production metadata remains a carry-forward release dependency"
-production_status: "not_started"
+production_status: "internal_testing_deploy_in_progress"
 external_release_dependencies:
-  - "Cloudflare Pages authentication, project metadata and rollback deployment IDs"
+  - "Stripe lifecycle/live payment and full observation apply to later paid launch, not internal testing"
   - "Owner-authorized live-mode payment after checkout is concrete and reviewable"
 active_phase_guidance:
   read_first:
@@ -169,3 +169,5 @@ school_authority_acceptance: "locally verified 2026-10-15;12 rules,4 compatibili
 report_presentation_acceptance: "locally verified 2026-10-15;14 school APIs and32 browser cases pass,8 Letter/A4 PDFs visually inspected,3 real reports read-only; owner physical spot check and production pending"
 
 billing_implementation_acceptance: "locally verified 2026-10-15:70 policy,22 persisted billing,4 billing HTTP,9 quota persistence,6 quota rules,4 quota HTTP; full runtime API/rules passes.Clean CI run38846955531 passes all36 browsers, all emulator checks and PDF generation; lint/build and Cloudflare preview green. Actual test-mode provider sessions/expiration pass, no payment/subscription. Live Phase8 acceptance pending."
+
+internal_testing_scope: "Owner authorized2026-10-16: deploy nonpayment app and activate one selected existing household; preserve plan/history; keep billing webhook and purchase creation unchanged/unavailable; new-account gate off."

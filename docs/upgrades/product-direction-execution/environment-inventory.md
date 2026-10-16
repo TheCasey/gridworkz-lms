@@ -61,3 +61,11 @@ Cloudflare authentication recheck reports an expired token that cannot refresh n
 Implementation checkpoint`e1b5ed2` has green lint/build and complete emulator/browser CI run`38846955531`, including all36 browser cases in one clean run and generated report PDF artifacts. Successful Cloudflare preview: deployment`df61e06e-5538-4715-bd23-e6f0bac05250`, [preview](https://df61e06e.gridworkz-lms.pages.dev). This verifies the preview build only; it is not coordinated production acceptance.
 
 Cloudflare local authentication recheck still fails because the token is expired and cannot refresh noninteractively. No local environment/secret file has appeared in the checkout. Isolated provider lifecycle setup and physical print feedback remain unconfirmed; no payment or production release has occurred.
+
+## Owner-authorized family-testing rollout (2026-10-16)
+
+Cloudflare OAuth access is restored. Project`gridworkz-lms` production branch is`main`; production and preview both point to Firebase`gridworkz-lms`, with emulator mode absent. Production rollback reference before this rollout is Pages deployment`5ad29e70-e897-4b71-a007-ddec24c7caa8` at commit`e3120e1`. The selected household exists with a saved school timezone and current paid-tier access; preserve the plan and protected financial/support fields. Private identifiers remain in ignored local metadata.
+
+Fresh inventory found15 READY cloud indexes, all preserved in the local manifest. Eleven additive authority indexes were submitted. The backend release selects49 functions, including a closed billing-status adapter using existing secrets; purchase/portal creation and the existing webhook are omitted. Do not activate the selected household until required indexes, backend, rules and compatible UI are verified.
+
+The cloud migration dry run initially exposed unsupported Admin Firestore custom credentials. `scripts/firebase-cli-cloud.mjs` now supplies the existing CLI OAuth client to the Google Firestore SDK in memory; actual selected-household cloud dry run succeeds without mutation. Credentials are never persisted by this helper.
