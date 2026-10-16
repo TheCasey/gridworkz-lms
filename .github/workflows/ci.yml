@@ -51,6 +51,9 @@ jobs:
       - name: Check trusted school completion, timer and report views
         run: npm run check:school-authority-helpers
 
+      - name: Check shared report presentation and HTML escaping
+        run: npm run check:report-print
+
       - name: Check product direction contracts
         run: npm run check:direction-contracts
 
@@ -80,6 +83,15 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Persisted rules, callable, and browser checks on isolated demo project
         run: npm run check:direction-emulators
+      - name: Generate synthetic Letter and A4 report PDFs
+        run: npm run render:report-pdfs
+      - name: Preserve synthetic report PDFs for visual review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-direction-report-pdfs
+          path: tmp/product-direction/report-pdfs
+          if-no-files-found: ignore
       - name: Preserve failed browser evidence
         if: failure()
         uses: actions/upload-artifact@v4

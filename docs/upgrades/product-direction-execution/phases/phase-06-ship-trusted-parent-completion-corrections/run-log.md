@@ -42,7 +42,7 @@
 
 ## Git Checkpoint
 
-- Pending
+- `1bc5639`: trusted school authority, parent corrections, migration bridges, transactional reports and regression evidence. Pushed to the workflow branch; draft PR10 updated. CI results pending.
 
 ## Next Handoff
 

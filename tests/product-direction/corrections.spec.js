@@ -71,11 +71,11 @@ test('dashboard undo preserves evidence, updates a second student device and cre
   await page.getByRole('button', { name: 'Show records', exact: true }).click();
   await page.getByRole('button', { name: 'Details & corrections', exact: true }).first().click();
   const details = page.getByRole('dialog', { name: 'Official report details' });
-  await expect(details.getByText(/Selected version: 1\/6 completed blocks/)).toBeVisible();
+  await expect(details.getByRole('group', { name: 'Weekly completion totals' }).getByText('1 completed', { exact: true })).toBeVisible();
   await details.getByLabel('Report version').selectOption({ label: 'Amendment · Version 2' });
-  await expect(details.getByText(/Selected version: 0\/6 completed blocks/)).toBeVisible();
+  await expect(details.getByRole('group', { name: 'Weekly completion totals' }).getByText('0 completed', { exact: true })).toBeVisible();
   await details.getByLabel('Report version').selectOption(reportId);
-  await expect(details.getByText(/Selected version: 1\/6 completed blocks/)).toBeVisible();
+  await expect(details.getByRole('group', { name: 'Weekly completion totals' }).getByText('1 completed', { exact: true })).toBeVisible();
   await second.getByRole('button', { name: /Subject 2.*0 of 2 blocks complete/ }).click();
   await second.locator('.student-block-chip').first().click();
   await second.getByRole('button', { name: 'Complete block', exact: true }).click();
@@ -152,7 +152,7 @@ test('a new report filing intent can restore a deliberately deleted unamended or
   const firstResponse = await first; const firstPayload = firstResponse.request().postDataJSON(); ok(await firstResponse.json());
   await expect.poll(async () => Boolean(await read('weeklyReports', initial.id))).toBe(true);
   await expect(page.getByRole('button', { name: 'Save record', exact: true })).toBeEnabled();
-  await page.locator('.op-report-record-row').filter({ hasText: student.name }).getByTitle('Delete', { exact: true }).click();
+  await page.getByRole('article', { name: `Official record for ${student.name}`, exact: true }).getByTitle('Delete', { exact: true }).click();
   await expect.poll(async () => await read('weeklyReports', initial.id)).toBeUndefined();
   const second = manualResponse();
   await page.getByRole('button', { name: 'Save record', exact: true }).click();

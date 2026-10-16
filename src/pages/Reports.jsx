@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { AlertTriangle, FileText, Calendar, Archive, Trash2, Printer, ChevronDown, ChevronRight, Filter, RotateCcw } from 'lucide-react';
+import { FileText, Calendar, Archive, Trash2, Printer, RotateCcw } from 'lucide-react';
 import useStudents from '../hooks/useStudents';
 import useSubjects from '../hooks/useSubjects';
 import useWeeklyActivity from '../hooks/useWeeklyActivity';
 import SchoolBlockDetails from '../components/school/SchoolBlockDetails';
 import SavedSchoolReportDetails from '../components/school/SavedSchoolReportDetails';
+import ReportSnapshotDetails from '../components/school/ReportSnapshotDetails';
+import { buildLiveReportPresentation, buildSavedReportPresentation, formatReportDate, openReportPrintWindow } from '../utils/reportPresentation';
 import useWeeklyReportRecords from '../hooks/useWeeklyReportRecords';
 import {
   getWeekRangeByOffset,
@@ -23,223 +25,7 @@ import {
   buildStudentWeeklySnapshot,
   buildWeeklyReportReadinessSummary,
   canSaveWeeklyReportSnapshot,
-  escapeReportHtml,
 } from '../utils/reportUtils';
-
-const C = {
-  mysteria: '#1b1938',
-  lavender: '#cbb7fb',
-  charcoal: '#292827',
-  amethyst: '#714cb6',
-  cream: '#e9e5dd',
-  parchment: '#dcd7d3',
-  lavenderTint: '#f0eaff',
-};
-
-// ---------------------------------------------------------------------------
-// Print template — called with computed week data, opens browser print dialog
-// ---------------------------------------------------------------------------
-const printWeekReport = (students, weekStart, weekEnd, studentDataMap) => {
-  const weekRangeText = formatWeekRange(weekStart, weekEnd);
-  const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  const escapedWeekRangeText = escapeReportHtml(weekRangeText);
-  const escapedGeneratedDate = escapeReportHtml(generatedDate);
-
-  const studentSections = students.map(student => {
-    const data = studentDataMap[student.id];
-    if (!data) return '';
-    const pct = data.goalBlocks > 0 ? Math.round((data.totalBlocks / data.goalBlocks) * 100) : 0;
-    const hours = Math.round(data.totalMinutes / 60 * 10) / 10;
-    const studentInitial = escapeReportHtml(student.name?.charAt(0).toUpperCase() || '?');
-    const studentName = escapeReportHtml(student.name);
-
-    const subjectSections = data.subjectData.map(({ subject, blocks, completedCount, totalCount, totalMinutes: subMins }) => {
-      const blockEntries = blocks.map(b => {
-        const date = b.timestamp?.toDate?.() || new Date(b.timestamp);
-        const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-        const duration = b.block_duration ?? 0;
-        const blockNumber = escapeReportHtml((b.block_index ?? 0) + 1);
-        const escapedDateStr = escapeReportHtml(dateStr);
-        const escapedTimeStr = escapeReportHtml(timeStr);
-        const escapedDuration = escapeReportHtml(duration);
-        return `
-          <div class="block-entry">
-            <div class="block-entry-header">
-              <span class="block-label">Block ${blockNumber}</span>
-              <span class="block-meta">${escapedDateStr} at ${escapedTimeStr} &bull; ${escapedDuration} min</span>
-            </div>
-            ${b.summary_text ? `<p class="block-summary">${escapeReportHtml(b.summary_text)}</p>` : ''}
-            ${b.manual_override ? `<p class="block-note">Parent-led session</p>` : ''}
-          </div>`;
-      }).join('');
-
-      return `
-        <div class="subject-section">
-          <div class="subject-header">
-            <span class="subject-dot" style="background:${escapeReportHtml(subject.color || '#cbb7fb')}"></span>
-            <span class="subject-title">${escapeReportHtml(subject.title)}</span>
-            <span class="subject-stats">${completedCount}/${totalCount} blocks &bull; ${Math.round(subMins / 60 * 10) / 10}h</span>
-          </div>
-          ${completedCount === 0
-            ? '<p class="no-entries">No blocks completed this week</p>'
-            : blockEntries}
-        </div>`;
-    }).join('');
-
-    return `
-      <div class="student-section">
-        <div class="student-header">
-          <div class="student-initial">${studentInitial}</div>
-          <div>
-            <h2 class="student-name">${studentName}</h2>
-            <p class="student-sub">${data.totalBlocks} of ${data.goalBlocks} blocks completed</p>
-          </div>
-          <div class="student-pct">${pct}%</div>
-        </div>
-        <div class="progress-bar-wrap">
-          <div class="progress-bar-fill" style="width:${Math.min(pct, 100)}%"></div>
-        </div>
-        <div class="metrics">
-          <div class="metric"><div class="metric-value">${data.totalBlocks}</div><div class="metric-label">Blocks Completed</div></div>
-          <div class="metric"><div class="metric-value">${data.goalBlocks}</div><div class="metric-label">Weekly Goal</div></div>
-          <div class="metric"><div class="metric-value">${hours}h</div><div class="metric-label">Time Spent</div></div>
-          <div class="metric"><div class="metric-value">${pct}%</div><div class="metric-label">Progress</div></div>
-        </div>
-        <div class="subjects">${subjectSections}</div>
-      </div>`;
-  }).join('');
-
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Own Path — Weekly Report — ${escapedWeekRangeText}</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Georgia, 'Times New Roman', serif; color: #292827; background: #fff; padding: 48px; font-size: 13px; line-height: 1.6; }
-    .report-header { text-align: center; margin-bottom: 48px; padding-bottom: 24px; border-bottom: 2px solid #292827; }
-    .report-logo { font-family: Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #714cb6; margin-bottom: 8px; }
-    .report-title { font-size: 26px; font-weight: bold; color: #292827; margin-bottom: 6px; }
-    .report-week { font-size: 15px; color: #714cb6; margin-bottom: 4px; }
-    .report-generated { font-size: 11px; color: #9a9591; }
-    .student-section { margin-bottom: 48px; padding-bottom: 40px; border-bottom: 1px solid #dcd7d3; }
-    .student-section:last-child { border-bottom: none; margin-bottom: 0; }
-    .student-header { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
-    .student-initial { width: 44px; height: 44px; border-radius: 50%; background: #f0eaff; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; color: #714cb6; flex-shrink: 0; font-family: Arial, sans-serif; }
-    .student-name { font-size: 20px; font-weight: bold; color: #292827; font-family: Arial, sans-serif; }
-    .student-sub { font-size: 12px; color: #9a9591; font-family: Arial, sans-serif; }
-    .student-pct { margin-left: auto; font-size: 28px; font-weight: bold; color: #714cb6; font-family: Arial, sans-serif; }
-    .progress-bar-wrap { height: 6px; background: #dcd7d3; border-radius: 3px; margin-bottom: 20px; overflow: hidden; }
-    .progress-bar-fill { height: 100%; background: #cbb7fb; border-radius: 3px; }
-    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
-    .metric { background: #f8f6ff; border: 1px solid #e4dcff; border-radius: 8px; padding: 14px; text-align: center; }
-    .metric-value { font-size: 22px; font-weight: bold; color: #714cb6; font-family: Arial, sans-serif; }
-    .metric-label { font-size: 11px; color: #9a9591; margin-top: 3px; font-family: Arial, sans-serif; text-transform: uppercase; letter-spacing: 0.5px; }
-    .subjects { }
-    .subject-section { margin-bottom: 20px; }
-    .subject-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #e9e5dd; font-family: Arial, sans-serif; }
-    .subject-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .subject-title { font-size: 14px; font-weight: bold; color: #292827; }
-    .subject-stats { margin-left: auto; font-size: 11px; color: #9a9591; }
-    .block-entry { margin-bottom: 8px; padding: 10px 14px; background: #faf9f8; border-left: 3px solid #cbb7fb; border-radius: 0 6px 6px 0; }
-    .block-entry-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; font-family: Arial, sans-serif; }
-    .block-label { font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; color: #714cb6; }
-    .block-meta { font-size: 11px; color: #9a9591; }
-    .block-summary { font-size: 13px; color: #504e4d; line-height: 1.5; }
-    .block-note { font-size: 11px; color: #9a9591; font-style: italic; }
-    .no-entries { font-size: 12px; color: #b0aba7; font-style: italic; padding: 4px 0; }
-    @media print {
-      body { padding: 24px; }
-      .student-section { page-break-inside: avoid; }
-    }
-  </style>
-</head>
-<body>
-  <div class="report-header">
-    <div class="report-logo">Own Path LMS</div>
-    <div class="report-title">Weekly Progress Report</div>
-    <div class="report-week">${escapedWeekRangeText}</div>
-    <div class="report-generated">Generated ${escapedGeneratedDate}</div>
-  </div>
-  ${studentSections}
-</body>
-</html>`;
-
-  const pw = window.open('', '_blank');
-  if (pw) {
-    pw.document.write(html);
-    pw.document.close();
-    setTimeout(() => pw.print(), 400);
-  }
-};
-
-// ---------------------------------------------------------------------------
-// Subject row — collapsible block entries
-// ---------------------------------------------------------------------------
-const SubjectRow = ({ subjectDatum }) => {
-  const { subject, blocks, completedCount, totalCount, totalMinutes } = subjectDatum;
-  const [open, setOpen] = useState(false);
-  const hours = Math.round(totalMinutes / 60 * 10) / 10;
-  const pct = Math.round((completedCount / totalCount) * 100);
-
-  return (
-    <div className="overflow-hidden border border-[rgba(238,234,248,0.12)] bg-[rgba(238,234,248,0.04)]">
-      <button
-        className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
-        style={{ backgroundColor: completedCount > 0 ? 'rgba(203,183,251,0.1)' : 'rgba(238,234,248,0.03)' }}
-        onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
-        onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-        onClick={() => blocks.length > 0 && setOpen(o => !o)}
-      >
-        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: subject.color || C.lavender }} />
-        <span className="text-[14px] flex-1 min-w-0 truncate" style={{ color: 'rgba(250,249,255,0.92)', fontWeight: 540 }}>{subject.title}</span>
-        <span className="text-[12px] flex-shrink-0" style={{ color: 'rgba(238,234,248,0.5)', fontWeight: 460 }}>
-          {completedCount}/{totalCount} blocks
-          {totalMinutes > 0 && <> &bull; {hours}h</>}
-        </span>
-        <div className="w-16 h-1.5 overflow-hidden flex-shrink-0 mx-2" style={{ backgroundColor: 'rgba(238,234,248,0.16)' }}>
-          <div className="h-full" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: C.lavender }} />
-        </div>
-        {blocks.length > 0
-          ? open
-            ? <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'rgba(238,234,248,0.42)' }} />
-            : <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'rgba(238,234,248,0.42)' }} />
-          : <div className="w-3.5" />}
-      </button>
-
-      {open && blocks.length > 0 && (
-        <div className="divide-y divide-[rgba(238,234,248,0.1)]" style={{ borderTop: '1px solid rgba(238,234,248,0.12)' }}>
-          {blocks.map((b, i) => {
-            const date = b.timestamp?.toDate?.() || new Date(b.timestamp);
-            const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-            const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-            return (
-              <div key={b.id || i} className="px-4 py-3 bg-[#202034]">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[10px] uppercase tracking-wider font-label" style={{ color: C.amethyst }}>
-                    Block {(b.block_index ?? i) + 1}
-                  </span>
-                  {b.manual_override && (
-                    <span className="text-[10px] px-1.5 py-0.5" style={{ backgroundColor: 'rgba(238,234,248,0.08)', color: 'rgba(238,234,248,0.58)', fontWeight: 700 }}>
-                      Parent-led
-                    </span>
-                  )}
-                  <span className="ml-auto text-[11px]" style={{ color: 'rgba(238,234,248,0.42)', fontWeight: 460 }}>
-                    {dateStr} at {timeStr} &bull; {b.block_duration ?? 0} min
-                  </span>
-                </div>
-                {b.summary_text
-                  ? <p className="text-[13px] leading-relaxed" style={{ color: 'rgba(238,234,248,0.68)', fontWeight: 460 }}>{b.summary_text}</p>
-                  : <p className="text-[12px] italic" style={{ color: 'rgba(238,234,248,0.34)', fontWeight: 460 }}>No summary written</p>}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -365,7 +151,7 @@ const Reports = ({ parentSettings = {} }) => {
       setShowRecords(true);
       alert('Official record saved. Existing originals stay unchanged; later corrections appear as amendments.');
     } else {
-      alert('The record could not be saved. Reload the official records before retrying; another tab may have already filed the original.');
+      alert('The record could not be saved. Review the error shown on Reports, then reload the official records before retrying.');
     }
   };
 
@@ -378,42 +164,11 @@ const Reports = ({ parentSettings = {} }) => {
     }
   };
 
-  // Print saved weeklyReport doc (legacy / official records section)
-  const handlePrintRecord = (report) => {
-    const ws = report.week_start?.toDate?.() || new Date(report.week_start);
-    const we = report.week_ending?.toDate?.() || new Date(report.week_ending);
-    const weekRangeText = formatWeekRange(ws, we);
-    const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-
-    const subjectsHtml = report.completion_counts_require_review
-      ? '<p>Completion counts require review. Original numerical totals are retained; no corrected total is claimed.</p>'
-      : report.subjects_data
-      ? Object.values(report.subjects_data).map(sd => `
-          <div class="subject-section">
-            <div class="subject-header">
-              <span class="subject-title">${escapeReportHtml(sd.subjectTitle)}</span>
-              <span class="subject-stats">${escapeReportHtml(sd.totalBlocks)} blocks</span>
-            </div>
-            ${sd.summaries?.length > 0
-              ? sd.summaries.map(s => `<div class="block-entry"><span class="block-label">Block ${escapeReportHtml(s.blockNumber || '?')}</span><p class="block-summary">${escapeReportHtml(s.text)}</p></div>`).join('')
-              : '<p class="no-entries">No summaries recorded</p>'}
-          </div>`).join('')
-      : '';
-
-    const pct = report.weekly_goal > 0 ? Math.round((report.total_blocks / report.weekly_goal) * 100) : 0;
-    const html = buildPrintHtml(weekRangeText, generatedDate, [{
-      name: report.student_name,
-      initial: report.student_name?.charAt(0) || '?',
-      totalBlocks: report.total_blocks,
-      goalBlocks: report.weekly_goal,
-      hours: report.total_hours || 0,
-      pct,
-      subjectsHtml,
-      countsRequireReview: report.completion_counts_require_review,
-    }], report.completion_counts_require_review ? 'Report amendment — counts require review; original totals retained' : `Weekly Progress Report — Version ${report.report_version || 1}`);
-
-    const pw = window.open('', '_blank');
-    if (pw) { pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 400); }
+  const handlePrintRecord = (selection) => {
+    const original = selection.original || selection._original || selection;
+    const amendment = selection.amendment || selection._amendment || null;
+    openReportPrintWindow({ reports: [buildSavedReportPresentation({ original, amendment, timeZone: parentSettings.timezone })],
+      timeZone: parentSettings.timezone, title: 'Weekly Progress Report' });
   };
 
   const toggleSelection = (value, setSelectedValues) => {
@@ -426,7 +181,7 @@ const Reports = ({ parentSettings = {} }) => {
 
   const selectedReportVersion = (report) => {
     const amendment = reportAmendments.find((item) => item.original_report_id === report.id && item.id === recordVersions[report.id]);
-    return amendment ? { ...amendment.snapshot, id: report.id, report_version: amendment.report_version } : report;
+    return amendment ? { ...amendment.snapshot, id: report.id, report_version: amendment.report_version, _original: report, _amendment: amendment } : report;
   };
   const normalizedWeeklyReports = useMemo(() => (
     weeklyReports.map(report => {
@@ -466,24 +221,6 @@ const Reports = ({ parentSettings = {} }) => {
       return true;
     })
   ), [normalizedWeeklyReports, selectedQuarter, selectedSchoolYear, selectedStudentIds, selectedSubjectIds]);
-  const reportTotals = useMemo(() => (
-    Object.values(studentDataMap).reduce((totals, data) => {
-      if (!data) return totals;
-
-      return {
-        completedBlocks: totals.completedBlocks + (data.totalBlocks || 0),
-        goalBlocks: totals.goalBlocks + (data.goalBlocks || 0),
-        hours: totals.hours + (data.totalMinutes || 0),
-        subjects: totals.subjects + (data.subjectData?.length || 0),
-      };
-    }, {
-      completedBlocks: 0,
-      goalBlocks: 0,
-      hours: 0,
-      subjects: 0,
-    })
-  ), [studentDataMap]);
-
   const handleResetFilters = () => {
     setSelectedStudentIds([]);
     setSelectedSubjectIds([]);
@@ -492,54 +229,19 @@ const Reports = ({ parentSettings = {} }) => {
   };
 
   const handlePrintFilteredRecords = () => {
-    if (filteredWeeklyReports.length === 0) return;
-    const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    const activeFilters = [
-      selectedStudentIds.length > 0 ? `${selectedStudentIds.length} student${selectedStudentIds.length === 1 ? '' : 's'}` : null,
-      selectedSubjectIds.length > 0 ? `${selectedSubjectIds.length} subject${selectedSubjectIds.length === 1 ? '' : 's'}` : null,
-      selectedSchoolYear !== 'all' ? selectedSchoolYear : null,
-      selectedQuarter !== 'all' ? `Q${selectedQuarter}` : null,
-    ].filter(Boolean).join(' • ') || 'All official records';
-
-    const studentRows = filteredWeeklyReports.map(original => {
-      const report = selectedReportVersion(original);
-      const pct = report.weekly_goal > 0 ? Math.round((report.total_blocks / report.weekly_goal) * 100) : 0;
-      const subjectsHtml = report.subjects_data
-        ? Object.values(report.subjects_data)
-          .filter(subjectDatum => selectedSubjectIds.length === 0 || selectedSubjectIds.includes(subjectDatum.subjectId))
-          .map(subjectDatum => `
-            <div class="subject-section">
-              <div class="subject-header">
-                <span class="subject-title">${escapeReportHtml(subjectDatum.subjectTitle)}</span>
-                <span class="subject-stats">${escapeReportHtml(subjectDatum.totalBlocks)} blocks</span>
-              </div>
-              ${subjectDatum.summaries?.length > 0
-                ? subjectDatum.summaries.map(summary => `<div class="block-entry"><span class="block-label">Block ${escapeReportHtml(summary.blockNumber || '?')}</span><p class="block-summary">${escapeReportHtml(summary.text)}</p></div>`).join('')
-                : '<p class="no-entries">No summaries recorded</p>'}
-            </div>`).join('')
-        : '';
-
-      return {
-        name: `${report.student_name} ${report.school_quarter_label ? `(${report.school_quarter_label})` : ''}`.trim(),
-        initial: report.student_name?.charAt(0) || '?',
-        totalBlocks: report.total_blocks,
-        goalBlocks: report.weekly_goal,
-        hours: report.total_hours || 0,
-        pct,
-        subjectsHtml,
-        countsRequireReview: report.completion_counts_require_review,
-        versionLabel: `Version ${report.report_version || 1}`,
-      };
-    });
-
-    const html = buildPrintHtml(activeFilters, generatedDate, studentRows, 'Custom Report');
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(html);
-      printWindow.document.close();
-      setTimeout(() => printWindow.print(), 400);
-    }
+    if (!filteredWeeklyReports.length) return;
+    openReportPrintWindow({ reports: filteredWeeklyReports.map((original) => {
+      const selected = selectedReportVersion(original);
+      return buildSavedReportPresentation({ original, amendment: selected._amendment || null, timeZone: parentSettings.timezone });
+    }), timeZone: parentSettings.timezone, title: 'Official Weekly Reports',
+      context: 'Selected original and amendment versions · Each record retains its complete weekly snapshot' });
   };
+
+  const liveReports = students.filter((student) => !selectedStudentIds.length || selectedStudentIds.includes(student.id))
+    .map((student) => ({ student, snapshot: studentDataMap[student.id] }))
+    .filter(({ snapshot }) => snapshot && (!selectedSubjectIds.length || snapshot.subjectData.some((item) => selectedSubjectIds.includes(item.subject.id))))
+    .map(({ student, snapshot }) => buildLiveReportPresentation({ student, snapshot, weekStart, weekEnd,
+      schoolWeek: schoolWeeksByStudentId[student.id], timeZone: parentSettings.timezone }));
 
   if (loading) {
     return (
@@ -565,8 +267,8 @@ const Reports = ({ parentSettings = {} }) => {
             </p>
           </div>
           <button
-            onClick={() => printWeekReport(students, weekStart, weekEnd, studentDataMap)}
-            disabled={!weekHasReportableData}
+            onClick={() => openReportPrintWindow({ reports: liveReports, timeZone: parentSettings.timezone, context: 'Live weekly view · Complete weekly snapshots for matching students' })}
+            disabled={!liveReports.length}
             className="op-proto-btn disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Printer className="w-3.5 h-3.5" />
@@ -677,295 +379,70 @@ const Reports = ({ parentSettings = {} }) => {
           </div>
         </div>
 
-        <div className="op-report-body">
-          <div className="op-report-area">
-            {Object.values(schoolWeeksByStudentId).some((week) => week.reviewRequired) && <p role="status" className="p-3 text-sm">Historical assignments require review. Open the original official report; completion totals were not inferred from today’s curriculum.</p>}
-            {reportRecordError && <p role="alert" className="p-3 text-sm">Official records could not be loaded or saved: {reportRecordError.message}. Reload the record list before retrying; existing originals are preserved.</p>}
-            {schoolError && <p role="alert" className="p-3 text-sm">Unable to load trusted school status: {schoolError.message}</p>}
-            {readinessTotals.checkedStudentCount > 0 ? (
-              <section className={`op-weekly-banner ${hasReadinessWarnings ? 'is-modified' : ''}`}>
-                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
-                <span>
-                  {hasReadinessWarnings
-                    ? `${readinessTotals.incompleteBlockCount} incomplete and ${readinessTotals.missingRequiredDetailCount} missing required detail across published snapshots.`
-                    : 'Published weekly-plan snapshots for this week have no readiness warnings.'}
-                </span>
-              </section>
-            ) : null}
-
-            <section className="op-report-summary-grid">
-              <div className="op-report-summary-card accent">
-                <div className="value">{reportTotals.completedBlocks}/{reportTotals.goalBlocks}</div>
-                <div className="label">Blocks</div>
-              </div>
-              <div className="op-report-summary-card good">
-                <div className="value">{Math.round((reportTotals.hours / 60) * 10) / 10}h</div>
-                <div className="label">Logged time</div>
-              </div>
-              <div className="op-report-summary-card">
-                <div className="value">{students.length}</div>
-                <div className="label">Students</div>
-              </div>
-              <div className="op-report-summary-card">
-                <div className="value">{reportTotals.subjects}</div>
-                <div className="label">Subject rows</div>
-              </div>
-              <div className={`op-report-summary-card ${hasReadinessWarnings ? 'warn' : 'good'}`}>
-                <div className="value">{hasReadinessWarnings ? 'Review' : 'Ready'}</div>
-                <div className="label">Record state</div>
-              </div>
-            </section>
-
-            <div className="op-report-content-wrap">
-              <div className="op-report-list">
-                {students.length === 0 ? (
-                  <div className="op-proto-empty">
-                    <FileText className="w-10 h-10 text-[#cbb7fb]" />
-                    <p className="mt-4 text-[16px] font-label text-white">No students yet</p>
-                    <p className="mt-2 text-[11px] text-[rgba(238,234,248,0.48)]">Add students from the dashboard to see reports here.</p>
+        <div className="p-4 md:p-6 space-y-6">
+          {Object.values(schoolWeeksByStudentId).some((week) => week.reviewRequired) && <p role="status" className="p-3 text-sm">Historical assignments require review. Open the original official report; completion totals were not inferred from today’s curriculum.</p>}
+          {reportRecordError && <p role="alert" className="p-3 text-sm">Official records could not be loaded or saved: {reportRecordError.message}. Existing originals are preserved.</p>}
+          {schoolError && <p role="alert" className="p-3 text-sm">Unable to load trusted school status: {schoolError.message}</p>}
+          <div className="space-y-5">
+            {students.length === 0 ? <div className="op-proto-empty"><FileText className="w-10 h-10 text-[#cbb7fb]" /><p className="mt-4 text-white">No students yet</p></div>
+              : liveReports.length === 0 ? <p className="text-sm text-white/60">No weekly snapshots match these student and subject filters.</p>
+              : liveReports.map((report) => {
+                const readiness = readinessByStudentId[report.studentId];
+                return <section key={report.studentId} className="op-report-student-section">
+                  <div className="op-report-student-head">
+                    <div className="op-student-avatar">{report.studentName.charAt(0).toUpperCase()}</div>
+                    <div className="op-report-student-meta min-w-0">
+                      <h2 className="op-report-student-name break-words">{report.studentName}</h2>
+                      <p className="op-report-student-sub">{formatReportDate(report.weekStart, report.timeZone, true)} – {formatReportDate(report.weekEnd, report.timeZone, true)} · Live weekly view</p>
+                    </div>
                   </div>
-                ) : students.map(student => {
-                  const data = studentDataMap[student.id];
-                  if (!data) return null;
-                  const pct = data.goalBlocks > 0 ? Math.round((data.totalBlocks / data.goalBlocks) * 100) : 0;
-                  const hours = Math.round(data.totalMinutes / 60 * 10) / 10;
-                  const readiness = readinessByStudentId[student.id];
-                  const studentNeedsReview = readiness?.needsReview;
-
-                  return (
-                    <section key={student.id} className="op-report-student-section">
-                      <div className="op-report-student-head">
-                        <div className="op-student-avatar">
-                          {student.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="op-report-student-meta">
-                          <p className="op-report-student-name">
-                            {student.name}
-                            {readiness?.checked ? (
-                              <span className={`op-report-chip is-static ${studentNeedsReview ? 'is-warn' : 'is-good'}`}>
-                                {studentNeedsReview ? 'Review' : 'Ready'}
-                              </span>
-                            ) : null}
-                          </p>
-                          <p className="op-report-student-sub">
-                            {data.totalBlocks} of {data.goalBlocks} blocks · {hours}h · {pct}% progress
-                          </p>
-                        </div>
-                        <div className="op-report-student-stats">
-                          <div><strong>{data.totalBlocks}/{data.goalBlocks}</strong><span>blocks</span></div>
-                          <div><strong>{hours}h</strong><span>hours</span></div>
-                          <div><strong>{pct}%</strong><span>progress</span></div>
-                        </div>
-                      </div>
-                      {readiness?.checked && studentNeedsReview ? (
-                        <div className="op-weekly-banner is-modified mx-3 my-2">
-                          <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
-                          <span>
-                            {readiness.incompleteBlockCount} assigned block{readiness.incompleteBlockCount === 1 ? '' : 's'} incomplete
-                            {readiness.missingRequiredDetailCount > 0
-                              ? `; ${readiness.missingRequiredDetailCount} completed required-response block${readiness.missingRequiredDetailCount === 1 ? '' : 's'} missing written detail.`
-                              : '.'}
-                          </span>
-                        </div>
-                      ) : null}
-                      <div className="op-report-section-body">
-                        {data.subjectData.length === 0 ? (
-                          <p className="px-4 py-4 text-[11px] italic text-[rgba(238,234,248,0.42)]">
-                            No subjects assigned to this student.
-                          </p>
-                        ) : data.subjectData.map(sd => (
-                          <SubjectRow key={sd.subject.id} subjectDatum={sd} />
-                        ))}
-                        <SchoolBlockDetails schoolWeek={schoolWeeksByStudentId[student.id]} onReload={reloadSchoolState} disabled={submissionsLoading || Boolean(schoolError)} />
-                        {data.totalBlocks === 0 ? (
-                          <p className="px-4 py-3 text-[11px] text-[rgba(238,234,248,0.38)]">
-                            No blocks completed {weekOffset === 0 ? 'this week yet' : 'during this week'}.
-                          </p>
-                        ) : null}
-                      </div>
-                    </section>
-                  );
-                })}
-              </div>
-            </div>
+                  <div className="p-4 md:p-5 text-white/90">
+                    {readiness?.missingRequiredDetailCount > 0 && <p role="status" className="text-xs text-amber-200 mb-3">{readiness.missingRequiredDetailCount} completed required-response block(s) missing required detail.</p>}
+                    <ReportSnapshotDetails report={report}>
+                      <SchoolBlockDetails schoolWeek={schoolWeeksByStudentId[report.studentId]} onReload={reloadSchoolState} disabled={submissionsLoading || Boolean(schoolError)} />
+                    </ReportSnapshotDetails>
+                  </div>
+                </section>;
+              })}
           </div>
 
-          <aside className="op-report-summary-panel">
-            <div className="op-report-side-head">
-              <span>Compliance</span>
-              <button
-                type="button"
-                className="op-proto-icon-btn"
-                onClick={() => setShowRecords((current) => !current)}
-                title="Toggle official records"
-              >
-                {showRecords ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-              </button>
+          <section className="border-t border-white/15 pt-5" aria-label="Official records">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div><h2 className="font-label text-white">Official records</h2><p className="text-xs text-white/60 mt-1">{filteredWeeklyReports.length} matching records · School year and quarter apply to saved records. Student and subject filters select complete weekly snapshots.</p></div>
+              <div className="flex gap-2"><button onClick={() => setShowRecords((current) => !current)} className="op-proto-btn">{showRecords ? 'Hide records' : 'Show records'}</button>
+                <button onClick={handlePrintFilteredRecords} disabled={!filteredWeeklyReports.length} className="op-proto-btn disabled:opacity-40"><Printer className="w-3.5 h-3.5" />Print filtered</button></div>
             </div>
-            <div className="op-report-side-body">
-              <div className={`op-report-side-box ${hasReadinessWarnings ? 'warn' : 'good'}`}>
-                <p className="text-[11px] font-label text-white">
-                  {hasReadinessWarnings ? 'Review before filing' : 'Ready to file'}
-                </p>
-                <p className="mt-2 text-[10px] leading-4 text-[rgba(238,234,248,0.5)]">
-                  Saving creates an official snapshot and does not change student data.
-                </p>
-              </div>
-              <div className="op-report-panel-list">
-                <div><strong>{readinessTotals.checkedStudentCount}</strong><span>checked students</span></div>
-                <div><strong>{readinessTotals.incompleteBlockCount}</strong><span>incomplete blocks</span></div>
-                <div><strong>{readinessTotals.missingRequiredDetailCount}</strong><span>missing detail</span></div>
-                <div><strong>{filteredWeeklyReports.length}/{normalizedWeeklyReports.length}</strong><span>filtered records</span></div>
-              </div>
-              <div className="op-report-side-box">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-label text-white">Official records</p>
-                  <Filter className="h-3.5 w-3.5 text-[rgba(238,234,248,0.42)]" />
-                </div>
-                <p className="mt-2 text-[10px] leading-4 text-[rgba(238,234,248,0.48)]">
-                  {filteredWeeklyReports.length} official record{filteredWeeklyReports.length === 1 ? '' : 's'} match current filters.
-                </p>
-              </div>
-              {showRecords ? (
-                <div className="op-report-record-list">
-                  {filteredWeeklyReports.length === 0 ? (
-                    <p className="px-2 py-2 text-[10px] italic text-[rgba(238,234,248,0.38)]">
-                      No official records match the current filters.
-                    </p>
-                  ) : filteredWeeklyReports.map(report => {
-                    const selectedVersion = selectedReportVersion(report);
-                    const versions = reportAmendments.filter((item) => item.original_report_id === report.id).sort((a, b) => a.report_version - b.report_version);
-                    const ws = report.week_start?.toDate?.() || new Date(report.week_start);
-                    const we = report.week_ending?.toDate?.() || new Date(report.week_ending);
-
-                    return (
-                      <div key={report.id} className="op-report-record-row">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[11px] font-label text-white">{report.student_name}</p>
-                          <p className="mt-1 truncate text-[9px] text-[rgba(238,234,248,0.42)]">
-                            {formatWeekRange(ws, we)}
-                          </p>
-                          <label className="block mt-2 text-xs">Version
-                            <select className="block w-full bg-[#292744] text-white p-1" value={recordVersions[report.id] || report.id} onChange={(event) => setRecordVersions((previous) => ({ ...previous, [report.id]: event.target.value }))}>
-                              <option value={report.id}>Original · Version 1</option>
-                              {versions.map((item) => <option key={item.id} value={item.id}>Amendment · Version {item.report_version}</option>)}
-                            </select>
-                          </label>
-                          <button type="button" className="text-xs underline mt-2" onClick={() => setSelectedRecord(report)}>Details &amp; corrections</button>
-                          {selectedVersion.completion_counts_require_review && <p className="text-xs mt-1 text-amber-300">Completion counts require review; original totals retained.</p>}
-                          {report.school_quarter_label ? (
-                            <p className="mt-1 truncate text-[9px] text-[#b8adff]">
-                              {report.school_quarter_label}{report.school_year_label ? ` · ${report.school_year_label}` : ''}
-                            </p>
-                          ) : null}
-                        </div>
-                        <span className="text-[10px] text-[rgba(238,234,248,0.52)]">
-                          {selectedVersion.completion_counts_require_review ? 'Review' : `${selectedVersion.total_blocks}/${selectedVersion.weekly_goal}`}
-                        </span>
-                        <button onClick={() => handlePrintRecord(selectedVersion)} className="op-proto-icon-btn" title="Print">
-                          <Printer className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => handleDeleteRecord(report.id)} disabled={versions.length > 0} className="op-proto-icon-btn disabled:opacity-30" title={versions.length ? 'Original retained with its amendments' : 'Delete'}>
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-            <div className="op-report-side-actions">
-              <button onClick={() => setShowRecords((current) => !current)} className="op-proto-btn">
-                {showRecords ? 'Hide records' : 'Show records'}
-              </button>
-              <button
-                onClick={handlePrintFilteredRecords}
-                disabled={filteredWeeklyReports.length === 0}
-                className="op-proto-btn disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Print filtered
-              </button>
-            </div>
-          </aside>
+            <p className="text-xs text-white/60 mt-3">Saving files an unchanged original snapshot. Later parent corrections create explicit amendment versions.</p>
+            {showRecords && <div className="space-y-3 mt-4">{filteredWeeklyReports.length === 0 ? <p className="text-sm text-white/60">No official records match the current filters.</p>
+              : filteredWeeklyReports.map((report) => {
+                const selectedVersion = selectedReportVersion(report);
+                const versions = reportAmendments.filter((item) => item.original_report_id === report.id).sort((a, b) => a.report_version - b.report_version);
+                const presentation = buildSavedReportPresentation({ original: report, amendment: selectedVersion._amendment || null, timeZone: parentSettings.timezone });
+                return <article key={report.id} aria-label={`Official record for ${report.student_name}`} className="border border-white/15 p-4 flex flex-wrap items-start gap-4 text-white/90">
+                  <div className="flex-1 min-w-0"><h3 className="font-label break-words">{report.student_name}</h3>
+                    <p className="text-xs opacity-65 mt-1">{formatReportDate(presentation.weekStart, presentation.timeZone, true)} – {formatReportDate(presentation.weekEnd, presentation.timeZone, true)}</p>
+                    <p className="text-xs mt-2">{presentation.assigned} assigned · {presentation.completed} completed · {presentation.incomplete} incomplete</p>
+                    <p className="text-xs opacity-65 mt-1">{presentation.timeLabel}</p>
+                    {report.school_quarter_label && <p className="text-xs opacity-65 mt-1">{report.school_quarter_label} · {report.school_year_label}</p>}
+                    <label className="block mt-3 text-xs">Report version<select className="block w-full max-w-sm bg-[#292744] text-white p-2 mt-1 border border-white/20" value={recordVersions[report.id] || report.id} onChange={(event) => setRecordVersions((previous) => ({ ...previous, [report.id]: event.target.value }))}>
+                      <option value={report.id}>Original · Version 1</option>{versions.map((item) => <option key={item.id} value={item.id}>Amendment · Version {item.report_version}</option>)}
+                    </select></label>
+                    <p className="text-xs mt-2 opacity-70">{presentation.versionLabel} · {formatReportDate(presentation.versionDate, presentation.timeZone)}</p>
+                    {presentation.countsRequireReview && <p className="text-xs mt-1 text-amber-200">Completion counts require review; original totals retained.</p>}
+                    <button type="button" className="text-xs underline mt-3 min-h-[36px]" onClick={() => setSelectedRecord(report)}>Details &amp; corrections</button>
+                  </div>
+                  <button onClick={() => handlePrintRecord(selectedVersion)} className="op-proto-btn" title="Print"><Printer className="w-3.5 h-3.5" />Print selected version</button>
+                  <button onClick={() => handleDeleteRecord(report.id)} disabled={versions.length > 0} className="op-proto-icon-btn disabled:opacity-30" title={versions.length ? 'Original retained with its amendments' : 'Delete'}><Trash2 className="w-3.5 h-3.5" /></button>
+                </article>;
+              })}</div>}
+          </section>
         </div>
       </div>
-      {selectedRecord && <SavedSchoolReportDetails key={selectedRecord.id} original={selectedRecord} amendments={reportAmendments}
+      {selectedRecord && <SavedSchoolReportDetails key={selectedRecord.id} original={selectedRecord} amendments={reportAmendments} initialVersionId={recordVersions[selectedRecord.id]}
         student={students.find((student) => student.id === selectedRecord.student_id)} parentId={currentUser.uid} parentSettings={parentSettings}
         subjects={subjects} submissions={submissions} onClose={() => setSelectedRecord(null)} onPrint={handlePrintRecord} />}
     </div>
   );
 };
-
-// Shared print HTML builder used by handlePrintRecord
-function buildPrintHtml(weekRangeText, generatedDate, studentRows, reportTitle = 'Weekly Progress Report') {
-  const escapedWeekRangeText = escapeReportHtml(weekRangeText);
-  const escapedGeneratedDate = escapeReportHtml(generatedDate);
-  const escapedReportTitle = escapeReportHtml(reportTitle);
-  const sections = studentRows.map(r => {
-    const pct = Number(r.pct);
-    const displayPct = Number.isFinite(pct) ? Math.round(pct) : 0;
-    const progressPct = Math.min(Math.max(displayPct, 0), 100);
-    const totalBlocks = escapeReportHtml(r.totalBlocks ?? 0);
-    const goalBlocks = escapeReportHtml(r.goalBlocks ?? 0);
-    const hours = escapeReportHtml(r.hours ?? 0);
-
-    if (r.countsRequireReview) return `<div class="student-section"><h2>${escapeReportHtml(r.name)}</h2><p>${escapeReportHtml(r.versionLabel || 'Report amendment')} — Completion counts require review. Original numerical totals are retained as historical evidence; no corrected total is claimed.</p>${r.subjectsHtml || ''}</div>`;
-    return `
-    <div class="student-section">
-      <div class="student-header">
-        <div class="student-initial">${escapeReportHtml(r.initial || '?')}</div>
-        <div><h2 class="student-name">${escapeReportHtml(r.name)}</h2><p class="student-sub">${totalBlocks} of ${goalBlocks} blocks completed</p></div>
-        <div class="student-pct">${displayPct}%</div>
-      </div>
-      <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${progressPct}%"></div></div>
-      <div class="metrics">
-        <div class="metric"><div class="metric-value">${totalBlocks}</div><div class="metric-label">Blocks Completed</div></div>
-        <div class="metric"><div class="metric-value">${goalBlocks}</div><div class="metric-label">Weekly Goal</div></div>
-        <div class="metric"><div class="metric-value">${hours}h</div><div class="metric-label">Time Spent</div></div>
-        <div class="metric"><div class="metric-value">${displayPct}%</div><div class="metric-label">Progress</div></div>
-      </div>
-      <div class="subjects">${r.subjectsHtml || ''}</div>
-    </div>`;
-  }).join('');
-
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Own Path — ${escapedWeekRangeText}</title><style>
-    *{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,'Times New Roman',serif;color:#292827;background:#fff;padding:48px;font-size:13px;line-height:1.6}
-    .report-header{text-align:center;margin-bottom:48px;padding-bottom:24px;border-bottom:2px solid #292827}
-    .report-logo{font-family:Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#714cb6;margin-bottom:8px}
-    .report-title{font-size:26px;font-weight:bold;color:#292827;margin-bottom:6px}
-    .report-week{font-size:15px;color:#714cb6;margin-bottom:4px}
-    .report-generated{font-size:11px;color:#9a9591}
-    .student-section{margin-bottom:48px;padding-bottom:40px;border-bottom:1px solid #dcd7d3}
-    .student-section:last-child{border-bottom:none;margin-bottom:0}
-    .student-header{display:flex;align-items:center;gap:14px;margin-bottom:12px}
-    .student-initial{width:44px;height:44px;border-radius:50%;background:#f0eaff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:bold;color:#714cb6;flex-shrink:0;font-family:Arial,sans-serif}
-    .student-name{font-size:20px;font-weight:bold;color:#292827;font-family:Arial,sans-serif}
-    .student-sub{font-size:12px;color:#9a9591;font-family:Arial,sans-serif}
-    .student-pct{margin-left:auto;font-size:28px;font-weight:bold;color:#714cb6;font-family:Arial,sans-serif}
-    .progress-bar-wrap{height:6px;background:#dcd7d3;border-radius:3px;margin-bottom:20px;overflow:hidden}
-    .progress-bar-fill{height:100%;background:#cbb7fb;border-radius:3px}
-    .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px}
-    .metric{background:#f8f6ff;border:1px solid #e4dcff;border-radius:8px;padding:14px;text-align:center}
-    .metric-value{font-size:22px;font-weight:bold;color:#714cb6;font-family:Arial,sans-serif}
-    .metric-label{font-size:11px;color:#9a9591;margin-top:3px;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:0.5px}
-    .subject-section{margin-bottom:20px}
-    .subject-header{display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #e9e5dd;font-family:Arial,sans-serif}
-    .subject-title{font-size:14px;font-weight:bold;color:#292827}
-    .subject-stats{margin-left:auto;font-size:11px;color:#9a9591}
-    .block-entry{margin-bottom:8px;padding:10px 14px;background:#faf9f8;border-left:3px solid #cbb7fb;border-radius:0 6px 6px 0}
-    .block-label{font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.5px;color:#714cb6;margin-right:8px;font-family:Arial,sans-serif}
-    .block-summary{font-size:13px;color:#504e4d;line-height:1.5;margin-top:4px}
-    .no-entries{font-size:12px;color:#b0aba7;font-style:italic;padding:4px 0}
-    @media print{body{padding:24px}.student-section{page-break-inside:avoid}}
-  </style></head><body>
-  <div class="report-header">
-    <div class="report-logo">Own Path LMS</div>
-    <div class="report-title">${escapedReportTitle}</div>
-    <div class="report-week">${escapedWeekRangeText}</div>
-    <div class="report-generated">Generated ${escapedGeneratedDate}</div>
-  </div>
-  ${sections}
-  </body></html>`;
-}
 
 export default Reports;

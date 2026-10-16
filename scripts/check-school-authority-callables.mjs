@@ -216,6 +216,10 @@ test('trusted report filing serializes with a simultaneous correction and preser
   const latest = head ? (await read('weeklyReportAmendments', head.latest_amendment_id)).snapshot : original;
   assert.equal(latest.total_blocks, 1); assert.equal(latest.total_hours, 0);
   assert.equal(original.authority_version, 1); assert.equal(original.assigned_blocks_snapshot.length, state.blocks.length);
+  assert.equal(original.total_minutes, 0); assert.equal(original.timezone, fixture.settings.timezone);
+  assert.equal(original.published_revision, initial.data.revision);
+  assert.equal(latest.correction_events[0].reason, 'Parent observed practice');
+  assert.ok(latest.correction_watermark.event_ids.length);
   assert.equal(ok(await call('fileSchoolWeeklyReport', file, token)).replayed, true);
   assert.deepEqual(await read('weeklyReports', initial.id), original);
 });

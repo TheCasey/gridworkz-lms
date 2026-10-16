@@ -24,7 +24,9 @@
     "check:weekly-planning-helpers": "node scripts/check-weekly-planning-helpers.mjs && node scripts/check-weekly-plan-view-model.mjs && node scripts/check-weekly-authority-readers.mjs",
     "check:weekly-planning-callables": "node --test scripts/check-weekly-planning-callables.mjs",
     "check:school-authority-helpers": "node scripts/check-school-authority-helpers.mjs && node scripts/check-school-timer-view.mjs && node scripts/check-school-report-view.mjs && node scripts/check-parent-school-view.mjs",
-    "check:school-authority-callables": "node --test scripts/check-school-authority-callables.mjs"
+    "check:school-authority-callables": "node --test scripts/check-school-authority-callables.mjs",
+    "check:report-print": "node scripts/check-report-print.mjs",
+    "render:report-pdfs": "node scripts/render-product-direction-report-pdfs.mjs"
   },
   "dependencies": {
     "firebase": "^10.8.0",

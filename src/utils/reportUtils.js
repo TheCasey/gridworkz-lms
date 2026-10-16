@@ -64,6 +64,8 @@ const buildSubmissionSummarySnapshot = (submission) => {
     submittedAt: submission.timestamp || null,
     durationMinutes: submission.block_duration ?? null,
     manualOverride: Boolean(submission.manual_override),
+    provenance: submission.manual_override ? 'legacy_parent' : submission.authority_version === 1 ? 'student' : 'legacy_student',
+    actorId: submission.authority_version === 1 ? submission.actor_id || submission.student_id : null,
     resourcesUsed: clonePlainArray(submission.resources_used),
     customFieldResponses: (
       submission.custom_field_responses
@@ -108,10 +110,12 @@ const buildAssignedBlockSnapshots = ({ weeklyPlan, weekSubmissions, completionSt
       stateRevision: state.revision,
       correctionEventId: state.last_correction_event_id,
       evidenceIds: state.original_evidence_ids,
+      customFields: clonePlainArray(block?.custom_fields),
       resources: clonePlainArray(block?.resources),
       legacySubjectId,
       legacySubjectTitle: toNonEmptyString(block?.legacy_subject_title),
       legacyBlockIndex,
+      originalEvidence: matchedSubmissions.map(buildSubmissionSummarySnapshot),
       matchedSubmissionSummary: buildSubmissionSummarySnapshot(matchedSubmission),
     };
   })
@@ -160,27 +164,20 @@ export const buildWeeklyReportReadinessSummary = (snapshot) => {
       assignedBlockCount: getReportSnapshotAssignedBlockCount(snapshot),
       incompleteBlockCount: 0,
       missingRequiredDetailCount: 0,
+      parentCorrectionCount: 0,
       needsReview: false,
       checked: false,
     };
   }
 
+  const parentCompletion = (block) => ['parent_correction', 'legacy_parent'].includes(block?.completionProvenance);
+  const parentCorrectionCount = assignedBlocks.filter((block) => block.completed && parentCompletion(block)).length;
+  const present = (value) => typeof value === 'string' ? Boolean(value.trim()) : Array.isArray(value) ? value.length > 0 : typeof value === 'number' || typeof value === 'boolean';
   const missingRequiredDetailCount = assignedBlocks.filter((block) => {
-    if (!block?.completed || !block?.requireInput) {
-      return false;
-    }
-
+    if (!block?.completed || parentCompletion(block)) return false;
     const summaryText = toNonEmptyString(block?.matchedSubmissionSummary?.summaryText);
-    const customFieldResponses = block?.matchedSubmissionSummary?.customFieldResponses || {};
-    const hasCustomFieldResponse = Object.values(customFieldResponses).some((value) => {
-      if (Array.isArray(value)) {
-        return value.length > 0;
-      }
-
-      return toNonEmptyString(value).length > 0;
-    });
-
-    return !summaryText && !hasCustomFieldResponse;
+    const responses = block?.matchedSubmissionSummary?.customFieldResponses || {};
+    return block.requireInput && !summaryText || (block.customFields || []).some((field) => field.required && !present(responses[field.id]));
   }).length;
   const incompleteBlockCount = assignedBlocks.filter((block) => !block?.completed).length;
 
@@ -188,6 +185,7 @@ export const buildWeeklyReportReadinessSummary = (snapshot) => {
     assignedBlockCount: assignedBlocks.length,
     incompleteBlockCount,
     missingRequiredDetailCount,
+    parentCorrectionCount,
     needsReview: incompleteBlockCount > 0 || missingRequiredDetailCount > 0,
     checked: true,
   };
@@ -372,6 +370,8 @@ export const buildWeeklyPlanWeeklySnapshot = ({
     totalMinutes,
     snapshotModel: 'weekly_plan',
     weeklyPlanId: weeklyPlan?.id || '',
+    publishedRevision: weeklyPlan?.revision ?? null,
+    correctionWatermark: { school_state_revision: student.school_state_revision ?? null, event_ids: [...new Set(assignedBlocksSnapshot.map((block) => block.correctionEventId).filter(Boolean))] },
     assignedBlocksSnapshot,
   };
 };
@@ -452,6 +452,7 @@ export const buildWeeklyReportPayload = ({
     week_ending: weekEnd,
     weekly_goal: snapshot.goalBlocks,
     total_blocks: snapshot.totalBlocks,
+    total_minutes: snapshot.totalMinutes,
     total_hours: Math.round(snapshot.totalMinutes / 60 * 10) / 10,
     subject_ids: subjectIds,
     subject_titles: subjectTitles,

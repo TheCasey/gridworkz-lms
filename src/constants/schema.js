@@ -308,6 +308,7 @@ export const WeeklyReportSchema = {
   week_ending: "timestamp", // Compatibility alias still used by report queries/sorting
   weekly_goal: "number", // Total assigned blocks for the week
   total_blocks: "number", // Total completed blocks for the week
+  total_minutes: "number", // Exact recorded evidence minutes; never infer from rounded hours
   total_hours: "number", // Rounded hours from block_duration totals
   subject_ids: "array", // Legacy subject ids represented in the snapshot
   subject_titles: "array", // Cached subject titles represented in the snapshot
@@ -322,6 +323,11 @@ export const WeeklyReportSchema = {
   school_year_end: "timestamp", // Cached school year range end
   school_quarter: "number", // Cached quarter index
   school_quarter_label: "string", // Cached quarter label
+  published_revision: "number", // Published revision at filing; null for frozen legacy execution
+  school_authority_kind: "string", // published or legacy_execution
+  timezone: "string", // Recorded household timezone for stable display/print
+  correction_events: "array", // Immutable allowlisted correction snapshots at this version
+  correction_watermark: "object", // School revision and included event IDs
   authority_version: "number", // 1 for transactionally filed official snapshots
   school_state_revision: "number", // Effective-state change watermark at filing
   report_version: "number", // Original version 1; amendments are separate records

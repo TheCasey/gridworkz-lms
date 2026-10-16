@@ -1,4 +1,4 @@
-import { buildTrustedSchoolReport } from './schoolReportFoundation.js';
+import { buildTrustedSchoolReport, projectSchoolReportCorrection } from './schoolReportFoundation.js';
 import { SCHOOL_PUBLICATION_BRIDGES, getInheritedSchoolPublicationState, resolveSchoolReportCorrectionTarget } from './schoolPublicationBridge.js';
 import { createHash } from 'node:crypto';
 import { resolvePlanningWeek, weeklyPlanningPlanId } from './weeklyPlanningContracts.js';
@@ -16,8 +16,13 @@ const milliseconds = (value) => value?.toMillis?.() ?? new Date(value).getTime()
 const scopedEvidence = (evidence, scope) => evidence.map((item) => ({ ...item, ...scope }));
 
 // Reports are immutable inputs. Counts/status change; original summaries/time/evidence stay untouched.
-export const amendSchoolReportSnapshot = (snapshot, block, state) => {
+export const amendSchoolReportSnapshot = (snapshot, block, state, event = null, schoolRevision = null) => {
   const result = { ...snapshot, subjects_data: Object.fromEntries(Object.entries(snapshot.subjects_data || {}).map(([id, value]) => [id, { ...value }])) };
+  if (event) {
+    result.correction_events = [...(snapshot.correction_events || []).filter((item) => item.id !== event.id), projectSchoolReportCorrection(event)];
+    result.school_state_revision = schoolRevision;
+    result.correction_watermark = { school_state_revision: schoolRevision, event_ids: [...new Set([...(snapshot.correction_watermark?.event_ids || []), event.id])] };
+  }
   const assigned = Array.isArray(snapshot.assigned_blocks_snapshot) ? snapshot.assigned_blocks_snapshot : [];
   const matches = assigned.filter((item) => item.blockId === block.id);
   requireValue(matches.length <= 1, 'report-lineage-review-required');
@@ -49,6 +54,7 @@ export const createSchoolCompletionService = ({ db, Timestamp, HttpsError, resol
       const conflict = ['revision-conflict', 'idempotency-conflict'].includes(error.code);
       const permission = ['scope-mismatch', 'student-context-changed'].includes(error.code);
       const message = error.code === 'missing-household-timezone' ? 'Save your school timezone in Settings before using school completion.'
+        : error.code === 'report-size-limit' ? 'This report contains too much evidence to save as one record. Print or export the week and review its long responses before filing.'
         : error.code === 'historical-assignment-review-required' ? 'This historical block has no unambiguous saved assignment. Review the original saved report; no correction was applied.' : error.message;
       throw new HttpsError(conflict ? 'aborted' : permission ? 'permission-denied' : error.code.startsWith('invalid-') || error.code.startsWith('unsupported-') ? 'invalid-argument' : 'failed-precondition', message, { code: error.code });
     }
@@ -158,9 +164,15 @@ export const createSchoolCompletionService = ({ db, Timestamp, HttpsError, resol
           const evidenceIds = [...new Set(effectiveStates.flatMap((state) => state.original_evidence_ids))];
           const originals = await Promise.all(evidenceIds.map(async (id) => evidence.find((item) => item.id === id) || doc(await tx.get(ref('submissions', id)))));
           requireValue(originals.every((item) => item && item.parent_id === parentId && item.student_id === studentId), 'missing-original-evidence');
-          const report = buildTrustedSchoolReport({ id: planId, parent, student, plan, states: effectiveStates, evidence: originals,
+          const events = await tx.get(scoped(C.EVENTS).limit(2001));
+          requireValue(events.size <= 2000, 'school-transaction-read-limit');
+          const correctionEvents = events.docs.map(doc).filter((event) => effectiveStates.some((state) =>
+            event.weekly_plan_id === state.weekly_plan_id && event.weekly_block_id === state.weekly_block_id
+            || event.weekly_plan_id === state.source_execution_id && event.weekly_block_id === state.source_weekly_block_id))
+            .sort((a, b) => milliseconds(a.recorded_at) - milliseconds(b.recorded_at));
+          const report = buildTrustedSchoolReport({ id: planId, parent, student, plan, states: effectiveStates, evidence: originals, correctionEvents,
             weekStart: evidenceStart, weekEnd: evidenceEnd, schoolRevision: (student.school_state_revision || 0) + Number(changed), serverTime: now, source: payload.source });
-          requireValue(JSON.stringify(report).length <= 750000, 'report-size-limit');
+          requireValue(Buffer.byteLength(JSON.stringify(report), 'utf8') <= 750000, 'report-size-limit');
           writes.push({ collection: 'weeklyReports', id: planId, data: report });
           response = { report_id: planId, created: true, replayed: false };
         } else response = { report_id: null, created: false, replayed: false };
@@ -198,8 +210,9 @@ export const createSchoolCompletionService = ({ db, Timestamp, HttpsError, resol
             reports.forEach(({ report, target }, index) => {
               const last = previous[index] ? doc(previous[index]) : null;
               const amendment = buildReportAmendment({ originalReport: report, previousAmendment: last, correctionEvents: [correction.event],
-                amendedSnapshot: amendSchoolReportSnapshot(last?.snapshot || report, target.block, state), reportLineage: target.lineage, expectedVersion: last?.report_version || 1, actorId: parentId, serverTime: now });
+                amendedSnapshot: amendSchoolReportSnapshot(last?.snapshot || report, target.block, state, correction.event, (student.school_state_revision || 0) + 1), reportLineage: target.lineage, expectedVersion: last?.report_version || 1, actorId: parentId, serverTime: now });
               amendment.correction_event_ids = [...(last?.correction_event_ids || []), eventId];
+              requireValue(Buffer.byteLength(JSON.stringify(amendment), 'utf8') <= 750000, 'report-size-limit');
               amendmentIds.push(amendment.id);
               writes.push({ collection: C.AMENDMENTS, id: amendment.id, data: amendment });
               writes.push({ collection: C.REPORT_HEADS, id: report.id, data: { ...scope, weekly_plan_id: report.weekly_plan_id || '', original_report_id: report.id,

@@ -1,6 +1,6 @@
 # Reporting And Rollover
 
-Status: Partial; runtime validation fixture available
+Status: routine-first reporting locally verified; physical print and production acceptance remain pending in the execution workflow
 
 ## Scope
 
@@ -16,8 +16,10 @@ This area covers weekly reports, print/export behavior, school-year labels, quar
 
 ## Current Behavior
 
-- Weekly reports are stored in `weeklyReports`.
-- Reports can be filtered and printed.
+- Original weekly reports are stored in `weeklyReports`. Trusted `fileSchoolWeeklyReport` builds immutable snapshots transactionally from effective states, assignments and original evidence. Parent corrections append `weeklyReportAmendments`; selecting a version controls both screen and print.
+- New originals freeze exact recorded minutes, publication revision, household timezone, correction watermark/events, assigned block definitions and all attributed original responses/resources/custom fields. Parent corrections add no timed minutes or student evidence. Unknown legacy duration remains unknown.
+- Reports show student/week assignments, completed/incomplete totals, corrections/notes and original evidence in that order. Student and subject filters select whole weekly snapshots; school-year/quarter filters select saved records.
+- Live views, original saved versions, amendments and all print buttons use `src/utils/reportPresentation.js`. Every printed dynamic string is escaped. Letter/A4 PDFs use flowing content, bounded evidence keep-together behavior, repeated context and supported browser page counters.
 - School year and quarter metadata are generated from parent settings.
 - Weekly rollover updates report state from the client dashboard.
 - Report print builders escape report strings before writing HTML into the print window.
@@ -46,9 +48,9 @@ Use the generated runbook in an emulator or staging project to validate `/dashbo
 - No evidence attachment workflow yet.
 - No Firebase Storage integration yet.
 - No backend-owned archival/reset workflow yet.
-- The richer reporting and compliance contract around weekly plans, project work, parent overrides, and evidence is still future work.
+- Broader project/compliance reporting and evidence file uploads remain future work. Auditable block corrections and immutable original/amended report versions are implemented locally.
 - The compliance story is functional for summaries and print views, but incomplete for supporting documents.
-- Runtime fixture seeding has a dry-run path only; emulator/staging/live document writes and browser QA remain manual.
+- The isolated Auth/Firestore/Functions/browser harness and reproducible synthetic PDF fixtures are documented in [runtime validation](../upgrades/product-direction-execution/testing.md). Production cloud-query/index verification, physical print and release acceptance remain separate gates.
 
 ## Related Planning
 

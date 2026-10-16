@@ -43,3 +43,7 @@ Local redacted aggregate artifact: `tmp/product-direction/production-inventory.j
 ## Outstanding Release Dependencies
 
 Cloudflare authentication/project/deployment inspection is the only unresolved Phase 0 infrastructure inventory item. It does not prevent additive local contracts/fixtures. Live-mode price/secrets, owner-authorized payment, staging promotion, print QA, and the observation window are later gates and remain unverified.
+
+## SourcePhase6 reporting validation (2026-10-15)
+
+Read-only Firestore REST inspection rendered three representative weeklyReports in memory. Raw family text, IDs and dates were neither logged nor persisted; only aggregate shape/outcomes and fully redacted screenshots were retained under ignored tmp/product-direction/. The records included zero completion and historical evidence (one 33-assignment record with 90 recorded minutes). All rendered within the viewport. Two Epson ET-2800 printer queues are available; no print job was sent. Physical spot-check results remain pending owner feedback.

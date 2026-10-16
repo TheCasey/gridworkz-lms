@@ -51,3 +51,19 @@ console.log('Trusted report filing view: canonical status/revision, original evi
 const legacyManualView = buildStudentWeeklySnapshot({ ...options, submissions: [{ ...evidence, block_duration: undefined, manual_override: true }] });
 assert.equal(legacyManualView.totalMinutes, 0);
 assert.equal(legacyManualView.assignedBlocksSnapshot[0].matchedSubmissionSummary.durationMinutes, null);
+
+const { buildWeeklyReportReadinessSummary } = await import('../src/utils/reportUtils.js');
+assert.equal(snapshot.assignedBlocksSnapshot[0].originalEvidence.length, 1);
+const parentRequired = { ...parentSnapshot, assignedBlocksSnapshot: parentSnapshot.assignedBlocksSnapshot.map((item) => ({ ...item, requireInput: true })) };
+assert.equal(buildWeeklyReportReadinessSummary(parentRequired).parentCorrectionCount, 1);
+assert.equal(buildWeeklyReportReadinessSummary(parentRequired).missingRequiredDetailCount, 0);
+const requiredFields = { ...zero, assignedBlocksSnapshot: zero.assignedBlocksSnapshot.map((item) => ({ ...item,
+  requireInput: true, customFields: [{ id: 'explanation', required: true }], matchedSubmissionSummary: { summaryText: '', customFieldResponses: { explanation: 'A response' } } })) };
+assert.equal(buildWeeklyReportReadinessSummary(requiredFields).missingRequiredDetailCount, 1);
+const event = { id: 'correction', weekly_plan_id: 'plan', weekly_block_id: 'block', prior_status: 'completed', new_status: 'incomplete', reason: 'More practice', note: 'Preserve evidence', actor_id: 'parent', recorded_at: start, revision: 1 };
+const withAudit = buildTrustedSchoolReport({ id: 'report', parent: { timezone: 'America/Chicago' }, student, plan: { ...plan, revision: 4 }, states: [incomplete], evidence: [evidence],
+  weekStart: start, weekEnd: end, schoolRevision: 3, serverTime: start, source: 'manual', correctionEvents: [event] });
+assert.equal(withAudit.published_revision, 4); assert.equal(withAudit.timezone, 'America/Chicago');
+assert.deepEqual(withAudit.correction_watermark, { school_state_revision: 3, event_ids: ['correction'] });
+assert.equal(withAudit.correction_events[0].reason, event.reason); assert.equal(withAudit.assigned_blocks_snapshot[0].originalEvidence[0].submissionId, 'evidence');
+console.log('Report metadata/readiness: preserved complete evidence, parent response bypass, required student detail, publication revision and frozen correction watermark passed.');
