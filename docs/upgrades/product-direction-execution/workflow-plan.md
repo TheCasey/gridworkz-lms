@@ -114,7 +114,7 @@ Escalation rules:
 
 - `master-developer` is the persistent orchestrator for the whole workflow.
 - `workflow-state.yaml` is the source of truth for what should happen next.
-- Each phase enters `verified; selected household live` before the first downstream handoff and after every downstream result.
+- Each phase enters `ready_for_master_developer` before the first downstream handoff and after every downstream result.
 - Each phase `role_sequence` is the expected downstream order under `master-developer` oversight.
 - The scaffold does not prewrite downstream prompts. `master-developer` writes one runtime prompt at a time based on the live workflow state.
 - Downstream agents should work only on the active phase and should return control to `master-developer` instead of handing off directly.
