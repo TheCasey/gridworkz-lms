@@ -28,7 +28,7 @@ export const useWeeklyRollover = ({
 
     const currentWeek = getCurrentWeekRange(new Date(), weekConfig);
     const previousWeek = getCurrentWeekRange(new Date(currentWeek.weekStart.getTime() - 1), weekConfig);
-    const previousWeekKey = getWeekKey(previousWeek.weekStart);
+    const previousWeekKey = getWeekKey(previousWeek.weekStart, weekConfig);
 
     if (parentSettings.last_rollover_week_key === previousWeekKey) {
       return undefined;

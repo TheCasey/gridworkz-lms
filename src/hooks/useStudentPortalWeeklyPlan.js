@@ -12,7 +12,8 @@ export const useStudentPortalWeeklyPlan = ({
   enabled = true,
 } = {}) => {
   const db = getFirestore(app);
-  const [weeklyPlan, setWeeklyPlan] = useState(null);
+  const [clockRevision, refreshClock] = useState(0);
+  const [record, setRecord] = useState({ scope: null, plan: null, observedVersioned: false });
   const resolvedParentId = parentId || student?.parent_id || '';
   const resolvedWeekConfig = weekConfig || student || {};
   const [loading, setLoading] = useState(Boolean(enabled && student?.id && resolvedParentId));
@@ -30,6 +31,7 @@ export const useStudentPortalWeeklyPlan = ({
       weekConfig: resolvedWeekConfig,
     });
   }, [
+    clockRevision,
     parentId,
     referenceDate,
     student?.id,
@@ -45,44 +47,62 @@ export const useStudentPortalWeeklyPlan = ({
   ]);
 
   useEffect(() => {
+    if (!enabled || referenceDate || !weekIdentity) return undefined;
+    const refresh = () => refreshClock((revision) => revision + 1);
+    const timer = setTimeout(refresh, Math.max(1, weekIdentity.weekEnd.getTime() + 1 - Date.now()));
+    const onVisibility = () => { if (document.visibilityState === 'visible') refresh(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { clearTimeout(timer); document.removeEventListener('visibilitychange', onVisibility); };
+  }, [enabled, referenceDate, weekIdentity]);
+
+  useEffect(() => {
     if (!enabled || !weekIdentity?.planId) {
-      setWeeklyPlan(null);
+      setRecord({ scope: null, plan: null, observedVersioned: false });
       setError(null);
       setLoading(false);
       return undefined;
     }
 
     setLoading(true);
+    let active = true;
 
     const weeklyPlanRef = doc(db, Collections.WEEKLY_PLANS, weekIdentity.planId);
     const unsubscribe = onSnapshot(weeklyPlanRef, (snapshot) => {
       const nextPlan = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
 
-      setWeeklyPlan(nextPlan?.status === WeeklyPlanStatuses.PUBLISHED ? nextPlan : null);
+      if (!active) return;
+      setRecord((previous) => ({ scope: weekIdentity.planId,
+        plan: nextPlan?.status === WeeklyPlanStatuses.PUBLISHED ? nextPlan : null,
+        observedVersioned: nextPlan?.schema_version >= 1 || (previous.scope === weekIdentity.planId && previous.observedVersioned),
+      }));
       setError(null);
       setLoading(false);
     }, (nextError) => {
+      if (!active) return;
       if (nextError?.code === 'permission-denied') {
-        setWeeklyPlan(null);
+        setRecord((previous) => ({ scope: weekIdentity.planId, plan: null, observedVersioned: previous.scope === weekIdentity.planId && previous.observedVersioned }));
         setError(null);
         setLoading(false);
         return;
       }
 
       console.error('Error fetching published student weekly plan:', nextError?.code, nextError?.message);
-      setWeeklyPlan(null);
+      setRecord((previous) => ({ scope: weekIdentity.planId, plan: null, observedVersioned: previous.scope === weekIdentity.planId && previous.observedVersioned }));
       setError(nextError);
       setLoading(false);
     });
 
-    return unsubscribe;
+    return () => { active = false; unsubscribe(); };
   }, [db, enabled, weekIdentity?.planId]);
 
   return {
     error,
-    loading,
+    loading: loading || Boolean(enabled && weekIdentity?.planId && record.scope !== weekIdentity.planId),
     weekIdentity,
-    weeklyPlan,
+    weeklyPlan: record.scope === weekIdentity?.planId ? record.plan : null,
+    usesWeeklyPlanAuthority: Number(student?.weekly_planning_version) >= 1
+      || Boolean(record.scope === weekIdentity?.planId && record.observedVersioned)
+      || Boolean(enabled && weekIdentity?.planId && (loading || record.scope !== weekIdentity.planId || error)),
   };
 };
 

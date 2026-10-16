@@ -264,3 +264,93 @@ export const reviewTrustedChoreCompletion = async (payload = {}) => {
   const result = await reviewChoreCompletionCallable(payload);
   return result.data;
 };
+
+export const readTrustedStudentRoutineRewards = async (payload = {}) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.READ_STUDENT_ROUTINE_REWARDS)(payload);
+  return result.data;
+};
+
+export const unlockTrustedRoutineCosmetic = async (payload = {}) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.UNLOCK_ROUTINE_COSMETIC)(payload);
+  return result.data;
+};
+
+export const selectTrustedRoutineCosmetics = async (payload = {}) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.SELECT_ROUTINE_COSMETICS)(payload);
+  return result.data;
+};
+
+export const upsertTrustedRoutineRewardSettings = async (payload = {}) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.UPSERT_ROUTINE_REWARD_SETTINGS)(payload);
+  return result.data;
+};
+
+export const settleTrustedHouseholdHistory = async (payload = {}) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.SETTLE_HOUSEHOLD_HISTORY)(payload);
+  return result.data;
+};
+
+export const initializeTrustedRoutineFirstAccount = async (payload = {}) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.INITIALIZE_ROUTINE_FIRST_ACCOUNT)(payload);
+  return result.data;
+};
+
+export const saveTrustedWeeklyPlanDraft = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.SAVE_WEEKLY_PLAN_DRAFT)(payload);
+  return result.data;
+};
+
+export const publishTrustedWeeklyPlan = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.PUBLISH_WEEKLY_PLAN)(payload);
+  return result.data;
+};
+
+export const saveTrustedStudentDefaultWeek = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.SAVE_STUDENT_DEFAULT_WEEK)(payload);
+  return result.data;
+};
+
+export const archiveTrustedWeeklyPlan = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.ARCHIVE_WEEKLY_PLAN)(payload);
+  return result.data;
+};
+
+export const getTrustedStudentSchoolState = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.GET_STUDENT_SCHOOL_STATE)(payload);
+  return result.data;
+};
+export const correctTrustedSchoolBlock = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.CORRECT_SCHOOL_BLOCK)(payload);
+  return result.data;
+};
+export const submitTrustedSchoolBlock = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.SUBMIT_SCHOOL_BLOCK)(payload);
+  return result.data;
+};
+export const commandTrustedStudentSchoolTimer = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.COMMAND_STUDENT_SCHOOL_TIMER)(payload);
+  return result.data;
+};
+
+export const fileTrustedSchoolWeeklyReport = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.FILE_SCHOOL_WEEKLY_REPORT)(payload);
+  return result.data;
+};
+
+export const getTrustedCoreBillingStatus = async () => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.GET_CORE_BILLING_STATUS)({});
+  return result.data;
+};
+export const createTrustedCoreCheckout = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.CREATE_CORE_CHECKOUT)(payload);
+  return result.data;
+};
+export const createTrustedBillingPortal = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.CREATE_BILLING_PORTAL)(payload);
+  return result.data;
+};
+
+export const reactivateTrustedSubject = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.REACTIVATE_SUBJECT)(payload);
+  return result.data;
+};

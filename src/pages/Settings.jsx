@@ -7,6 +7,7 @@ import {
   parseTimeInputValue,
 } from '../utils/schoolSettingsUtils';
 import { formatWeekRange } from '../utils/weekUtils';
+import CoreBillingPanel from '../components/CoreBillingPanel';
 
 const C = {
   lavender: '#cbb7fb',
@@ -73,7 +74,7 @@ const FeatureAccessCard = ({ feature }) => {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="op-eyebrow">
-            Premium Access
+            Plan feature
           </p>
           <h4 className="mt-2 text-[15px] font-display text-[rgba(250,249,255,0.94)]">{feature.title}</h4>
         </div>
@@ -113,12 +114,12 @@ const Settings = ({ settings, onSave, saving, entitlementSummary }) => {
   const currentPeriodEndLabel = formatEntitlementDate(entitlementSummary?.currentPeriodEnd);
   const studentLimitCheck = entitlementSummary?.studentLimitCheck || null;
   const curriculumLimitCheck = entitlementSummary?.curriculumLimitCheck || null;
-  const featureAccessList = entitlementSummary?.featureAccessList || [];
-  const lockedFeatures = featureAccessList.filter(feature => !feature.isEnabled);
+  const featureAccessList = (entitlementSummary?.featureAccessList || []).filter((feature) => !['can_use_chores', 'can_use_rewards', 'can_use_projects'].includes(feature.key));
+  const lockedFeatures = featureAccessList.filter(feature => feature.key.startsWith('can_use_lockdown') && !feature.isEnabled);
   const statusTone = statusToneStyles[entitlementSummary?.subscriptionStatusMeta?.tone] || statusToneStyles.muted;
   const planSourceLabel = entitlementSummary?.isMissingEntitlementDoc
-    ? 'Free-plan fallback'
-    : 'Server entitlement record';
+    ? 'Free access'
+    : 'Account access';
 
   const usageCards = [
     {
@@ -142,13 +143,13 @@ const Settings = ({ settings, onSave, saving, entitlementSummary }) => {
   ];
 
   if (studentLimitCheck?.isOverLimit) {
-    usageCards[0].detail = 'This account is over the student cap. Deletes remain available so you can get back under the limit.';
+    usageCards[0].detail = 'Your household is over the Free student limit. Existing students and their work remain available; Core adds unlimited students.';
   } else if (studentLimitCheck?.hasReachedLimit) {
     usageCards[0].detail = studentLimitCheck.upgradeCopy;
   }
 
   if (curriculumLimitCheck?.isOverLimit) {
-    usageCards[1].detail = 'This account is over the active-curriculum cap. Archive or delete older subjects to get back under the limit.';
+    usageCards[1].detail = 'Your household is over the Free active-curriculum limit. Existing work stays available; archive records or use Core for unlimited curriculum.';
   } else if (curriculumLimitCheck?.hasReachedLimit) {
     usageCards[1].detail = curriculumLimitCheck.upgradeCopy;
   }
@@ -238,7 +239,7 @@ const Settings = ({ settings, onSave, saving, entitlementSummary }) => {
                   <div className="op-panel-muted mt-5 px-4 py-3" style={{ borderLeft: '3px solid rgba(245,158,11,0.74)' }}>
                     <p className="op-eyebrow text-[#fbbf24]">Visibility Note</p>
                     <p className="op-subtle mt-2 text-[13px] font-body leading-5">
-                      This account is currently rendering the free-plan fallback because no server-owned entitlement record is available yet.
+                      Your account currently uses Free access. Your saved schoolwork and routines remain available.
                     </p>
                   </div>
                 ) : null}
@@ -256,10 +257,12 @@ const Settings = ({ settings, onSave, saving, entitlementSummary }) => {
               </div>
             </div>
 
+            <CoreBillingPanel />
+
             <div className="mt-5">
               <div className="flex items-center gap-2 mb-3">
                 <Shield className="h-4 w-4 text-lavender-glow" />
-                <p className="op-eyebrow">Premium Capability States</p>
+                <p className="op-eyebrow">Plan features</p>
               </div>
               <div className="grid gap-3 xl:grid-cols-3">
                 {featureAccessList.map(feature => (
@@ -270,9 +273,9 @@ const Settings = ({ settings, onSave, saving, entitlementSummary }) => {
 
             {lockedFeatures.length > 0 ? (
               <div className="op-panel-muted mt-5 px-4 py-3" style={{ borderLeft: '3px solid rgba(245,158,11,0.74)' }}>
-                <p className="op-eyebrow text-[#fbbf24]">Upgrade Needed</p>
+                <p className="op-eyebrow text-[#fbbf24]">Coming soon</p>
                 <p className="op-subtle mt-2 text-[13px] font-body leading-5">
-                  {lockedFeatures.map(feature => feature.shortTitle).join(', ')} remain locked on the {entitlementSummary?.plan?.displayName || 'Free'} plan. Upgrade messaging stays explicit here so future premium surfaces do not disappear without explanation.
+                  Lockdown is coming soon. New purchases are unavailable; existing access and saved setup are preserved.
                 </p>
               </div>
             ) : null}

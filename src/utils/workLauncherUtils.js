@@ -292,6 +292,7 @@ export const buildWorkLauncherTimerSessionPayload = ({
 export const buildPublishedWeeklyPlanWorkLauncherContract = ({
   studentRecord = null,
   weeklyPlan = null,
+  usesWeeklyPlanAuthority = Number(studentRecord?.weekly_planning_version) >= 1,
   subjectsById = {},
   timerSessions = [],
   completedBlocks = {},
@@ -304,13 +305,13 @@ export const buildPublishedWeeklyPlanWorkLauncherContract = ({
       weeklyPlan,
       subjectsById,
     })
-    : buildLegacyBridgeWorkItems({
+    : usesWeeklyPlanAuthority ? [] : buildLegacyBridgeWorkItems({
       subjects: subjectList,
       studentId: studentRecord?.id || '',
     });
   const bridgeSubjects = weeklyPlan?.status === WeeklyPlanStatuses.PUBLISHED
     ? buildPublishedWeeklyPlanPortalSubjects(publishedWorkItems)
-    : sortSubjectsForWeeklyPlanning(
+    : usesWeeklyPlanAuthority ? [] : sortSubjectsForWeeklyPlanning(
       getStudentSubjectsFromLegacyRecords(subjectList, studentRecord?.id || '').filter((subject) => subject?.is_active !== false)
     );
   const launcherPlan = {
@@ -375,6 +376,7 @@ export const buildPublishedWeeklyPlanWorkLauncherContract = ({
       ? WORK_LAUNCHER_SOURCE_KINDS.PUBLISHED_WEEKLY_PLAN
       : WORK_LAUNCHER_SOURCE_KINDS.LEGACY_SUBJECT_BRIDGE,
     bridge_kind: WORK_LAUNCHER_SOURCE_KINDS.LEGACY_SUBJECT_BRIDGE,
+    uses_weekly_plan_authority: usesWeeklyPlanAuthority || weeklyPlan?.status === WeeklyPlanStatuses.PUBLISHED,
     has_published_weekly_plan: weeklyPlan?.status === WeeklyPlanStatuses.PUBLISHED,
     parent_id: toNonEmptyString(studentRecord?.parent_id),
     student_id: toNonEmptyString(studentRecord?.id),

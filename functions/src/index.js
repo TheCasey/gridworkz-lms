@@ -1,3 +1,9 @@
+import { createCoreBillingService } from './coreBillingAuthority.js';
+import { createQuotaMutationService } from './quotaMutationAuthority.js';
+import { resolveCoreBillingConfig, resolveBillingSubscriptionPlan } from './coreBillingPolicy.js';
+import { buildTrustedSchoolPolicyTimers } from './schoolLockdownFoundation.js';
+import { createSchoolCompletionService } from './schoolCompletionAuthority.js';
+import { resolvePlanningWeek } from './weeklyPlanningContracts.js';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
@@ -52,6 +58,15 @@ import {
   buildRewardStatusTransition,
   normalizeRewardCatalogItemRecord,
 } from './rewardRedemptionUtils.js';
+import {
+  PRODUCT_DIRECTION_VERSION,
+  ROUTINE_REWARD_MIGRATION_VERSION,
+  preserveProductDirectionMarkers,
+  requireRoutineReward,
+  resolveRoutineRewardAccess,
+} from './routineRewardContracts.js';
+import { createRoutineRewardService } from './routineRewardAuthority.js';
+import { createWeeklyPlanningService } from './weeklyPlanningAuthority.js';
 
 initializeApp();
 
@@ -143,6 +158,7 @@ const PLAN_LIMITS = Object.freeze({
     features: Object.freeze({
       can_use_projects: false,
       can_use_daily_routines: true,
+      can_use_routine_rewards: true,
       can_use_chores: false,
       can_use_rewards: false,
       can_use_lockdown_extension: false,
@@ -150,11 +166,12 @@ const PLAN_LIMITS = Object.freeze({
     }),
   }),
   [PLAN_IDS.CORE]: Object.freeze({
-    maxStudents: 10,
+    maxStudents: null,
     maxActiveSubjects: null,
     features: Object.freeze({
       can_use_projects: true,
       can_use_daily_routines: true,
+      can_use_routine_rewards: true,
       can_use_chores: true,
       can_use_rewards: true,
       can_use_lockdown_extension: false,
@@ -162,11 +179,12 @@ const PLAN_LIMITS = Object.freeze({
     }),
   }),
   [PLAN_IDS.LOCKDOWN]: Object.freeze({
-    maxStudents: 10,
+    maxStudents: null,
     maxActiveSubjects: null,
     features: Object.freeze({
       can_use_projects: true,
       can_use_daily_routines: true,
+      can_use_routine_rewards: true,
       can_use_chores: true,
       can_use_rewards: true,
       can_use_lockdown_extension: true,
@@ -522,7 +540,7 @@ const buildOwnPathSystemResourceAllowlist = ({
 };
 
 const normalizePlanId = (planId) => (
-  Object.values(PLAN_IDS).includes(planId) ? planId : PLAN_IDS.FREE
+  planId === 'pro' ? PLAN_IDS.CORE : (Object.values(PLAN_IDS).includes(planId) ? planId : PLAN_IDS.FREE)
 );
 
 export const buildFeatureSet = (planId, featureOverrides = {}) => {
@@ -1182,6 +1200,7 @@ export const resolveEntitlementRecord = ({
 
   return {
     ...effectiveFields,
+    ...preserveProductDirectionMarkers(existingEntitlement),
     billing_state: billingState,
     manual_override: isPlainObject(existingEntitlement.manual_override)
       ? existingEntitlement.manual_override
@@ -1246,6 +1265,7 @@ export const buildEntitlementWriteForManualOverride = ({
   };
 
   return {
+    ...preserveProductDirectionMarkers(existing),
     ...buildEffectiveEntitlementFieldsFromManualOverride({
       parentId: normalizedParentId,
       manualOverride,
@@ -1280,6 +1300,7 @@ export const buildEntitlementWriteForOverrideClear = ({
     : ENTITLEMENT_RESOLUTION_SOURCES.FALLBACK_INITIALIZED;
 
   return {
+    ...preserveProductDirectionMarkers(existing),
     ...buildEffectiveEntitlementFieldsFromBilling({
       parentId: normalizedParentId,
       billingState,
@@ -1342,6 +1363,7 @@ export const buildEntitlementWriteForBillingSync = ({
     });
   const entitlementDoc = {
     ...effectiveFields,
+    ...preserveProductDirectionMarkers(existing),
     billing_state: normalizedBillingState,
     resolution_source: hasActiveManualOverride
       ? ENTITLEMENT_RESOLUTION_SOURCES.MANUAL_OVERRIDE
@@ -1421,6 +1443,28 @@ export const buildEntitlementAuditLog = ({
   after: buildEntitlementAuditSnapshot(after),
   created_at: createdAt || FieldValue.serverTimestamp(),
 });
+
+// Merge this top-level patch only. Billing/provider/override/usage records remain intact.
+export const buildRoutineFirstEntitlementPatch = ({ parentId, entitlementDoc = {}, activate = false, nowMillis = Date.now() } = {}) => {
+  requireRoutineReward(trimString(parentId) && (!entitlementDoc.parent_id || entitlementDoc.parent_id === parentId)
+    && typeof activate === 'boolean' && Number.isFinite(nowMillis), 'invalid-entitlement-migration');
+  const resolved = resolveEntitlementRecord({ parentId, entitlementDoc, nowMillis });
+  const priorVersion = Number.isSafeInteger(entitlementDoc.product_direction_version) && entitlementDoc.product_direction_version >= 0
+    ? entitlementDoc.product_direction_version : 0;
+  return {
+    parent_id: resolved.parent_id,
+    // Without nested billing_state this field is the legacy billing source.
+    // Writing the effective override here would make a temporary upgrade permanent.
+    plan_id: isPlainObject(entitlementDoc.billing_state) ? resolved.plan_id : normalizePlanId(entitlementDoc.plan_id),
+    features: resolved.features,
+    limits: resolved.limits,
+    product_direction_version: activate
+      ? Math.max(PRODUCT_DIRECTION_VERSION, priorVersion)
+      : priorVersion,
+    product_direction_migration_version: ROUTINE_REWARD_MIGRATION_VERSION,
+    product_direction_migrated_at: entitlementDoc.product_direction_migrated_at || new Date(nowMillis),
+  };
+};
 
 const queueEntitlementAuditWrite = (batch, auditLog) => {
   batch.set(entitlementAuditLogRef(), buildEntitlementAuditLog(auditLog));
@@ -2085,17 +2129,7 @@ const getAccountEntitlementState = async (parentId) => {
 };
 
 const getHouseholdModuleAccess = (entitlementState = {}) => {
-  const features = entitlementState.features || {};
-  const canUseDailyRoutines = Boolean(features.can_use_daily_routines || features.can_use_chores);
-  const canUseChores = Boolean(features.can_use_chores);
-  const canUseRewards = Boolean(features.can_use_rewards);
-
-  return {
-    canUseDailyRoutines,
-    canUseChores,
-    canUseRewards,
-    canUsePaidModule: canUseChores || canUseRewards,
-  };
+  return resolveRoutineRewardAccess({ features: entitlementState.features, entitlementDoc: entitlementState.data });
 };
 
 const assertHouseholdModuleAccess = async (parentId, accessKey, message) => {
@@ -2126,23 +2160,6 @@ const isExpiredTimestamp = (timestampValue) => {
   }
 
   return timestampValue.toMillis() <= Date.now();
-};
-
-const countStudentsForParent = async (parentId) => {
-  const snapshot = await db.collection(COLLECTIONS.STUDENTS)
-    .where('parent_id', '==', parentId)
-    .get();
-
-  return snapshot.size;
-};
-
-const countActiveSubjectsForParent = async (parentId) => {
-  const snapshot = await db.collection(COLLECTIONS.SUBJECTS)
-    .where('parent_id', '==', parentId)
-    .where('is_active', '==', true)
-    .get();
-
-  return snapshot.size;
 };
 
 const isArchivedSubjectRecord = (subjectRecord = {}) => (
@@ -2396,6 +2413,7 @@ const buildEffectiveEntitlementResponse = ({ entitlementExists, resolvedEntitlem
   billing_provider: resolvedEntitlement.billing_provider,
   feature_overrides: resolvedEntitlement.feature_overrides,
   features: resolvedEntitlement.features,
+  product_direction_version: resolvedEntitlement.product_direction_version || 0,
   usage_snapshot: resolvedEntitlement.usage_snapshot,
   trial_ends_at: resolvedEntitlement.trial_ends_at,
   current_period_end: resolvedEntitlement.current_period_end,
@@ -2505,16 +2523,6 @@ const buildLocalDateString = (year, month, day) => (
   `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 );
 
-const shiftLocalDatePartsByDays = (parts, dayOffset) => {
-  const shiftedDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
-  shiftedDate.setUTCDate(shiftedDate.getUTCDate() + dayOffset);
-
-  return {
-    year: shiftedDate.getUTCFullYear(),
-    month: shiftedDate.getUTCMonth() + 1,
-    day: shiftedDate.getUTCDate(),
-  };
-};
 
 const getDateTimePartsInTimeZone = (dateInput, timeZone) => {
   const date = resolveDateInput(dateInput);
@@ -2566,33 +2574,7 @@ const getDateTimePartsInTimeZone = (dateInput, timeZone) => {
 
 const resolveWeekKeyForDate = (dateInput, weekConfig = {}) => {
   const date = resolveDateInput(dateInput);
-  const timezone = trimString(weekConfig.timezone) || DEFAULT_PARENT_SETTINGS.timezone;
-  const resetDay = Number.isInteger(weekConfig.week_reset_day)
-    ? weekConfig.week_reset_day
-    : DEFAULT_PARENT_SETTINGS.week_reset_day;
-  const resetHour = Number.isInteger(weekConfig.week_reset_hour)
-    ? weekConfig.week_reset_hour
-    : DEFAULT_PARENT_SETTINGS.week_reset_hour;
-  const resetMinute = Number.isInteger(weekConfig.week_reset_minute)
-    ? weekConfig.week_reset_minute
-    : DEFAULT_PARENT_SETTINGS.week_reset_minute;
-  const localParts = getDateTimePartsInTimeZone(date, timezone);
-  const daysSinceReset = (localParts.weekday - resetDay + 7) % 7;
-  let boundaryDateParts = shiftLocalDatePartsByDays(localParts, -daysSinceReset);
-  const beforeBoundary = daysSinceReset === 0 && (
-    localParts.hour < resetHour
-    || (localParts.hour === resetHour && localParts.minute < resetMinute)
-  );
-
-  if (beforeBoundary) {
-    boundaryDateParts = shiftLocalDatePartsByDays(boundaryDateParts, -7);
-  }
-
-  return buildLocalDateString(
-    boundaryDateParts.year,
-    boundaryDateParts.month,
-    boundaryDateParts.day
-  );
+  return resolvePlanningWeek({ weekKey: '2000-01-03', settings: weekConfig, now: date }).currentKey;
 };
 
 const buildWeeklyPlanDocumentId = ({ parentId, studentId, weekKey }) => (
@@ -3375,7 +3357,8 @@ const selectActiveWeeklyPlanBlock = ({ weeklyPlan, timerSessions = [] }) => {
 
   const matchingCandidates = (Array.isArray(timerSessions) ? timerSessions : []).reduce((candidates, timerSession) => {
     const matchingBlock = blocks.find((block) => (
-      trimString(block?.legacy_subject_id) === trimString(timerSession?.subject_id)
+      (!timerSession?.authority_version || timerSession.authority_version === 1 && timerSession.weekly_plan_id === weeklyPlan?.id && timerSession.weekly_block_id === block.id)
+      && trimString(block?.legacy_subject_id) === trimString(timerSession?.subject_id)
       && Number.isInteger(block?.legacy_block_index)
       && block.legacy_block_index === timerSession?.block_index
     )) || null;
@@ -3449,6 +3432,7 @@ export const derivePublishedWeeklyPlanDevicePolicy = ({
   studentRecord = null,
   weeklyPlan = null,
   timerSessions = [],
+  schoolState = null,
   lockdownResourceLibrary = [],
   activeWorkSession = null,
   deviceStatus = '',
@@ -3464,7 +3448,9 @@ export const derivePublishedWeeklyPlanDevicePolicy = ({
   });
   const { activeBlock, activeTimerSession } = selectActiveWeeklyPlanBlock({
     weeklyPlan,
-    timerSessions,
+    timerSessions: studentRecord?.school_authority_version === 1
+      ? buildTrustedSchoolPolicyTimers({ schoolState, studentId: normalizedStudentId, nowMs: referenceDate.getTime() })
+      : timerSessions,
   });
   const assignedOffBlockResources = selectAssignedLockdownResources({
     resourceLibrary: lockdownResourceLibrary,
@@ -3805,13 +3791,15 @@ const buildTrustedDevicePolicyResponse = async ({ deviceRecord, deviceId }) => {
     allowImplicitSingleStudent: true,
     allowUnboundFallback: true,
   });
-  const weeklyPlan = await loadPublishedWeeklyPlanForStudent({
-    parentId: deviceRecord.parent_id,
-    studentRecord: binding.studentRecord,
-    referenceDate: new Date(),
+  const usesTrustedSchool = binding.studentRecord?.school_authority_version === 1;
+  const schoolState = usesTrustedSchool ? await schoolCompletionService.read({ payload: {
+    student_id: binding.studentId, access_pin: binding.studentRecord.access_pin || '',
+  } }) : null;
+  const weeklyPlan = usesTrustedSchool ? schoolState.weekly_plan : await loadPublishedWeeklyPlanForStudent({
+    parentId: deviceRecord.parent_id, studentRecord: binding.studentRecord, referenceDate: new Date(),
   });
   const [timerSessions, lockdownResourceLibrary] = await Promise.all([
-    loadStudentTimerSessions(binding.studentId),
+    usesTrustedSchool ? Promise.resolve([]) : loadStudentTimerSessions(binding.studentId),
     loadParentLockdownResourceLibrary(deviceRecord.parent_id),
   ]);
   const derivedPolicy = derivePublishedWeeklyPlanDevicePolicy({
@@ -3820,6 +3808,7 @@ const buildTrustedDevicePolicyResponse = async ({ deviceRecord, deviceId }) => {
     studentRecord: binding.studentRecord,
     weeklyPlan,
     timerSessions,
+    schoolState,
     lockdownResourceLibrary,
     deviceStatus: deviceRecord.status,
     bindingStatus: binding.bindingError,
@@ -4764,65 +4753,14 @@ const getStripeClient = () => {
     throw new Error('Missing STRIPE_SECRET_KEY environment variable.');
   }
 
-  return new Stripe(apiKey);
+  return new Stripe(apiKey, { timeout: 20000, maxNetworkRetries: 1 });
 };
 
-const resolveStripePlanIdFromPriceId = (priceId) => {
-  const lockdownPriceIds = new Set([trimString(STRIPE_LOCKDOWN_PRICE_ID.value())].filter(Boolean));
-  const corePriceIds = new Set([trimString(STRIPE_CORE_PRICE_ID.value())].filter(Boolean));
-
-  if (!priceId) return null;
-  if (lockdownPriceIds.has(priceId)) return PLAN_IDS.LOCKDOWN;
-  if (corePriceIds.has(priceId)) return PLAN_IDS.CORE;
-  return null;
-};
-
-const resolveStripePlanIdFromSubscription = (subscription) => {
-  const metadataPlanId = normalizePlanId(
-    trimString(subscription?.metadata?.plan_id || subscription?.metadata?.gridworkz_plan_id)
-  );
-
-  if (metadataPlanId !== PLAN_IDS.FREE || trimString(subscription?.metadata?.plan_id || subscription?.metadata?.gridworkz_plan_id)) {
-    return metadataPlanId;
-  }
-
-  const priceId = trimString(subscription?.items?.data?.[0]?.price?.id);
-  return resolveStripePlanIdFromPriceId(priceId);
-};
-
-const resolveStripeParentIdFromObject = (stripeObject) => {
-  const metadataParentId = trimString(
-    stripeObject?.metadata?.parent_id ||
-    stripeObject?.metadata?.parentId ||
-    stripeObject?.metadata?.uid
-  );
-
-  if (metadataParentId) {
-    return metadataParentId;
-  }
-
-  const clientReferenceId = trimString(stripeObject?.client_reference_id);
-  return clientReferenceId || '';
-};
-
-const resolveStripeParentIdFromSubscription = async (stripe, subscription) => {
-  const directParentId = resolveStripeParentIdFromObject(subscription);
-  if (directParentId) {
-    return directParentId;
-  }
-
-  const customerId = trimString(subscription?.customer);
-  if (!customerId) {
-    return '';
-  }
-
-  const customer = await stripe.customers.retrieve(customerId);
-  if (customer?.deleted) {
-    return '';
-  }
-
-  return resolveStripeParentIdFromObject(customer);
-};
+const historicalBillingPrices = (value) => String(value || '').split(',').map((id) => id.trim()).filter(Boolean);
+const resolveStripePlanIdFromSubscription = (subscription) => resolveBillingSubscriptionPlan(subscription, {
+  corePriceIds: [trimString(STRIPE_CORE_PRICE_ID.value()), ...historicalBillingPrices(process.env.CORE_BILLING_HISTORICAL_CORE_PRICE_IDS)].filter(Boolean),
+  lockdownPriceIds: [trimString(STRIPE_LOCKDOWN_PRICE_ID.value()), ...historicalBillingPrices(process.env.CORE_BILLING_HISTORICAL_LOCKDOWN_PRICE_IDS)].filter(Boolean),
+});
 
 const mapStripeSubscriptionStatus = (stripeStatus) => {
   switch (stripeStatus) {
@@ -4842,75 +4780,122 @@ const mapStripeSubscriptionStatus = (stripeStatus) => {
   }
 };
 
-const syncEntitlementFromSubscription = async (stripe, subscription, eventType = 'stripe_subscription_sync') => {
-  const parentId = await resolveStripeParentIdFromSubscription(stripe, subscription);
-  if (!parentId) {
-    throw new Error('Stripe subscription is missing parent_id metadata or customer metadata.');
-  }
-
-  const rawPlanId = resolveStripePlanIdFromSubscription(subscription);
-  if (!rawPlanId) {
-    throw new Error('Stripe subscription is missing plan_id metadata and no known price mapping matched.');
-  }
-
-  const subscriptionStatus = mapStripeSubscriptionStatus(subscription.status);
-  const planId = subscriptionStatus === SUBSCRIPTION_STATUSES.CANCELED
-    ? PLAN_IDS.FREE
-    : rawPlanId;
-
-  const existingSnapshot = await entitlementRef(parentId).get();
-  const existingEntitlement = existingSnapshot.exists ? existingSnapshot.data() : {};
-  const nowTimestamp = Timestamp.now();
-  const billingState = buildEntitlementBillingState({
-    planId,
-    subscriptionStatus,
-    billingProvider: BILLING_PROVIDERS.STRIPE,
-    featureOverrides: existingEntitlement?.billing_state?.feature_overrides
-      || existingEntitlement?.feature_overrides
-      || {},
-    trialEndsAt: toTimestampOrNull(subscription.trial_end),
-    currentPeriodEnd: toTimestampOrNull(subscription.current_period_end),
-    updatedAt: nowTimestamp,
-  });
-  const {
-    entitlementDoc,
-    hasExpiredManualOverride,
-  } = buildEntitlementWriteForBillingSync({
-    parentId,
-    existingEntitlement,
-    billingState,
-    nowTimestamp,
-    nowMillis: nowTimestamp.toMillis(),
-  });
-  const afterEntitlement = {
-    ...existingEntitlement,
-    ...entitlementDoc,
-  };
-  const batch = db.batch();
-
-  batch.set(entitlementRef(parentId), entitlementDoc, { merge: true });
-  queueEntitlementAuditWrite(batch, {
-    parentId,
-    eventType: ENTITLEMENT_AUDIT_EVENT_TYPES.BILLING_WEBHOOK_SYNC,
-    reason: eventType,
-    before: existingSnapshot.exists ? existingEntitlement : null,
-    after: afterEntitlement,
-    createdAt: nowTimestamp,
-  });
-
-  if (hasExpiredManualOverride) {
-    queueEntitlementAuditWrite(batch, {
-      parentId,
-      eventType: ENTITLEMENT_AUDIT_EVENT_TYPES.OVERRIDE_EXPIRED,
-      reason: 'manual override expired during billing webhook sync',
-      before: existingSnapshot.exists ? existingEntitlement : null,
-      after: afterEntitlement,
-      createdAt: nowTimestamp,
+const coreBillingService = createCoreBillingService({
+  db, Timestamp, HttpsError, getStripe: getStripeClient,
+  getConfig: () => resolveCoreBillingConfig({ ...process.env, corePriceId: STRIPE_CORE_PRICE_ID.value() }),
+  buildBillingWrite: ({ parentId, existingEntitlement, subscription, nowTimestamp, nowMillis }) => {
+    const rawPlanId = subscription ? resolveStripePlanIdFromSubscription(subscription) : PLAN_IDS.FREE;
+    if (!rawPlanId || subscription && ![PLAN_IDS.CORE, PLAN_IDS.LOCKDOWN].includes(rawPlanId)) return null;
+    const subscriptionStatus = subscription ? mapStripeSubscriptionStatus(subscription.status) : SUBSCRIPTION_STATUSES.CANCELED;
+    return buildEntitlementWriteForBillingSync({
+      parentId, existingEntitlement, nowTimestamp, nowMillis,
+      billingState: buildEntitlementBillingState({
+        planId: subscriptionStatus === SUBSCRIPTION_STATUSES.CANCELED ? PLAN_IDS.FREE : rawPlanId,
+        subscriptionStatus, billingProvider: BILLING_PROVIDERS.STRIPE,
+        featureOverrides: existingEntitlement?.billing_state?.feature_overrides || existingEntitlement?.feature_overrides || {},
+        trialEndsAt: toTimestampOrNull(subscription?.trial_end),
+        currentPeriodEnd: toTimestampOrNull(subscription?.current_period_end), updatedAt: nowTimestamp,
+      }),
     });
-  }
+  },
+  queueAudit: (transaction, { hasExpiredManualOverride, ...audit }) => {
+    queueEntitlementAuditWrite(transaction, { ...audit, eventType: ENTITLEMENT_AUDIT_EVENT_TYPES.BILLING_WEBHOOK_SYNC });
+    if (hasExpiredManualOverride) queueEntitlementAuditWrite(transaction, {
+      ...audit, eventType: ENTITLEMENT_AUDIT_EVENT_TYPES.OVERRIDE_EXPIRED,
+      reason: 'manual override expired during billing webhook sync',
+    });
+  },
+});
+const billingCallableOptions = { region: REGION, secrets: [STRIPE_SECRET_KEY, STRIPE_CORE_PRICE_ID] };
+export const createCoreCheckout = onCall(billingCallableOptions, (request) => coreBillingService.checkout({
+  parentId: ensureAuthenticated(request), payload: request.data,
+}));
+export const createBillingPortal = onCall(billingCallableOptions, (request) => coreBillingService.portal({
+  parentId: ensureAuthenticated(request), payload: request.data,
+}));
+export const getCoreBillingStatus = onCall(billingCallableOptions, (request) => coreBillingService.status({
+  parentId: ensureAuthenticated(request), payload: request.data,
+}));
 
-  await batch.commit();
-};
+const routineRewardService = createRoutineRewardService({ db, Timestamp, HttpsError, resolveEntitlementRecord });
+const weeklyPlanningService = createWeeklyPlanningService({ db, Timestamp, HttpsError });
+const schoolCompletionService = createSchoolCompletionService({ db, Timestamp, HttpsError, resolveTrustedStudentContext });
+export const fileSchoolWeeklyReport = onCall({ region: REGION }, (request) => schoolCompletionService.fileReport({ parentId: ensureAuthenticated(request), payload: request.data }));
+export const getStudentSchoolState = onCall({ region: REGION }, (request) => schoolCompletionService.read({ payload: request.data }));
+export const correctSchoolBlock = onCall({ region: REGION }, (request) => schoolCompletionService.correct({ parentId: ensureAuthenticated(request), payload: request.data }));
+export const submitSchoolBlock = onCall({ region: REGION }, (request) => schoolCompletionService.submit({ payload: request.data }));
+export const commandStudentSchoolTimer = onCall({ region: REGION }, (request) => schoolCompletionService.timer({ payload: request.data }));
+
+export const saveWeeklyPlanDraft = onCall({ region: REGION }, async (request) => (
+  weeklyPlanningService.saveDraft({ parentId: ensureAuthenticated(request), payload: request.data })
+));
+export const publishWeeklyPlan = onCall({ region: REGION }, async (request) => (
+  weeklyPlanningService.publish({ parentId: ensureAuthenticated(request), payload: request.data })
+));
+export const saveStudentDefaultWeek = onCall({ region: REGION }, async (request) => (
+  weeklyPlanningService.saveDefaults({ parentId: ensureAuthenticated(request), payload: request.data })
+));
+export const archiveWeeklyPlan = onCall({ region: REGION }, async (request) => (
+  weeklyPlanningService.archive({ parentId: ensureAuthenticated(request), payload: request.data })
+));
+
+
+// Owner bootstrap is dormant until the coordinated release enables new accounts.
+// Existing entitlement records are never activated or overwritten by a client request.
+export const initializeRoutineFirstAccount = onCall({ region: REGION }, async (request) => {
+  const parentId = ensureAuthenticated(request);
+  if (request.data && (!isPlainObject(request.data) || Object.keys(request.data).length)) {
+    throw new HttpsError('invalid-argument', 'Account initialization accepts no client configuration.');
+  }
+  const { usageSnapshot } = await loadParentUsageSnapshot(parentId);
+  return db.runTransaction(async (transaction) => {
+    const accountRef = entitlementRef(parentId);
+    const [parent, existing, config] = await Promise.all([
+      transaction.get(db.collection(COLLECTIONS.PARENTS).doc(parentId)),
+      transaction.get(accountRef), transaction.get(db.collection('productDirectionConfig').doc('routineFirst')),
+    ]);
+    if (!parent.exists) throw new HttpsError('not-found', 'Parent account was not found.');
+    if (existing.exists) return { initialized: false, product_direction_version: existing.data().product_direction_version || 0 };
+    if (config.data()?.version !== PRODUCT_DIRECTION_VERSION || config.data()?.new_accounts_enabled !== true) {
+      return { initialized: false, product_direction_version: 0 };
+    }
+    const now = Timestamp.now();
+    const fallback = buildFallbackEntitlementInitializationWrite({ parentId, usageSnapshot, nowTimestamp: now });
+    transaction.create(accountRef, {
+      ...fallback,
+      ...buildRoutineFirstEntitlementPatch({ parentId, entitlementDoc: fallback, activate: true, nowMillis: now.toMillis() }),
+      product_direction_version: PRODUCT_DIRECTION_VERSION,
+      product_direction_migration_version: ROUTINE_REWARD_MIGRATION_VERSION,
+      product_direction_migrated_at: now, updated_via: 'routine_first_bootstrap',
+    });
+    return { initialized: true, product_direction_version: PRODUCT_DIRECTION_VERSION };
+  });
+});
+
+export const readStudentRoutineRewards = onCall({ region: REGION }, async (request) => {
+  const { parentId, studentId } = await resolveTrustedStudentContext(request.data);
+  return routineRewardService.read({ parentId, studentId });
+});
+
+export const unlockRoutineCosmetic = onCall({ region: REGION }, async (request) => {
+  const { parentId, studentId } = await resolveTrustedStudentContext(request.data);
+  return routineRewardService.unlock({ parentId, studentId, payload: request.data });
+});
+
+export const selectRoutineCosmetics = onCall({ region: REGION }, async (request) => {
+  const { parentId, studentId } = await resolveTrustedStudentContext(request.data);
+  return routineRewardService.select({ parentId, studentId, payload: request.data });
+});
+
+export const upsertRoutineRewardSettings = onCall({ region: REGION }, async (request) => (
+  routineRewardService.upsertSettings({ parentId: ensureAuthenticated(request), payload: request.data })
+));
+
+export const settleHouseholdHistory = onCall({ region: REGION }, async (request) => (
+  routineRewardService.settleHistory({ parentId: ensureAuthenticated(request), payload: request.data })
+));
+
+const quotaMutationService = createQuotaMutationService({ db, FieldValue, HttpsError, resolveEntitlementRecord });
 
 export const createStudent = onCall({ region: REGION }, async (request) => {
   const parentId = ensureAuthenticated(request);
@@ -4921,19 +4906,6 @@ export const createStudent = onCall({ region: REGION }, async (request) => {
   }
 
   const accessPin = validateAccessPin(request.data?.accessPin);
-  const entitlementState = await getAccountEntitlementState(parentId);
-  const currentStudentCount = await countStudentsForParent(parentId);
-
-  if (
-    entitlementState.limits.maxStudents != null &&
-    currentStudentCount >= entitlementState.limits.maxStudents
-  ) {
-    throw new HttpsError(
-      'resource-exhausted',
-      'This account has reached the current plan student limit.'
-    );
-  }
-
   const parentSettings = await loadParentSettings(parentId);
   const slug = buildStudentSlug(name);
   const studentDoc = {
@@ -4957,7 +4929,7 @@ export const createStudent = onCall({ region: REGION }, async (request) => {
     updated_at: FieldValue.serverTimestamp(),
   };
 
-  const createdRef = await db.collection(COLLECTIONS.STUDENTS).add(studentDoc);
+  const createdRef = await quotaMutationService.createStudent({ parentId, studentDoc });
 
   return {
     id: createdRef.id,
@@ -4990,21 +4962,6 @@ export const createSubject = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('invalid-argument', 'Block length must be an integer between 5 and 120 minutes.');
   }
 
-  const entitlementState = await getAccountEntitlementState(parentId);
-  const currentActiveSubjectCount = await countActiveSubjectsForParent(parentId);
-
-  if (
-    entitlementState.limits.maxActiveSubjects != null &&
-    currentActiveSubjectCount >= entitlementState.limits.maxActiveSubjects
-  ) {
-    throw new HttpsError(
-      'resource-exhausted',
-      'This account has reached the current plan active subject limit.'
-    );
-  }
-
-  await assertParentOwnsStudents(parentId, studentIds);
-
   const subjectDoc = {
     student_ids: Array.from(new Set(studentIds)),
     parent_id: parentId,
@@ -5023,12 +4980,19 @@ export const createSubject = onCall({ region: REGION }, async (request) => {
     updated_at: FieldValue.serverTimestamp(),
   };
 
-  const createdRef = await db.collection(COLLECTIONS.SUBJECTS).add(subjectDoc);
+  const createdRef = await quotaMutationService.createSubject({ parentId, subjectDoc });
 
   return {
     id: createdRef.id,
   };
 });
+
+export const reactivateSubject = onCall({ region: REGION }, async (request) => (
+  quotaMutationService.reactivateSubject({
+    parentId: ensureAuthenticated(request),
+    subjectId: request.data?.subject_id || '',
+  })
+));
 
 export const upsertChoreSettings = onCall({ region: REGION }, async (request) => {
   const parentId = ensureAuthenticated(request);
@@ -5535,6 +5499,9 @@ export const readStudentChoreState = onCall({ region: REGION }, async (request) 
     ),
     getTrustedParentChoreSettings(parentId),
   ]);
+  if (access.productDirectionActive) {
+    return routineRewardService.read({ parentId, studentId, requireRewards: false });
+  }
   const weekConfig = normalizeTrustedChoreWeekConfig(settings);
   const [
     routineTemplates,
@@ -5823,6 +5790,9 @@ export const completeRoutine = onCall({ region: REGION }, async (request) => {
     'canUseDailyRoutines',
     'Daily routines are not included in the current plan.'
   );
+  if (access.productDirectionActive) {
+    return routineRewardService.complete({ parentId, studentId, payload: request.data });
+  }
   const payload = normalizeTrustedRoutineCompletionPayload(request.data);
 
   if (!payload.routine_template_id) {
@@ -6919,48 +6889,32 @@ export const billingWebhook = onRequest({
   const webhookSecret = trimString(STRIPE_WEBHOOK_SECRET.value());
   const signature = request.get('stripe-signature');
 
-  if (!webhookSecret || !signature) {
-    response.status(500).send('Stripe webhook is not configured.');
+  if (!webhookSecret) {
+    response.status(503).send('Billing webhook is not configured.');
+    return;
+  }
+  if (!signature) {
+    response.status(400).send('Invalid billing webhook.');
     return;
   }
 
+  let event;
   try {
-    const stripe = getStripeClient();
-    const event = stripe.webhooks.constructEvent(request.rawBody, signature, webhookSecret);
-
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const session = event.data.object;
-        const subscriptionId = trimString(session.subscription);
-        if (!subscriptionId) {
-          throw new Error('checkout.session.completed is missing a subscription id.');
-        }
-
-        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-        const hydratedSubscription = {
-          ...subscription,
-          metadata: {
-            ...(session.metadata || {}),
-            ...(subscription.metadata || {}),
-          },
-          client_reference_id: session.client_reference_id || subscription.client_reference_id,
-        };
-        await syncEntitlementFromSubscription(stripe, hydratedSubscription, event.type);
-        break;
-      }
-      case 'customer.subscription.created':
-      case 'customer.subscription.updated':
-      case 'customer.subscription.deleted': {
-        await syncEntitlementFromSubscription(stripe, event.data.object, event.type);
-        break;
-      }
-      default:
-        break;
-    }
-
+    event = getStripeClient().webhooks.constructEvent(request.rawBody, signature, webhookSecret);
+  } catch {
+    response.status(400).send('Invalid billing webhook.');
+    return;
+  }
+  try {
+    await coreBillingService.webhook(event);
     response.status(200).json({ received: true });
   } catch (error) {
-    console.error('Stripe entitlement webhook failed:', error);
-    response.status(400).send(error.message || 'Webhook processing failed.');
+    // A verified event with transient/provider/coordinator failure must be retried.
+    // Provider payloads and credentials never enter application logs/responses.
+    if (error instanceof HttpsError && error.code === 'failed-precondition') {
+      response.status(400).send('Billing webhook mode is not accepted.');
+      return;
+    }
+    response.status(503).send('Billing processing temporarily unavailable.');
   }
 });

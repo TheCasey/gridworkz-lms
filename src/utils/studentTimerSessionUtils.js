@@ -31,6 +31,7 @@ export const buildPortalTimerBlockContext = ({
 } = {}) => {
   const blockIdsBySubject = {};
   const blockIndicesBySubject = {};
+  const timerRequirementsBySubject = {};
 
   if (hasPublishedWeeklyPlan) {
     publishedWorkItems.forEach((workItem) => {
@@ -42,6 +43,11 @@ export const buildPortalTimerBlockContext = ({
       blockIndicesBySubject[subjectId].push(blockIndex);
       blockIdsBySubject[subjectId] ||= {};
       blockIdsBySubject[subjectId][blockIndex] = toNonEmptyString(workItem?.id);
+      timerRequirementsBySubject[subjectId] ||= {};
+      timerRequirementsBySubject[subjectId][blockIndex] = {
+        required: Boolean(workItem.requireTimer),
+        durationMs: Number(workItem.plannedDurationMinutes) * 60_000,
+      };
     });
   } else {
     subjects.forEach((subject) => {
@@ -50,6 +56,12 @@ export const buildPortalTimerBlockContext = ({
       blockIndicesBySubject[subjectId] = Array.isArray(subject?.portal_block_indices)
         ? subject.portal_block_indices.map(toBlockIndex).filter(Number.isInteger)
         : getLegacySubjectBlockIndices(subject);
+      timerRequirementsBySubject[subjectId] = Object.fromEntries(
+        blockIndicesBySubject[subjectId].map((index) => [index, {
+          required: Boolean(subject.require_timer),
+          durationMs: Number(subject.block_length || 30) * 60_000,
+        }])
+      );
     });
   }
 
@@ -61,6 +73,7 @@ export const buildPortalTimerBlockContext = ({
   return {
     blockIdsBySubject,
     blockIndicesBySubject,
+    timerRequirementsBySubject,
   };
 };
 
@@ -90,6 +103,12 @@ export const getPortalTimerInvalidReason = ({
   if (completedBlocks?.[normalizedSubjectId]?.includes(blockIndex)) {
     return 'block_completed';
   }
+  const requirement = blockContext?.timerRequirementsBySubject?.[normalizedSubjectId]?.[blockIndex];
+  if (requirement?.required === false) return 'timer_not_required';
+  const duration = timer.initialDurationMs ?? timer.initial_duration_ms
+    ?? timer.durationMs ?? timer.duration_ms;
+  if (Number.isFinite(duration) && Number.isFinite(requirement?.durationMs)
+    && duration !== requirement.durationMs) return 'timer_duration_changed';
 
   const storedWeeklyPlanId = toNonEmptyString(timer?.weeklyPlanId ?? timer?.weekly_plan_id);
   const storedWeekKey = toNonEmptyString(timer?.weekKey ?? timer?.week_key);

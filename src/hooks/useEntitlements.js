@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { doc, getFirestore, onSnapshot } from 'firebase/firestore';
+import { initializeTrustedRoutineFirstAccount } from '../firebase/trustedOperations';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { doc, getDoc, getFirestore, onSnapshot } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
 import { Collections } from '../constants/schema';
 import { useAuth } from '../contexts/AuthContext';
@@ -29,53 +30,100 @@ export const useEntitlements = ({
   const db = getFirestore(app);
   const resolvedParentId = parentId || currentUser?.uid || null;
 
-  const [entitlementDoc, setEntitlementDoc] = useState(null);
-  const [hasEntitlementDoc, setHasEntitlementDoc] = useState(false);
-  const [loading, setLoading] = useState(Boolean(enabled && resolvedParentId));
-  const [error, setError] = useState(null);
+  const [record, setRecord] = useState({ parentId: null, document: null, hasDocument: false, loading: true, error: null });
+  const [bootstrapFailure, setBootstrapFailure] = useState(null);
+  const [bootstrapLoading, setBootstrapLoading] = useState(null);
+  const [bootstrapAttempts, setBootstrapAttempts] = useState([]);
+  const [retryGeneration, setRetryGeneration] = useState(0);
+  const bootstrapInFlight = useRef(new Set());
+  const currentParent = useRef(resolvedParentId);
+  const hasCurrentDocument = useRef(false);
+  currentParent.current = resolvedParentId;
+  const scopeMatches = record.parentId === resolvedParentId;
+  const entitlementDoc = enabled && scopeMatches ? record.document : null;
+  const hasEntitlementDoc = enabled && scopeMatches && record.hasDocument;
+  const loading = Boolean(enabled && resolvedParentId && (!scopeMatches || record.loading));
+  const error = scopeMatches ? record.error : null;
+  const bootstrapError = bootstrapFailure?.parentId === resolvedParentId ? bootstrapFailure.error : null;
 
   useEffect(() => {
-    if (!enabled || !resolvedParentId) {
-      setEntitlementDoc(null);
-      setHasEntitlementDoc(false);
-      setError(null);
-      setLoading(false);
-      return undefined;
-    }
-
-    setLoading(true);
-
-    const entitlementRef = doc(db, Collections.ACCOUNT_ENTITLEMENTS, resolvedParentId);
-
-    return onSnapshot(entitlementRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setEntitlementDoc({ id: snapshot.id, ...snapshot.data() });
-        setHasEntitlementDoc(true);
-      } else {
-        setEntitlementDoc(null);
-        setHasEntitlementDoc(false);
-      }
-
-      setError(null);
-      setLoading(false);
-    }, (nextError) => {
-      console.error('Error loading account entitlements:', nextError);
-      setEntitlementDoc(null);
-      setHasEntitlementDoc(false);
-      setError(nextError);
-      setLoading(false);
+    let active = true;
+    const requestParent = resolvedParentId;
+    const isCurrent = () => active && currentParent.current === requestParent;
+    hasCurrentDocument.current = false;
+    setRecord({ parentId: requestParent, document: null, hasDocument: false, loading: Boolean(enabled && requestParent), error: null });
+    if (!enabled || !requestParent) return undefined;
+    const acceptSnapshot = (snapshot) => {
+      if (!isCurrent()) return;
+      hasCurrentDocument.current = snapshot.exists();
+      if (snapshot.exists()) setBootstrapFailure(null);
+      setRecord({
+        parentId: requestParent,
+        document: snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null,
+        hasDocument: snapshot.exists(), loading: false, error: null,
+      });
+    };
+    const unsubscribe = onSnapshot(doc(db, Collections.ACCOUNT_ENTITLEMENTS, requestParent), acceptSnapshot, (nextError) => {
+      if (!isCurrent()) return;
+      hasCurrentDocument.current = false;
+      setRecord({ parentId: requestParent, document: null, hasDocument: false, error: nextError, loading: false });
     });
-  }, [db, enabled, resolvedParentId]);
+    return () => { active = false; unsubscribe(); };
+  }, [db, enabled, resolvedParentId, retryGeneration]);
 
+  // Only the trusted rollout gate may initialize a missing Free record.
+  const bootstrapPending = Boolean(enabled && resolvedParentId && !loading && !error && !hasEntitlementDoc && !bootstrapAttempts.includes(resolvedParentId));
+  useEffect(() => {
+    if (!bootstrapPending || bootstrapInFlight.current.has(resolvedParentId)) return;
+    const initiatingParent = resolvedParentId;
+    const isCurrent = () => currentParent.current === initiatingParent;
+    bootstrapInFlight.current.add(initiatingParent);
+    setBootstrapLoading(initiatingParent);
+    setBootstrapFailure(null);
+    const initialize = async () => {
+      try {
+        const result = await initializeTrustedRoutineFirstAccount();
+        if (!isCurrent()) return;
+        // Resolve the initialized record before exposing the compatibility branch.
+        if (result.product_direction_version >= 1) {
+          const snapshot = await getDoc(doc(db, Collections.ACCOUNT_ENTITLEMENTS, initiatingParent));
+          if (!isCurrent()) return;
+          if (!snapshot.exists()) throw new Error('Account access is not ready. Please retry.');
+          hasCurrentDocument.current = true;
+          setRecord({ parentId: initiatingParent, document: { id: snapshot.id, ...snapshot.data() }, hasDocument: true, loading: false, error: null });
+        }
+      } catch (nextError) {
+        if (isCurrent() && !hasCurrentDocument.current) setBootstrapFailure({ parentId: initiatingParent, error: nextError });
+      } finally {
+        bootstrapInFlight.current.delete(initiatingParent);
+        if (isCurrent()) {
+          setBootstrapAttempts((attempts) => [...attempts, initiatingParent]);
+          setBootstrapLoading(null);
+        }
+      }
+    };
+    initialize();
+  }, [bootstrapPending, resolvedParentId, db]);
+
+  const retryBootstrap = useCallback(() => {
+    if (!resolvedParentId || bootstrapInFlight.current.has(resolvedParentId)) return;
+    setBootstrapFailure(null);
+    setBootstrapAttempts((attempts) => attempts.filter((id) => id !== resolvedParentId));
+    setRecord({ parentId: resolvedParentId, document: null, hasDocument: false, loading: true, error: null });
+    setRetryGeneration((generation) => generation + 1);
+  }, [resolvedParentId]);
+  const accessLoading = loading || Boolean(resolvedParentId && bootstrapLoading === resolvedParentId) || bootstrapPending;
+  const accessError = error || bootstrapError;
+  const accessReady = Boolean(enabled && resolvedParentId && !accessLoading && !accessError);
   const entitlementState = useMemo(() => resolveEntitlementState({
     entitlementDoc,
-    students,
-    subjects,
-  }), [entitlementDoc, students, subjects]);
+    students: students.filter((student) => !student.parent_id || student.parent_id === resolvedParentId),
+    subjects: subjects.filter((subject) => !subject.parent_id || subject.parent_id === resolvedParentId),
+  }), [entitlementDoc, students, subjects, resolvedParentId]);
 
   const featureAccess = useMemo(() => Object.values(EntitlementFeatureKeys).reduce((resolvedAccess, featureKey) => {
     const definition = getEntitlementFeatureDefinition(featureKey);
-    const isEnabled = Boolean(entitlementState.features?.[featureKey]);
+    const isEnabled = Boolean(accessReady && entitlementState.features?.[featureKey]);
 
     resolvedAccess[featureKey] = {
       key: featureKey,
@@ -92,7 +140,7 @@ export const useEntitlements = ({
     };
 
     return resolvedAccess;
-  }, {}), [entitlementState.features, entitlementState.planId]);
+  }, {}), [entitlementState.features, entitlementState.planId, accessReady]);
 
   const subscriptionStatusMeta = useMemo(
     () => getSubscriptionStatusDefinition(entitlementState.subscriptionStatus),
@@ -113,7 +161,7 @@ export const useEntitlements = ({
       canPairDevices: isEnabled,
       upgradeCopy: getLockdownUpgradeCopy(entitlementState.planId),
       lockedDescription: 'Lockdown pairing, student-bound policy visibility, and off-hours setup stay visible but read-only until the Lockdown plan is active.',
-      restoreAccessCopy: 'Upgrade back to Lockdown to restore student-bound pairing and Lockdown management without losing saved setup.',
+      restoreAccessCopy: 'Existing Lockdown access and saved setup are preserved. New Lockdown purchases are coming soon.',
       savedPolicyCopy: 'Saved lockdown setup stays visible on downgrade and becomes manageable again after re-upgrade.',
     };
   }, [entitlementState.planId, featureAccess]);
@@ -124,7 +172,7 @@ export const useEntitlements = ({
   const curriculumLimitCheck = entitlementState.limitChecks[EntitlementLimitKeys.CURRICULUM_ITEMS] || null;
   const hasReachedLimit = (limitKey) => hasReachedEntitlementLimit(entitlementState.limitChecks, limitKey);
   const isWithinLimit = (limitKey) => isWithinEntitlementLimit(entitlementState.limitChecks, limitKey);
-  const hasFeature = (featureKey) => Boolean(entitlementState.features?.[featureKey]);
+  const hasFeature = (featureKey) => Boolean(accessReady && entitlementState.features?.[featureKey]);
 
   return {
     ...entitlementState,
@@ -132,8 +180,9 @@ export const useEntitlements = ({
     hasEntitlementDoc,
     isMissingEntitlementDoc: Boolean(resolvedParentId) && !loading && !hasEntitlementDoc,
     isFreePlanFallback: entitlementState.isFreePlanFallback || Boolean(error),
-    loading,
-    error,
+    loading: accessLoading,
+    error: accessError,
+    retryBootstrap,
     parentId: resolvedParentId,
     getLimitCheck,
     getFeatureAccess,
@@ -143,8 +192,8 @@ export const useEntitlements = ({
     studentLimitCheck,
     curriculumLimitCheck,
     subscriptionStatusMeta,
-    canAddStudent: isWithinEntitlementLimit(entitlementState.limitChecks, EntitlementLimitKeys.STUDENTS),
-    canAddCurriculumItem: isWithinEntitlementLimit(entitlementState.limitChecks, EntitlementLimitKeys.CURRICULUM_ITEMS),
+    canAddStudent: accessReady && isWithinEntitlementLimit(entitlementState.limitChecks, EntitlementLimitKeys.STUDENTS),
+    canAddCurriculumItem: accessReady && isWithinEntitlementLimit(entitlementState.limitChecks, EntitlementLimitKeys.CURRICULUM_ITEMS),
     hasReachedLimit,
     isWithinLimit,
     hasFeature,

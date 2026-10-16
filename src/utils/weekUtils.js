@@ -6,7 +6,6 @@
 const DEFAULT_RESET_DAY = 1;
 const DEFAULT_RESET_HOUR = 0;
 const DEFAULT_RESET_MINUTE = 0;
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const WEEKDAY_NAME_TO_INDEX = Object.freeze({
   Sun: 0,
   Mon: 1,
@@ -60,9 +59,9 @@ const resolveDateInput = (value) => {
 };
 
 const normalizeWeekConfig = (config = {}) => ({
-  resetDay: Number.isInteger(config.week_reset_day) ? config.week_reset_day : DEFAULT_RESET_DAY,
-  resetHour: Number.isInteger(config.week_reset_hour) ? config.week_reset_hour : DEFAULT_RESET_HOUR,
-  resetMinute: Number.isInteger(config.week_reset_minute) ? config.week_reset_minute : DEFAULT_RESET_MINUTE,
+  resetDay: Number.isInteger(config.week_reset_day ?? config.resetDay) ? (config.week_reset_day ?? config.resetDay) : DEFAULT_RESET_DAY,
+  resetHour: Number.isInteger(config.week_reset_hour ?? config.resetHour) ? (config.week_reset_hour ?? config.resetHour) : DEFAULT_RESET_HOUR,
+  resetMinute: Number.isInteger(config.week_reset_minute ?? config.resetMinute) ? (config.week_reset_minute ?? config.resetMinute) : DEFAULT_RESET_MINUTE,
   timezone: typeof config.timezone === 'string' && config.timezone.trim().length > 0
     ? config.timezone.trim()
     : '',
@@ -133,27 +132,28 @@ export const buildDateFromTimeZoneParts = (parts, timeZone) => {
     return new Date(utcGuess);
   }
 
-  const resolvedGuessParts = getDateTimePartsInTimeZone(new Date(utcGuess), timeZone);
-  const resolvedAsUtc = Date.UTC(
-    resolvedGuessParts.year,
-    resolvedGuessParts.month - 1,
-    resolvedGuessParts.day,
-    resolvedGuessParts.hour,
-    resolvedGuessParts.minute,
-    resolvedGuessParts.second,
-    0
-  );
-  const requestedAsUtc = Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    parts.hour || 0,
-    parts.minute || 0,
-    parts.second || 0,
-    0
-  );
-
-  return new Date(utcGuess - (resolvedAsUtc - requestedAsUtc));
+  const localEpoch = (instant) => {
+    const local = getDateTimePartsInTimeZone(new Date(instant), timeZone);
+    return Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, local.second);
+  };
+  // Sample both offsets around a transition. Repeated wall times choose the
+  // first occurrence; a skipped wall time uses the first valid instant after it.
+  const offsets = new Set();
+  for (let hours = -36; hours <= 36; hours += 6) {
+    const sample = utcGuess + hours * 3_600_000;
+    offsets.add(localEpoch(sample) - sample);
+  }
+  const candidates = [...offsets].map((offset) => utcGuess - offset);
+  const exact = candidates.filter((instant) => localEpoch(instant) === utcGuess);
+  if (exact.length) return new Date(Math.min(...exact));
+  let low = Math.min(...candidates);
+  let high = Math.max(...candidates);
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (localEpoch(middle) >= utcGuess) high = middle;
+    else low = middle + 1;
+  }
+  return new Date(low);
 };
 
 const getWeekBoundaryForDate = (dateInput, config = {}) => {
@@ -177,24 +177,33 @@ const getWeekBoundaryForDate = (dateInput, config = {}) => {
   const zonedParts = getDateTimePartsInTimeZone(date, timezone);
   const daysSinceReset = (zonedParts.weekday - resetDay + 7) % 7;
   let boundaryDateParts = shiftLocalDatePartsByDays(zonedParts, -daysSinceReset);
-  const beforeBoundary = daysSinceReset === 0 && (
-    zonedParts.hour < resetHour
-    || (zonedParts.hour === resetHour && zonedParts.minute < resetMinute)
-  );
-
-  if (beforeBoundary) {
-    boundaryDateParts = shiftLocalDatePartsByDays(boundaryDateParts, -7);
-  }
-
-  return buildDateFromTimeZoneParts({
-    ...boundaryDateParts,
-    hour: resetHour,
-    minute: resetMinute,
-    second: 0,
+  let boundary = buildDateFromTimeZoneParts({
+    ...boundaryDateParts, hour: resetHour, minute: resetMinute, second: 0,
   }, timezone);
+  if (date < boundary) {
+    boundaryDateParts = shiftLocalDatePartsByDays(boundaryDateParts, -7);
+    boundary = buildDateFromTimeZoneParts({
+      ...boundaryDateParts, hour: resetHour, minute: resetMinute, second: 0,
+    }, timezone);
+  }
+  return boundary;
 };
 
 export const getWeekConfig = (config = {}) => normalizeWeekConfig(config);
+
+const shiftWeekBoundary = (boundary, offset, config) => {
+  const { resetHour, resetMinute, timezone } = normalizeWeekConfig(config);
+  if (!timezone) {
+    const shifted = new Date(boundary);
+    shifted.setDate(shifted.getDate() + offset * 7);
+    shifted.setHours(resetHour, resetMinute, 0, 0);
+    return shifted;
+  }
+  const parts = getDateTimePartsInTimeZone(boundary, timezone);
+  return buildDateFromTimeZoneParts({
+    ...shiftLocalDatePartsByDays(parts, offset * 7), hour: resetHour, minute: resetMinute, second: 0,
+  }, timezone);
+};
 
 /**
  * Get the start and end dates of the current week based on the configured reset.
@@ -204,8 +213,7 @@ export const getWeekConfig = (config = {}) => normalizeWeekConfig(config);
  */
 export const getCurrentWeekRange = (date = new Date(), config = {}) => {
   const weekStart = getWeekBoundaryForDate(date, config);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setTime(weekStart.getTime() + WEEK_MS - 1);
+  const weekEnd = new Date(shiftWeekBoundary(weekStart, 1, config).getTime() - 1);
 
   return { weekStart, weekEnd };
 };
@@ -218,10 +226,8 @@ export const getCurrentWeekRange = (date = new Date(), config = {}) => {
  */
 export const getWeekRangeByOffset = (weekOffset, config = {}) => {
   const { weekStart: currentWeekStart } = getCurrentWeekRange(new Date(), config);
-  const weekStart = new Date(currentWeekStart);
-  weekStart.setTime(currentWeekStart.getTime() + (weekOffset * WEEK_MS));
-  const weekEnd = new Date(weekStart);
-  weekEnd.setTime(weekStart.getTime() + WEEK_MS - 1);
+  const weekStart = shiftWeekBoundary(currentWeekStart, weekOffset, config);
+  const weekEnd = new Date(shiftWeekBoundary(weekStart, 1, config).getTime() - 1);
   return { weekStart, weekEnd };
 };
 

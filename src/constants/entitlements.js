@@ -14,6 +14,7 @@ export const EntitlementLimitKeys = Object.freeze({
 export const EntitlementFeatureKeys = Object.freeze({
   PROJECTS: 'can_use_projects',
   DAILY_ROUTINES: 'can_use_daily_routines',
+  ROUTINE_REWARDS: 'can_use_routine_rewards',
   CHORES: 'can_use_chores',
   REWARDS: 'can_use_rewards',
   LOCKDOWN_EXTENSION: 'can_use_lockdown_extension',
@@ -35,6 +36,7 @@ export const EntitlementUpgradeKeys = Object.freeze({
   CURRICULUM_ITEMS: EntitlementLimitKeys.CURRICULUM_ITEMS,
   PROJECTS: 'projects',
   DAILY_ROUTINES: 'daily_routines',
+  ROUTINE_REWARDS: 'routine_rewards',
   CHORES: 'chores',
   REWARDS: 'rewards',
   LOCKDOWN: 'lockdown',
@@ -129,19 +131,20 @@ export const EntitlementCatalog = Object.freeze({
     features: {
       [EntitlementFeatureKeys.PROJECTS]: false,
       [EntitlementFeatureKeys.DAILY_ROUTINES]: true,
+      [EntitlementFeatureKeys.ROUTINE_REWARDS]: true,
       [EntitlementFeatureKeys.CHORES]: false,
       [EntitlementFeatureKeys.REWARDS]: false,
       [EntitlementFeatureKeys.LOCKDOWN_EXTENSION]: false,
       [EntitlementFeatureKeys.LOCKDOWN_KIOSK]: false,
     },
     upgradeCopy: {
-      [EntitlementUpgradeKeys.STUDENTS]: 'Upgrade to Core for up to 10 students.',
+      [EntitlementUpgradeKeys.STUDENTS]: 'Upgrade to Core for unlimited students.',
       [EntitlementUpgradeKeys.CURRICULUM_ITEMS]: 'Upgrade to Core for unlimited curriculum items.',
-      [EntitlementUpgradeKeys.PROJECTS]: 'Upgrade to Core to unlock projects when they launch.',
+      [EntitlementUpgradeKeys.PROJECTS]: 'Projects are planned for a future release.',
       [EntitlementUpgradeKeys.DAILY_ROUTINES]: 'Daily routines are included on Free.',
-      [EntitlementUpgradeKeys.CHORES]: 'Upgrade to Core to unlock chore pools, weekly/monthly chores, allowance tracking, and achievements when available.',
-      [EntitlementUpgradeKeys.REWARDS]: 'Upgrade to Core to unlock points, reward-store behavior, redemptions, and cosmetic placeholders.',
-      [EntitlementUpgradeKeys.LOCKDOWN]: 'Upgrade to Lockdown to unlock extension and kiosk controls.',
+      [EntitlementUpgradeKeys.CHORES]: 'New chore pools and allowance setup are paused. Existing household records remain in Household History.',
+      [EntitlementUpgradeKeys.REWARDS]: 'Daily routine points and built-in avatars are included on Free. New custom reward setup is paused.',
+      [EntitlementUpgradeKeys.LOCKDOWN]: 'Lockdown is coming soon. New purchases are unavailable.',
     },
   }),
   [PlanIds.CORE]: buildPlanDefinition({
@@ -149,25 +152,26 @@ export const EntitlementCatalog = Object.freeze({
     displayName: 'Core',
     priceLabel: '$5/month',
     limits: {
-      [EntitlementLimitKeys.STUDENTS]: 10,
+      [EntitlementLimitKeys.STUDENTS]: UNLIMITED_PLAN_LIMIT,
       [EntitlementLimitKeys.CURRICULUM_ITEMS]: UNLIMITED_PLAN_LIMIT,
     },
     features: {
       [EntitlementFeatureKeys.PROJECTS]: true,
       [EntitlementFeatureKeys.DAILY_ROUTINES]: true,
+      [EntitlementFeatureKeys.ROUTINE_REWARDS]: true,
       [EntitlementFeatureKeys.CHORES]: true,
       [EntitlementFeatureKeys.REWARDS]: true,
       [EntitlementFeatureKeys.LOCKDOWN_EXTENSION]: false,
       [EntitlementFeatureKeys.LOCKDOWN_KIOSK]: false,
     },
     upgradeCopy: {
-      [EntitlementUpgradeKeys.STUDENTS]: 'Core includes up to 10 students. Contact support if you need a larger household limit.',
+      [EntitlementUpgradeKeys.STUDENTS]: 'Core includes unlimited students.',
       [EntitlementUpgradeKeys.CURRICULUM_ITEMS]: 'Core includes unlimited curriculum items.',
-      [EntitlementUpgradeKeys.PROJECTS]: 'Projects are included with Core.',
+      [EntitlementUpgradeKeys.PROJECTS]: 'Projects are planned for a future release.',
       [EntitlementUpgradeKeys.DAILY_ROUTINES]: 'Daily routines are included with Core.',
-      [EntitlementUpgradeKeys.CHORES]: 'Chore pools, weekly/monthly chores, allowance tracking, and achievements are included with Core.',
-      [EntitlementUpgradeKeys.REWARDS]: 'Rewards, redemptions, points, and cosmetic placeholders are included with Core.',
-      [EntitlementUpgradeKeys.LOCKDOWN]: 'Upgrade to Lockdown to unlock extension and kiosk controls.',
+      [EntitlementUpgradeKeys.CHORES]: 'New chore pools and allowance setup are paused. Household History preserves existing records.',
+      [EntitlementUpgradeKeys.REWARDS]: 'Daily routine points and built-in avatars are included. New custom reward setup is paused.',
+      [EntitlementUpgradeKeys.LOCKDOWN]: 'Lockdown is coming soon. New purchases are unavailable.',
     },
   }),
   [PlanIds.LOCKDOWN]: buildPlanDefinition({
@@ -175,46 +179,56 @@ export const EntitlementCatalog = Object.freeze({
     displayName: 'Lockdown',
     priceLabel: '$10/month',
     limits: {
-      [EntitlementLimitKeys.STUDENTS]: 10,
+      [EntitlementLimitKeys.STUDENTS]: UNLIMITED_PLAN_LIMIT,
       [EntitlementLimitKeys.CURRICULUM_ITEMS]: UNLIMITED_PLAN_LIMIT,
     },
     features: {
       [EntitlementFeatureKeys.PROJECTS]: true,
       [EntitlementFeatureKeys.DAILY_ROUTINES]: true,
+      [EntitlementFeatureKeys.ROUTINE_REWARDS]: true,
       [EntitlementFeatureKeys.CHORES]: true,
       [EntitlementFeatureKeys.REWARDS]: true,
       [EntitlementFeatureKeys.LOCKDOWN_EXTENSION]: true,
       [EntitlementFeatureKeys.LOCKDOWN_KIOSK]: true,
     },
     upgradeCopy: {
-      [EntitlementUpgradeKeys.STUDENTS]: 'Lockdown includes up to 10 students. Contact support if you need a larger household limit.',
+      [EntitlementUpgradeKeys.STUDENTS]: 'Lockdown includes unlimited students.',
       [EntitlementUpgradeKeys.CURRICULUM_ITEMS]: 'Lockdown includes unlimited curriculum items.',
-      [EntitlementUpgradeKeys.PROJECTS]: 'Projects are included with Lockdown.',
+      [EntitlementUpgradeKeys.PROJECTS]: 'Projects are planned for a future release.',
       [EntitlementUpgradeKeys.DAILY_ROUTINES]: 'Daily routines are included with Lockdown.',
-      [EntitlementUpgradeKeys.CHORES]: 'Chore pools, weekly/monthly chores, allowance tracking, and achievements are included with Lockdown.',
-      [EntitlementUpgradeKeys.REWARDS]: 'Rewards, redemptions, points, and cosmetic placeholders are included with Lockdown.',
+      [EntitlementUpgradeKeys.CHORES]: 'New chore pools and allowance setup are paused. Household History preserves existing records.',
+      [EntitlementUpgradeKeys.REWARDS]: 'Daily routine points and built-in avatars are included. New custom reward setup is paused.',
       [EntitlementUpgradeKeys.LOCKDOWN]: 'Lockdown features are included with this plan.',
     },
   }),
 });
 
 export const EntitlementFeatureCatalog = Object.freeze({
+  [EntitlementFeatureKeys.ROUTINE_REWARDS]: buildFeatureDefinition({
+    key: EntitlementFeatureKeys.ROUTINE_REWARDS,
+    title: 'Routine Rewards',
+    shortTitle: 'Routine Rewards',
+    availableDescription: 'Routine points, avatars, and built-in cosmetics are included on every plan.',
+    lockedDescription: 'Routine rewards are not available for this account yet.',
+    availabilityNote: 'Earn points by completing the full routine day.',
+    upgradeKey: EntitlementUpgradeKeys.ROUTINE_REWARDS,
+  }),
   [EntitlementFeatureKeys.PROJECTS]: buildFeatureDefinition({
     key: EntitlementFeatureKeys.PROJECTS,
     title: 'Projects',
     shortTitle: 'Projects',
     availableDescription: 'Included in your plan when projects launch.',
-    lockedDescription: 'Projects stay reserved for paid plans once that surface exists.',
-    availabilityNote: 'No projects UI ships in this phase.',
+    lockedDescription: 'Projects are planned for a future release.',
+    availabilityNote: 'Projects are planned for a future release.',
     upgradeKey: EntitlementUpgradeKeys.PROJECTS,
   }),
   [EntitlementFeatureKeys.CHORES]: buildFeatureDefinition({
     key: EntitlementFeatureKeys.CHORES,
     title: 'Chore Pools',
     shortTitle: 'Chores',
-    availableDescription: 'Weekly and monthly chore pools, allowance tracking, and achievements are included in this plan.',
-    lockedDescription: 'Daily routines remain available, but chore pools, weekly/monthly chores, allowance tracking, and achievements require Core or Lockdown.',
-    availabilityNote: 'Saved paid setup remains visible after downgrade, but new paid creates and review actions are locked.',
+    availableDescription: 'Existing chore and allowance records are preserved in Household History.',
+    lockedDescription: 'Daily Routines remain available. New chore pools and allowance setup are paused.',
+    availabilityNote: 'Household History supports settlement of existing obligations.',
     upgradeKey: EntitlementUpgradeKeys.CHORES,
   }),
   [EntitlementFeatureKeys.DAILY_ROUTINES]: buildFeatureDefinition({
@@ -223,16 +237,16 @@ export const EntitlementFeatureCatalog = Object.freeze({
     shortTitle: 'Routines',
     availableDescription: 'Daily routine checklists are included in this plan.',
     lockedDescription: 'Daily routine access is unavailable for this account.',
-    availabilityNote: 'Free accounts can use grouped daily routines without chore pools, allowance, points, or rewards.',
+    availabilityNote: 'Daily routine points and built-in avatars are included on Free.',
     upgradeKey: EntitlementUpgradeKeys.DAILY_ROUTINES,
   }),
   [EntitlementFeatureKeys.REWARDS]: buildFeatureDefinition({
     key: EntitlementFeatureKeys.REWARDS,
     title: 'Rewards',
     shortTitle: 'Rewards',
-    availableDescription: 'Reward-store behavior, redemptions, points, and cosmetic placeholders are included in this plan.',
-    lockedDescription: 'Rewards, redemptions, points, and related cosmetic placeholders require Core or Lockdown.',
-    availabilityNote: 'Built-in avatar, badge, and profile-theme rewards are placeholders until final assets ship.',
+    availableDescription: 'Existing reward records and reservations are preserved in Household History.',
+    lockedDescription: 'Daily routine points and built-in avatars are included on Free. New custom reward requests are paused.',
+    availabilityNote: 'Existing reservations can be settled in Household History.',
     upgradeKey: EntitlementUpgradeKeys.REWARDS,
   }),
   [EntitlementFeatureKeys.LOCKDOWN_EXTENSION]: buildFeatureDefinition({
@@ -240,8 +254,8 @@ export const EntitlementFeatureCatalog = Object.freeze({
     title: 'Lockdown Extension',
     shortTitle: 'Extension',
     availableDescription: 'Included for extension pairing and browser-policy setup.',
-    lockedDescription: 'Extension pairing and policy controls stay locked until the Lockdown plan is active.',
-    availabilityNote: 'Saved Lockdown PoC controls become a plan-aware surface in this phase.',
+    lockedDescription: 'Lockdown is coming soon. New purchases are unavailable.',
+    availabilityNote: 'Existing Lockdown access and saved setup are preserved.',
     upgradeKey: EntitlementUpgradeKeys.LOCKDOWN,
   }),
   [EntitlementFeatureKeys.LOCKDOWN_KIOSK]: buildFeatureDefinition({
@@ -249,7 +263,7 @@ export const EntitlementFeatureCatalog = Object.freeze({
     title: 'Lockdown Kiosk',
     shortTitle: 'Kiosk',
     availableDescription: 'Included for future kiosk-device management flows.',
-    lockedDescription: 'Kiosk configuration stays locked until the Lockdown plan is active.',
+    lockedDescription: 'Kiosk management is coming soon. New Lockdown purchases are unavailable.',
     availabilityNote: 'Kiosk management is still future work.',
     upgradeKey: EntitlementUpgradeKeys.LOCKDOWN,
   }),
@@ -259,12 +273,12 @@ export const SubscriptionStatusCatalog = Object.freeze({
   [SubscriptionStatuses.TRIALING]: buildSubscriptionStatusDefinition({
     label: 'Trialing',
     tone: 'accent',
-    description: 'Your entitlement record is in a trial window.',
+    description: 'Your subscription is in a trial window.',
   }),
   [SubscriptionStatuses.ACTIVE]: buildSubscriptionStatusDefinition({
     label: 'Active',
     tone: 'neutral',
-    description: 'Your entitlement record is active.',
+    description: 'Your subscription is active.',
   }),
   [SubscriptionStatuses.PAST_DUE]: buildSubscriptionStatusDefinition({
     label: 'Past Due',
@@ -284,7 +298,7 @@ export const SubscriptionStatusCatalog = Object.freeze({
 });
 
 export const getEntitlementPlan = (planId = DEFAULT_PLAN_ID) => (
-  EntitlementCatalog[planId] || EntitlementCatalog[DEFAULT_PLAN_ID]
+  EntitlementCatalog[planId === 'pro' ? PlanIds.CORE : planId] || EntitlementCatalog[DEFAULT_PLAN_ID]
 );
 
 export const getEntitlementFeatureDefinition = (featureKey) => (

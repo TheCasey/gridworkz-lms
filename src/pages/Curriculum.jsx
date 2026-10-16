@@ -752,6 +752,7 @@ const Curriculum = () => {
                   <div className="op-panel-muted px-4 py-3">
                     <p className="op-eyebrow">Active Subject Limit</p>
                     <p className="op-subtle mt-1.5 text-[12px] leading-5">{curriculumLimitMessage}</p>
+                    {curriculumLimitReached && <Link to="/dashboard/settings" className="inline-block mt-2 text-sm text-lavender-glow underline">View Core options in Settings</Link>}
                   </div>
                 ) : null}
 
@@ -877,7 +878,7 @@ const Curriculum = () => {
                   disabled={isCreateSubjectBlocked}
                   className="op-button flex-1 disabled:cursor-not-allowed">
                   {isCreateSubjectBlocked
-                    ? 'Upgrade Required'
+                    ? 'Active curriculum limit reached'
                     : editingSubject ? 'Save Settings' : `Create Subject${selectedStudents.length > 1 ? 's' : ''}`}
                 </button>
               </div>
@@ -1180,7 +1181,7 @@ const Curriculum = () => {
                     <ListChecks className="mx-auto h-8 w-8 text-[#b8adff]" />
                     <h3 className="mt-3 text-[15px] font-label text-white">No reusable blocks yet</h3>
                     <p className="mx-auto mt-2 max-w-sm text-[11px] leading-5 text-[rgba(238,234,248,0.54)]">
-                      This subject is ready. Add one reusable block, then choose its weekly quantity in Weekly Blocking.
+                      This subject is ready. Add one reusable block, then choose its weekly quantity in Weekly Plan.
                     </p>
                     <button type="button" onClick={openNewDetailBlockDraft} className="op-proto-btn op-proto-btn-primary mt-4">
                       <Plus className="h-3.5 w-3.5" /> Add first block
@@ -1277,7 +1278,7 @@ const Curriculum = () => {
                   <p>weekly target</p>
                 </div>
                 <div className="border-l-2 border-[#f59e0b] bg-[rgba(245,158,11,0.08)] px-3 py-2 text-[10px] leading-4 text-[#f59e0b]">
-                  Weekly Blocking controls which reusable blocks are enabled and how many of each are assigned for a default or specific week.
+                  Weekly Plan controls which reusable blocks are enabled and how many of each are assigned for a default or specific week.
                 </div>
                 <Link
                   to={`/dashboard/${dashboardFeaturesById['weekly-blocking'].path}`}

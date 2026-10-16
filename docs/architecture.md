@@ -1,6 +1,6 @@
 # GridWorkz Architecture
 
-Last updated: 2026-05-26
+Last updated: 2026-10-15
 
 ## Stack
 
@@ -72,9 +72,9 @@ Important modeling details:
 
 - Subjects support multi-student assignment through `student_ids`.
 - Student access is keyed by a generated slug and can be guarded by an optional `access_pin`.
-- `weeklyPlans` are the current student-week execution bridge; they are generated from active subject records, can be published by parents, and are preferred by the student portal and reporting surfaces when present.
+- `weeklyPlans` remain the published/archived student-week authority. The routine-first implementation keeps private drafts in `weeklyPlanDrafts` and per-student defaults in `studentDefaultWeeks`; trusted callables save current editor contents with revision checks and atomically publish an allowlisted snapshot. Private retry receipts remain owner-readable/server-writable. Production promotion is pending.
 - Weekly reports cache school-year and quarter labels for filtering and reporting, and weekly-plan-backed records can preserve assigned block snapshots in `assigned_blocks_snapshot`.
-- Timer sessions are stored in Firestore and mirrored in local storage for resilience.
+- The routine-first implementation uses a trusted singleton school timer in `timerSessions/{studentId}`. Server-issued context and elapsed time govern completion; the student device renders the countdown against the returned server clock. Old local-storage/per-subject timer records remain compatibility inputs only before adoption. Production promotion is pending.
 - `accountEntitlements/{uid}` is the server-owned plan and feature source for premium surfaces such as Lockdown.
 - `supportOperators/{uid}` is the server-owned allowlist for operator callables.
 - `entitlementAuditLogs` stores billing and operator entitlement events.
@@ -90,7 +90,7 @@ Important modeling details:
 - Week calculations live in `src/utils/weekUtils.js`.
 - Parent settings define reset day, hour, minute, and timezone.
 - Rollover currently runs from the parent dashboard client and updates report state from there.
-- Reports prefer published or archived student-week `weeklyPlans` when available, then fall back to subject-derived snapshots for legacy or mixed-model weeks.
+- Reports use published/archived `weeklyPlans`; private drafts never become report input. Adopted current weeks without a publication have no assigned work. Pre-adoption subject history remains reportable. Rollover archives both legacy and v1 publications through the trusted adapter.
 - Report print builders escape report strings before writing print HTML.
 - `scripts/seed-reporting-validation.mjs --dry-run` generates the current manual QA fixture for incomplete-week records, assigned block snapshots, student portal checks, and rollover archival expectations.
 
@@ -98,7 +98,7 @@ Important modeling details:
 
 - Weekly-plan contracts and helpers live in `src/constants/schema.js` and `src/utils/weeklyPlanUtils.js`.
 - `src/hooks/useWeeklyPlanRecord.js` owns the parent review/publish record path.
-- `src/hooks/useStudentPortalWeeklyPlan.js` lets the student portal prefer a published weekly plan before falling back to subjects.
+- `src/hooks/useStudentPortalWeeklyPlan.js` refreshes its listener at the household weekly boundary. Server-owned per-student planning adoption prevents raw-subject fallback for empty/missing current publications; unadopted students retain legacy compatibility.
 - The current subject editor remains the compatibility input; persisted first-class curriculum templates and assignment management are not built out yet.
 
 ### Timers
@@ -106,7 +106,7 @@ Important modeling details:
 - Timer logic lives in `src/utils/timerUtils.js`.
 - Timers are based on target end time, not interval drift.
 - Student portal timers persist both locally and in `timerSessions`.
-- Timer sessions are scoped to their student week, published weekly plan, and block identity. The portal ignores and removes sessions for unavailable or already-completed blocks before evaluating the one-timer-at-a-time policy.
+- Timer sessions are scoped to their student week, published weekly plan, block identity and planned duration. The portal removes unavailable/completed sessions and sessions whose timer requirement or duration changed. Non-timed blocks show direct completion and may finish while a different block’s timer continues.
 
 ### Student portal access policy
 
@@ -163,7 +163,8 @@ This is sufficient for the current browser-extension launch path, but the broade
 
 ## Tooling State
 
-- No automated test suite is configured.
+- Focused helper checks and an isolated Auth/Firestore/Functions + Chromium harness now support the routine-first execution. See [testing instructions](upgrades/product-direction-execution/testing.md).
+- Routine/cosmetic and private draft/default authority and interfaces are locally implemented and verified. Correction/amendment contracts remain preparatory; production consumers have not been switched. See [contract boundaries](upgrades/product-direction-execution/contracts.md).
 - `npm run build` currently passes.
 - `npm run lint` currently passes with the root ESLint config.
 - A lightweight GitHub Actions workflow runs lint and build on push and pull request.
@@ -176,3 +177,23 @@ This is sufficient for the current browser-extension launch path, but the broade
 - Feature docs: [features/README.md](features/README.md)
 - Implemented chores and rewards module: [specs/chores-and-rewards-module.md](specs/chores-and-rewards-module.md)
 - Upgrade docs: [upgrades/README.md](upgrades/README.md)
+
+## Trusted School Completion (routine-first implementation; release pending)
+
+`functions/src/schoolCompletionAuthority.js` owns PIN-verified school reads, student submissions/timers and authenticated parent corrections. Immutable evidence remains in `submissions`; `blockCompletionStates` stores effective status, and `parentCorrectionEvents` plus `schoolStateHistory` retain audit history. Commands use revision checks and private idempotency receipts. Public student markers invalidate reads across devices. The server returns the canonical household school week, so device clock skew cannot advance the assignment week or grant elapsed timer time.
+
+A missing legacy execution freezes separately in private `schoolExecutionSnapshots`. First publication uses a private immutable `schoolPublicationBridges` record and exact one-to-one `legacy_source_links` to preserve executed work. Ambiguous pre-existing draft identities require parent reconciliation. Canonical states take precedence over inherited baselines; publication-era blocks cannot inherit unrelated subject/index evidence. Missing/empty adopted weeks stay empty.
+
+`useParentSchoolState`, the student adapter, report snapshot builders and trusted Lockdown policy share effective state semantics. Parent corrections never fabricate student submissions or time. Saved original reports cannot update; explicit `weeklyReportAmendments` and private amendment heads provide versioned changes. Historical reports without reliable assignment attribution require review and retain their original numerical evidence. General public-read/session redesign remains separate scope.
+
+## Shared report presentation (routine-first implementation; release pending)
+
+`src/utils/reportPresentation.js` normalizes live school snapshots and saved original/amendment records for both `ReportSnapshotDetails` and every Reports print button. Effective counts remain separate from immutable evidence/time. New trusted filings freeze exact minutes, original evidence/custom responses/resources, publication revision, correction event snapshots/watermark and household timezone. Historical display uses recorded assignment boundaries; exact legacy duplicate projections are paired for presentation while unmatched history remains visible. Student/subject filters select whole weekly records. PDF generation and visual QA are separate from cloud release and physical printer acceptance.
+
+## Core billing authority (implementation/integration; release pending)
+
+`functions/src/coreBillingAuthority.js` coordinates authenticated Core Checkout, billing portal sessions and provider-current webhook reconciliation. Private billingAccounts bindings and immutable billingCheckoutIntents/billingCheckoutAttempts/billingEventReceipts records are server-only. A per-account fenced lease covers provider work outside Firestore transactions; the final entitlement/audit/receipt commit rereads current overrides and usage transactionally. Known customer ownership must be provider-verified; owner-writable parent fields never establish a billing association.
+
+The client uses the three trusted billing adapters through `useCoreBilling`. Purchase availability is server-reported and defaults off; live checkout has a separate approval gate. Uncertain checkout keeps an exact account-scoped intent across reload. Provider navigation and success redirects grant no entitlement. Settings preserves current access while billing loads or fails, exposes subscription management after downgrade and keeps new Lockdown purchase disabled. The current [billing operations runbook](upgrades/product-direction-execution/billing-operations.md) distinguishes local/provider simulations from actual sandbox and production acceptance.
+
+Quota-increasing student/subject creates and subject reactivation share a private `quotaMutationState/{parentId}` transaction coordinator. Transactions resolve fresh entitlements and count actual owner records, including legacy active curriculum; they do not trust usage snapshots or create fallback entitlement records. `reactivateSubject` is the only inactive-to-active subject transition; direct edits retain immutable ownership and ordinary existing-work/archive/delete access.

@@ -1,299 +1,125 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  doc,
-  getDoc,
-  getFirestore,
-  onSnapshot,
-  serverTimestamp,
-  setDoc,
-} from 'firebase/firestore';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { collection, doc, getFirestore, onSnapshot, query, where } from 'firebase/firestore';
+import { nanoid } from 'nanoid';
 import { app } from '../firebase/firebaseConfig';
-import { Collections, WeeklyPlanStatuses } from '../constants/schema';
+import { Collections } from '../constants/schema';
+import { buildStudentDefaultWeekId } from '../../functions/src/weeklyPlanningFoundation.js';
+import { buildWeeklyPlanDraft, buildWeeklyPlanIdentity } from '../utils/weeklyPlanUtils';
 import {
-  buildPublishedWeeklyPlan,
-  buildWeeklyPlanDraft,
-  buildWeeklyPlanIdentity,
-} from '../utils/weeklyPlanUtils';
+  saveTrustedWeeklyPlanDraft,
+  publishTrustedWeeklyPlan,
+  saveTrustedStudentDefaultWeek,
+} from '../firebase/trustedOperations';
 
-const cloneWeeklyPlanValue = (value) => {
-  if (Array.isArray(value)) {
-    return value.map(cloneWeeklyPlanValue);
-  }
+const candidateForWrite = (plan, identity, blocks) => ({
+  id: identity.planId,
+  parent_id: identity.parentId,
+  student_id: identity.studentId,
+  week_key: identity.weekKey,
+  assignment_ids: [...new Set(blocks.map((block) => block.assignment_id))],
+  weekly_exceptions: plan?.weekly_exceptions || [],
+  blocks,
+  parent_notes: plan?.parent_notes || '',
+  legacy_source_links: plan?.legacy_source_links || {},
+});
+const uncertainFailure = (error) => !['aborted', 'invalid-argument', 'permission-denied', 'unauthenticated', 'failed-precondition', 'not-found', 'already-exists'].includes(String(error?.code || '').replace(/^functions\//, ''));
 
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, nestedValue]) => [key, cloneWeeklyPlanValue(nestedValue)])
-    );
-  }
-
-  return value;
-};
-
-const deriveAssignmentIdsFromBlocks = (blocks) => {
-  const seenAssignmentIds = new Set();
-
-  return (Array.isArray(blocks) ? blocks : []).reduce((assignmentIds, block) => {
-    const assignmentId = typeof block?.assignment_id === 'string' ? block.assignment_id.trim() : '';
-
-    if (!assignmentId || seenAssignmentIds.has(assignmentId)) {
-      return assignmentIds;
-    }
-
-    seenAssignmentIds.add(assignmentId);
-    assignmentIds.push(assignmentId);
-    return assignmentIds;
-  }, []);
-};
-
-export const useWeeklyPlanRecord = ({
-  currentUser = null,
-  studentId = '',
-  subjects = [],
-  parentSettings = {},
-  referenceDate = null,
-  enabled = true,
-  listen = true,
-} = {}) => {
+export const useWeeklyPlanRecord = ({ currentUser = null, studentId = '', subjects = [], parentSettings = {}, referenceDate = null, enabled = true, listen = true } = {}) => {
   const db = getFirestore(app);
-  const [weeklyPlan, setWeeklyPlan] = useState(null);
-  const [loading, setLoading] = useState(Boolean(listen && enabled && currentUser && studentId));
+  const [records, setRecords] = useState({ scope: '', published: null, draft: null, defaults: null, loaded: [] });
   const [error, setError] = useState(null);
-  const [savingPlan, setSavingPlan] = useState(false);
-  const [publishingPlan, setPublishingPlan] = useState(false);
-
-  const weekIdentity = useMemo(() => {
-    if (!currentUser?.uid || !studentId) {
-      return null;
-    }
-
-    return buildWeeklyPlanIdentity({
-      parentId: currentUser.uid,
-      studentId,
-      referenceDate: referenceDate || new Date(),
-      weekConfig: parentSettings,
-    });
-  }, [
-    currentUser?.uid,
-    parentSettings?.week_reset_day,
-    parentSettings?.week_reset_hour,
-    parentSettings?.week_reset_minute,
-    referenceDate,
-    studentId,
-  ]);
+  const [action, setAction] = useState('');
+  // An uncertain request keeps its exact JSON payload and idempotency key for safe retry.
+  const pending = useRef(new Map());
+  const weekIdentity = useMemo(() => currentUser?.uid && studentId ? buildWeeklyPlanIdentity({
+    parentId: currentUser.uid, studentId, referenceDate: referenceDate || new Date(), weekConfig: parentSettings,
+  }) : null, [currentUser?.uid, studentId, referenceDate, parentSettings?.week_reset_day, parentSettings?.week_reset_hour, parentSettings?.week_reset_minute, parentSettings?.timezone]);
+  const scope = weekIdentity?.planId || '';
+  const visible = records.scope === scope ? records : { published: null, draft: null, defaults: null, loaded: [] };
+  const loading = Boolean(listen && enabled && scope && !error && visible.loaded.length < 4);
 
   useEffect(() => {
-    if (!listen || !enabled || !weekIdentity?.planId) {
-      setWeeklyPlan(null);
-      setError(null);
-      setLoading(false);
-      return undefined;
-    }
+    setError(null);
+    setRecords({ scope, published: null, draft: null, defaults: null, loaded: [] });
+    if (!listen || !enabled || !scope) return undefined;
+    let active = true;
+    const definitions = [
+      ['published', Collections.WEEKLY_PLANS, scope],
+      ['draft', Collections.WEEKLY_PLAN_DRAFTS, scope],
+      ['defaults', Collections.STUDENT_DEFAULT_WEEKS, buildStudentDefaultWeekId({ parentId: currentUser.uid, studentId })],
+    ];
+    const subscriptions = definitions.map(([key, collection, id]) => onSnapshot(doc(db, collection, id), (snapshot) => {
+      if (!active) return;
+      setRecords((previous) => ({
+        ...previous, [key]: snapshot.exists() ? { ...snapshot.data(), id: snapshot.id } : null,
+        loaded: [...new Set([...previous.loaded, key])],
+      }));
+    }, (nextError) => { if (active) setError(nextError); }));
+    subscriptions.push(onSnapshot(query(collection(db, 'schoolExecutionSnapshots'), where('parent_id', '==', currentUser.uid), where('student_id', '==', studentId), where('week_key', '==', weekIdentity.weekKey)), (snapshot) => {
+      if (active) setRecords((previous) => ({ ...previous, execution: snapshot.docs.find((item) => item.id === `legacy-execution:${scope}`)?.data() || null,
+        loaded: [...new Set([...previous.loaded, 'execution'])] }));
+    }, (nextError) => { if (active) setError(nextError); }));
+    return () => { active = false; subscriptions.forEach((unsubscribe) => unsubscribe()); };
+  }, [db, scope, enabled, listen, currentUser?.uid, studentId, weekIdentity?.weekKey]);
 
-    setLoading(true);
+  const generatedPreview = useMemo(() => scope ? (!visible.draft && !visible.published && visible.execution ? { ...visible.execution, id: scope, status: 'draft' } : buildWeeklyPlanDraft({
+    parentId: currentUser.uid, studentId, subjects, referenceDate: weekIdentity.weekStart,
+    weekConfig: parentSettings, defaults: visible.defaults,
+  })) : null, [scope, subjects, visible.defaults, visible.execution, visible.draft, visible.published, parentSettings, currentUser?.uid, studentId, weekIdentity?.weekStart]);
+  const buildDraftPreview = useCallback(() => generatedPreview, [generatedPreview]);
 
-    const weeklyPlanRef = doc(db, Collections.WEEKLY_PLANS, weekIdentity.planId);
-    const unsubscribe = onSnapshot(weeklyPlanRef, (snapshot) => {
-      setWeeklyPlan(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
-      setError(null);
-      setLoading(false);
-    }, (nextError) => {
-      console.error('Error fetching weekly plan:', nextError.code, nextError.message);
-      setError(nextError);
-      setLoading(false);
-    });
-
-    const loadingTimeout = setTimeout(() => setLoading(false), 3000);
-
-    return () => {
-      unsubscribe();
-      clearTimeout(loadingTimeout);
+  const perform = useCallback(async (kind, payload, callable) => {
+    const signature = JSON.stringify(payload);
+    const requestId = `${kind}:${payload.student_id}:${payload.week_key || ''}`;
+    const previous = pending.current.get(requestId);
+    const request = previous?.signature === signature ? previous : {
+      signature, payload: JSON.parse(JSON.stringify({ ...payload, idempotency_key: nanoid() })),
     };
-  }, [db, enabled, listen, weekIdentity?.planId]);
-
-  const buildDraftPreview = useCallback((overrides = {}) => {
-    if (!currentUser?.uid || !studentId) {
+    pending.current.set(requestId, request);
+    setAction(kind);
+    setError(null);
+    try {
+      const response = await callable(request.payload);
+      pending.current.delete(requestId);
+      return response;
+    } catch (nextError) {
+      if (!uncertainFailure(nextError)) pending.current.delete(requestId);
+      setError(nextError);
       return null;
-    }
+    } finally { setAction(''); }
+  }, []);
 
-    return buildWeeklyPlanDraft({
-      parentId: currentUser.uid,
-      studentId,
-      subjects: overrides.subjects ?? subjects,
-      referenceDate: weekIdentity?.weekStart || referenceDate,
-      weekConfig: parentSettings,
-      existingPlan: overrides.existingPlan ?? weeklyPlan,
-    });
-  }, [currentUser?.uid, parentSettings, referenceDate, studentId, subjects, weekIdentity?.weekStart, weeklyPlan]);
-
-  const buildDraftMutationPayload = useCallback(({
-    existingPlan = null,
-    subjects: overrideSubjects,
-    planOverrides = {},
-  } = {}) => {
-    const basePlan = existingPlan
-      ? {
-          ...existingPlan,
-          status: WeeklyPlanStatuses.DRAFT,
-          published_at: null,
-          archived_at: null,
-        }
-      : buildDraftPreview({
-          existingPlan: null,
-          subjects: overrideSubjects,
-        });
-
-    if (!basePlan) {
-      return null;
-    }
-
-    const nextBlocks = Array.isArray(planOverrides.blocks)
-      ? cloneWeeklyPlanValue(planOverrides.blocks)
-      : cloneWeeklyPlanValue(basePlan.blocks || []);
-    const nextAssignmentIds = Array.isArray(planOverrides.assignment_ids)
-      ? cloneWeeklyPlanValue(planOverrides.assignment_ids)
-      : Array.isArray(planOverrides.blocks)
-        ? deriveAssignmentIdsFromBlocks(nextBlocks)
-        : cloneWeeklyPlanValue(basePlan.assignment_ids || []);
-
-    return {
-      ...basePlan,
-      assignment_ids: nextAssignmentIds,
-      weekly_exceptions: Array.isArray(planOverrides.weekly_exceptions)
-        ? cloneWeeklyPlanValue(planOverrides.weekly_exceptions)
-        : cloneWeeklyPlanValue(basePlan.weekly_exceptions || []),
-      blocks: nextBlocks,
+  const mutatePlan = useCallback((kind, options = {}) => {
+    if (!scope) return Promise.resolve(null);
+    const source = options.candidate || visible.draft || visible.published || generatedPreview;
+    const blocks = options.planOverrides?.blocks ?? source?.blocks ?? [];
+    const payload = {
+      student_id: studentId, week_key: weekIdentity.weekKey,
+      candidate: candidateForWrite({ ...source, legacy_source_links: options.planOverrides?.legacy_source_links ?? source?.legacy_source_links }, weekIdentity, blocks),
+      // Callers editing a local candidate must provide the baseline captured when it loaded.
+      expected_draft_revision: options.expectedDraftRevision ?? visible.draft?.revision ?? 0,
+      expected_published_revision: options.expectedPublishedRevision ?? visible.published?.revision ?? 0,
     };
-  }, [buildDraftPreview]);
-
-  const saveDraftWeeklyPlan = useCallback(async ({
-    overwritePublished = false,
-    overwriteArchived = false,
-    subjects: overrideSubjects,
-    planOverrides = {},
-  } = {}) => {
-    if (!currentUser?.uid || !studentId || !weekIdentity?.planId) {
-      return null;
-    }
-
-    setSavingPlan(true);
-
-    try {
-      const weeklyPlanRef = doc(db, Collections.WEEKLY_PLANS, weekIdentity.planId);
-      const snapshot = await getDoc(weeklyPlanRef);
-      const existingPlan = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
-      const existingStatus = existingPlan?.status || null;
-
-      if (existingStatus === WeeklyPlanStatuses.PUBLISHED && !overwritePublished) {
-        const nextError = new Error('Weekly plan is already published for this student-week.');
-        setError(nextError);
-        return null;
-      }
-
-      if (existingStatus === WeeklyPlanStatuses.ARCHIVED && !overwriteArchived) {
-        const nextError = new Error('Weekly plan is archived for this student-week.');
-        setError(nextError);
-        return null;
-      }
-
-      const draftPlan = buildDraftMutationPayload({
-        existingPlan,
-        subjects: overrideSubjects,
-        planOverrides,
-      });
-
-      if (!draftPlan) {
-        return null;
-      }
-
-      await setDoc(weeklyPlanRef, {
-        ...draftPlan,
-        created_at: existingPlan?.created_at || serverTimestamp(),
-        updated_at: serverTimestamp(),
-      }, { merge: true });
-
-      setError(null);
-      return {
-        ...draftPlan,
-        created_at: existingPlan?.created_at || null,
-      };
-    } catch (nextError) {
-      console.error('Error saving weekly plan draft:', nextError);
-      setError(nextError);
-      return null;
-    } finally {
-      setSavingPlan(false);
-    }
-  }, [buildDraftMutationPayload, currentUser?.uid, db, studentId, weekIdentity?.planId]);
-
-  const publishWeeklyPlan = useCallback(async ({
-    subjects: overrideSubjects,
-    planOverrides = {},
-  } = {}) => {
-    if (!currentUser?.uid || !studentId || !weekIdentity?.planId) {
-      return null;
-    }
-
-    setPublishingPlan(true);
-
-    try {
-      const weeklyPlanRef = doc(db, Collections.WEEKLY_PLANS, weekIdentity.planId);
-      const snapshot = await getDoc(weeklyPlanRef);
-      const existingPlan = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
-
-      if (existingPlan?.status === WeeklyPlanStatuses.ARCHIVED) {
-        const nextError = new Error('Weekly plan is archived for this student-week.');
-        setError(nextError);
-        return null;
-      }
-
-      const draftPlan = buildDraftMutationPayload({
-        existingPlan,
-        subjects: overrideSubjects,
-        planOverrides,
-      });
-
-      if (!draftPlan) {
-        return null;
-      }
-
-      const publishedPlan = buildPublishedWeeklyPlan({
-        ...draftPlan,
-        id: weekIdentity.planId,
-      });
-
-      await setDoc(weeklyPlanRef, {
-        ...publishedPlan,
-        created_at: existingPlan?.created_at || serverTimestamp(),
-        published_at: serverTimestamp(),
-        updated_at: serverTimestamp(),
-      }, { merge: true });
-
-      setError(null);
-      return {
-        ...publishedPlan,
-        created_at: existingPlan?.created_at || null,
-      };
-    } catch (nextError) {
-      console.error('Error publishing weekly plan:', nextError);
-      setError(nextError);
-      return null;
-    } finally {
-      setPublishingPlan(false);
-    }
-  }, [buildDraftMutationPayload, currentUser?.uid, db, studentId, weekIdentity?.planId]);
+    return perform(kind, payload, kind === 'publish' ? publishTrustedWeeklyPlan : saveTrustedWeeklyPlanDraft).then((response) => {
+      if (response) setRecords((previous) => previous.scope === scope ? {
+        ...previous,
+        draft: { ...previous.draft, ...payload.candidate, status: 'draft', revision: response.draft_revision, base_published_revision: response.published_revision },
+        published: kind === 'publish' ? { ...previous.published, ...payload.candidate, status: 'published', revision: response.published_revision } : previous.published,
+      } : previous);
+      return response;
+    });
+  }, [scope, studentId, weekIdentity, visible.draft, visible.published, generatedPreview, perform]);
+  const saveDraftWeeklyPlan = useCallback((options) => mutatePlan('save', options), [mutatePlan]);
+  const publishWeeklyPlan = useCallback((options) => mutatePlan('publish', options), [mutatePlan]);
+  const saveDefaultWeek = useCallback(({ defaultBlockQuantities, expectedRevision }) => perform('defaults', {
+    student_id: studentId, default_block_quantities: defaultBlockQuantities, expected_revision: expectedRevision,
+  }, saveTrustedStudentDefaultWeek), [studentId, perform]);
 
   return {
-    buildDraftPreview,
-    error,
-    loading,
-    planId: weekIdentity?.planId || '',
-    publishWeeklyPlan,
-    publishingPlan,
-    saveDraftWeeklyPlan,
-    savingPlan,
-    weekIdentity,
-    weeklyPlan,
+    buildDraftPreview, error, clearError: () => setError(null), loading, planId: scope, weekIdentity,
+    frozenExecution: visible.execution, weeklyPlan: visible.published, draftPlan: visible.draft, studentDefaultWeek: visible.defaults,
+    publishWeeklyPlan, saveDraftWeeklyPlan, saveDefaultWeek,
+    savingPlan: action === 'save', publishingPlan: action === 'publish', savingDefaultWeek: action === 'defaults',
   };
 };
-
 export default useWeeklyPlanRecord;

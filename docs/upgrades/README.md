@@ -8,6 +8,7 @@ For execution planning on the baseline model rollout, use [curriculum-and-weekly
 
 Current upgrade docs:
 
+- [product-direction-execution-plan-2026-09.md](product-direction-execution-plan-2026-09.md) — routine-first execution started 2026-10-12; accepted defaults, phase state, tests, and production gates live in [product-direction-execution/](product-direction-execution/workflow-plan.md).
 - [current-surface-finalization-and-rollout.md](current-surface-finalization-and-rollout.md)
 - [baseline-product-foundation.md](baseline-product-foundation.md)
 - [curriculum-and-weekly-plan-rollout.md](curriculum-and-weekly-plan-rollout.md)

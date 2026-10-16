@@ -1,3 +1,5 @@
+import StudentDailyRoutines from '../components/student/StudentDailyRoutines';
+import RoutineCosmetics, { CosmeticArt } from '../components/student/RoutineCosmetics';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
@@ -19,7 +21,7 @@ import {
   X,
 } from 'lucide-react';
 
-import { getCurrentWeekRange, getWeekConfig } from '../utils/weekUtils';
+import { getCurrentWeekRange, getWeekConfig, getWeekKey } from '../utils/weekUtils';
 import {
   createTimerConfig, getRemainingTime, saveTimerToStorage,
   loadTimerFromStorage, clearTimerFromStorage, getTimerKey, formatRemainingTime,
@@ -27,6 +29,7 @@ import {
 } from '../utils/timerUtils';
 import useStudentAccessPolicy, { StudentAccessPolicyReasonCodes } from '../hooks/useStudentAccessPolicy';
 import useStudentPortalWeeklyPlan from '../hooks/useStudentPortalWeeklyPlan';
+import useStudentSchoolState from '../hooks/useStudentSchoolState';
 import {
   getLockdownStateGuidance,
   getRequestAccessGuidance,
@@ -122,12 +125,14 @@ const StudentPortal = () => {
   const [expandedBlockIndex, setExpandedBlockIndex] = useState(null);
   const [summaryText, setSummaryText] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [completedBlocks, setCompletedBlocks] = useState({});
+  const [legacyCompletedBlocks, setCompletedBlocks] = useState({});
   const [selectedResources, setSelectedResources] = useState([]);
   const [activeTimers, setActiveTimers] = useState({});
   const [alarmSound, setAlarmSound] = useState(ALARM_SOUNDS[0].file);
   const [customFieldResponses, setCustomFieldResponses] = useState({});
   const submissionLocksRef = useRef({});
+  const completionIdentityRef = useRef(null);
+  const liveCompletionContextRef = useRef(null);
   const alarmAudioRef = useRef(null);
   const alarmStopTimerRef = useRef(null);
   const alarmSoundRef = useRef(ALARM_SOUNDS[0].file);
@@ -140,21 +145,49 @@ const StudentPortal = () => {
   const timerRemovalInFlightRef = useRef({});
   const timerRemovalPromisesRef = useRef({});
 
+  useEffect(() => {
+    setIsAuthenticated(false); setPin(''); setSelectedSubject(null); setSelectedBlockIndex(null);
+    completionIdentityRef.current = null; submissionLocksRef.current = {};
+  }, [slug, student?.id, student?.access_pin]);
+
   const db = getFirestore(app);
   const rawSubjectMap = useMemo(() => Object.fromEntries(subjects.map(subject => [subject.id, subject])), [subjects]);
   const weekConfig = useMemo(() => getWeekConfig(student || {}), [
     student?.week_reset_day,
     student?.week_reset_hour,
     student?.week_reset_minute,
+    student?.timezone,
   ]);
   const {
-    weekIdentity,
-    weeklyPlan: publishedWeeklyPlan,
-    loading: publishedWeeklyPlanLoading,
+    weekIdentity: deviceWeekIdentity,
+    weeklyPlan: publicWeeklyPlan,
+    loading: publicWeeklyPlanLoading,
+    usesWeeklyPlanAuthority: publicWeeklyPlanAuthority,
+    error: publicWeeklyPlanError,
   } = useStudentPortalWeeklyPlan({
     student,
     enabled: Boolean(student?.id && student?.parent_id),
   });
+  // All current clients read and command schoolwork through the trusted adapter.
+  // The public plan listener supplies publication/reset invalidation only.
+  const usesTrustedSchool = Boolean(student?.id);
+  const schoolEnabled = Boolean(student?.id && (!student.access_pin || isAuthenticated));
+  const school = useStudentSchoolState({ student, slug, pin, weekKey: deviceWeekIdentity?.weekKey || '',
+    sourceRevision: `${publicWeeklyPlanLoading}:${publicWeeklyPlan?.status || ''}:${publicWeeklyPlan?.revision || 0}`,
+    enabled: schoolEnabled && !publicWeeklyPlanLoading });
+  const weekIdentity = useMemo(() => school.data ? {
+    weekKey: school.data.week_key,
+    weekStart: new Date(school.data.week_start_ms), weekEnd: new Date(school.data.week_end_ms),
+  } : deviceWeekIdentity, [school.data, deviceWeekIdentity]);
+  const publishedWeeklyPlan = usesTrustedSchool ? school.data?.weekly_plan || null : publicWeeklyPlan;
+  const usesWeeklyPlanAuthority = usesTrustedSchool || publicWeeklyPlanAuthority;
+  const publishedWeeklyPlanLoading = publicWeeklyPlanLoading || school.loading;
+  const publishedWeeklyPlanError = school.error || publicWeeklyPlanError;
+  const completedBlocks = usesTrustedSchool ? school.completedBlocks : legacyCompletedBlocks;
+  useEffect(() => {
+    if (!usesTrustedSchool) return;
+    setActiveTimers(school.timer ? { [school.timer.subjectId]: school.timer } : {});
+  }, [usesTrustedSchool, school.timer]);
   const timerValidationWorkItems = useMemo(() => (
     publishedWeeklyPlan
       ? buildPublishedWeeklyPlanPortalWorkItems({
@@ -164,10 +197,10 @@ const StudentPortal = () => {
       : []
   ), [publishedWeeklyPlan, rawSubjectMap]);
   const timerBlockContext = useMemo(() => buildPortalTimerBlockContext({
-    hasPublishedWeeklyPlan: Boolean(publishedWeeklyPlan),
+    hasPublishedWeeklyPlan: usesWeeklyPlanAuthority || Boolean(publishedWeeklyPlan),
     publishedWorkItems: timerValidationWorkItems,
     subjects,
-  }), [publishedWeeklyPlan, subjects, timerValidationWorkItems]);
+  }), [publishedWeeklyPlan, subjects, timerValidationWorkItems, usesWeeklyPlanAuthority]);
   const timerPartition = useMemo(() => partitionPortalTimers({
     activeTimers,
     blockContext: timerBlockContext,
@@ -204,20 +237,21 @@ const StudentPortal = () => {
   const workLauncherContract = useMemo(() => buildPublishedWeeklyPlanWorkLauncherContract({
     studentRecord: student,
     weeklyPlan: publishedWeeklyPlan,
+    usesWeeklyPlanAuthority,
     subjectsById: rawSubjectMap,
     timerSessions: activeTimerSessions,
     completedBlocks,
     entitlementActive: true,
     referenceDate: new Date(),
-  }), [activeTimerSessions, completedBlocks, publishedWeeklyPlan, rawSubjectMap, student]);
-  const hasPublishedWeeklyPlan = workLauncherContract.has_published_weekly_plan;
+  }), [activeTimerSessions, completedBlocks, publishedWeeklyPlan, rawSubjectMap, student, usesWeeklyPlanAuthority]);
+  const hasPublishedWeeklyPlan = workLauncherContract.uses_weekly_plan_authority;
   const publishedWorkItems = workLauncherContract.blocks;
-  const portalSubjects = workLauncherContract.bridge_subjects.length > 0
+  const portalSubjects = workLauncherContract.uses_weekly_plan_authority
     ? workLauncherContract.bridge_subjects
     : subjects;
   const portalSubjectIds = useMemo(
-    () => portalSubjects.map((subject) => subject.id).filter(Boolean),
-    [portalSubjects]
+    () => [...new Set([...portalSubjects, ...subjects].map((subject) => subject.id).filter(Boolean))],
+    [portalSubjects, subjects]
   );
   const portalSubjectIdsKey = portalSubjectIds.join('|');
   const subjectMap = useMemo(
@@ -254,6 +288,23 @@ const StudentPortal = () => {
   const currentAllowedResources = workLauncherContract.allowed_resources;
   const requestAccessGuidance = useMemo(() => getRequestAccessGuidance(), []);
   const getSoundUrl = (file) => `${import.meta.env.BASE_URL}sounds/${file}`;
+  liveCompletionContextRef.current = { student, items: publishedWorkItems, authority: hasPublishedWeeklyPlan,
+    weekKey: weekIdentity?.weekKey, weekConfig, loading: publishedWeeklyPlanLoading,
+    error: publishedWeeklyPlanError, getSubjectPolicy, getWorkItemPolicy };
+  useEffect(() => {
+    if (!selectedSubject || publishedWeeklyPlanLoading) return;
+    const captured = completionIdentityRef.current;
+    const currentItem = publishedWorkItems.find((item) => item.id === captured?.blockId);
+    const currentSubject = currentItem?.compatibilitySubject;
+    const requirements = currentSubject ? JSON.stringify([currentSubject.require_timer, currentSubject.require_input, currentSubject.block_length, currentSubject.custom_fields]) : '';
+    if (captured?.weekKey !== weekIdentity?.weekKey || (hasPublishedWeeklyPlan && (!currentItem || requirements !== captured.requirements))) {
+      delete submissionLocksRef.current[`${selectedSubject.id}_${selectedBlockIndex}`];
+      completionIdentityRef.current = null;
+      setSelectedSubject(null); setSelectedBlockIndex(null);
+      setError('The published week changed. Review the current blocks before completing work.');
+    }
+  }, [selectedSubject, selectedBlockIndex, publishedWeeklyPlanLoading, publishedWorkItems, hasPublishedWeeklyPlan, weekIdentity?.weekKey]);
+
   const portalLoading = loading || (Boolean(student?.id && student?.parent_id) && publishedWeeklyPlanLoading);
   const studentChores = useStudentChores({
     student,
@@ -263,6 +314,11 @@ const StudentPortal = () => {
     enabled: Boolean(student?.id),
   });
   const subjectMapRef = useRef(subjectMap);
+  const legacyHouseholdReady = Boolean(studentChores.choreState && !studentChores.routineFirst);
+  const routineSelections = studentChores.routineRewards?.cosmetics?.selected_cosmetic_ids || {};
+  useEffect(() => {
+    if (studentChores.routineFirst && ['allowance', 'rewards'].includes(activeWorkspace)) setActiveWorkspace('chores');
+  }, [studentChores.routineFirst, activeWorkspace]);
   const getNextAvailableBlockRef = useRef(getNextAvailableBlock);
 
   useEffect(() => {
@@ -334,14 +390,11 @@ const StudentPortal = () => {
     if (!slug) return;
     let unsubscribeSubjects = () => {};
     let unsubscribeLegacySubjects = () => {};
-    let unsubscribeSubmissions = () => {};
     const cleanupStudentListeners = () => {
       unsubscribeSubjects();
       unsubscribeLegacySubjects();
-      unsubscribeSubmissions();
       unsubscribeSubjects = () => {};
       unsubscribeLegacySubjects = () => {};
-      unsubscribeSubmissions = () => {};
     };
     const studentQuery = query(collection(db, 'students'), where('slug', '==', slug), limit(1));
     const unsubscribeStudent = onSnapshot(studentQuery, (snapshot) => {
@@ -372,21 +425,6 @@ const StudentPortal = () => {
         }
       }, () => setLoading(false));
 
-      const { weekStart } = getCurrentWeekRange(new Date(), studentData);
-      const submissionsQuery = query(collection(db, 'submissions'),
-        where('student_id', '==', studentData.id), where('timestamp', '>=', weekStart), orderBy('timestamp', 'desc'));
-      unsubscribeSubmissions = onSnapshot(submissionsQuery, (snap) => {
-        const nextCompletedBlocks = {};
-        snap.docs.forEach((submissionDoc) => {
-          const submission = submissionDoc.data();
-          if (!submission.subject_id || !Number.isInteger(submission.block_index)) return;
-          if (!nextCompletedBlocks[submission.subject_id]) {
-            nextCompletedBlocks[submission.subject_id] = [];
-          }
-          nextCompletedBlocks[submission.subject_id].push(submission.block_index);
-        });
-        setCompletedBlocks(nextCompletedBlocks);
-      });
     }, () => { setError('Student not found'); setLoading(false); });
     return () => {
       unsubscribeStudent();
@@ -395,7 +433,24 @@ const StudentPortal = () => {
   }, [slug, db]);
 
   useEffect(() => {
-    if (!student?.id) return undefined;
+    setCompletedBlocks({});
+    if (usesTrustedSchool || !student?.id || !weekIdentity?.weekStart) return undefined;
+    const submissionsQuery = query(collection(db, 'submissions'),
+      where('student_id', '==', student.id), where('timestamp', '>=', weekIdentity.weekStart),
+      where('timestamp', '<=', weekIdentity.weekEnd), orderBy('timestamp', 'desc'));
+    return onSnapshot(submissionsQuery, (snapshot) => {
+      const next = {};
+      snapshot.docs.forEach((submissionDoc) => {
+        const submission = submissionDoc.data();
+        if (!submission.subject_id || !Number.isInteger(submission.block_index)) return;
+        (next[submission.subject_id] ||= []).push(submission.block_index);
+      });
+      setCompletedBlocks(next);
+    });
+  }, [db, student?.id, weekIdentity?.weekStart, weekIdentity?.weekEnd, usesTrustedSchool]);
+
+  useEffect(() => {
+    if (usesTrustedSchool || !student?.id) return undefined;
     if (!portalSubjectIdsKey) {
       setActiveTimers((prev) => (Object.keys(prev).length > 0 ? {} : prev));
       return;
@@ -470,7 +525,7 @@ const StudentPortal = () => {
     });
 
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [db, portalSubjectIdsKey, student?.id]);
+  }, [db, portalSubjectIdsKey, student?.id, usesTrustedSchool]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -634,7 +689,7 @@ const StudentPortal = () => {
   };
 
   const persistTimer = async (subject, timer, includeCreatedAt = false) => {
-    if (!student || !subject || !timer) return;
+    if (usesTrustedSchool || !student || !subject || !timer) return;
 
     await setDoc(
       doc(db, 'timerSessions', getTimerSessionDocId(student.id, subject.id)),
@@ -647,6 +702,11 @@ const StudentPortal = () => {
 
   const removeTimer = async (subjectId) => {
     if (!student || !subjectId) return;
+    if (usesTrustedSchool) {
+      const timer = currentActiveTimers[subjectId];
+      if (timer && school.ready && !school.busy) await school.commandTimer({ action: 'reset', blockId: timer.blockId, timerSessionId: timer.sessionId });
+      return;
+    }
     if (timerRemovalPromisesRef.current[subjectId]) {
       await timerRemovalPromisesRef.current[subjectId];
       return;
@@ -701,6 +761,17 @@ const StudentPortal = () => {
 
     await primeAlarmAudio();
     const candidateBlock = timerStartPolicy.meta?.candidateBlockIndex;
+    if (usesTrustedSchool) {
+      if (!school.ready || school.busy) return;
+      const item = getLauncherWorkItemForSubject(subject, candidateBlock);
+      if (!item) return;
+      const response = await school.commandTimer({ action: 'start', blockId: item.id });
+      if (response) {
+        setExpandedSubjectId(subject.id); setExpandedBlockIndex(candidateBlock);
+        delete completionNotifiedRef.current[subject.id];
+      }
+      return;
+    }
 
     const config = {
       ...createTimerConfig(subject?.block_length || 30),
@@ -731,6 +802,10 @@ const StudentPortal = () => {
 
   const pauseTimer = async (subject) => {
     const current = currentActiveTimers[subject.id];
+    if (usesTrustedSchool) {
+      if (current && school.ready && !school.busy) await school.commandTimer({ action: 'pause', blockId: current.blockId, timerSessionId: current.sessionId });
+      return;
+    }
     const config = {
       ...current,
       remainingTime: current?.isRunning && !current?.pausedAt
@@ -751,6 +826,10 @@ const StudentPortal = () => {
 
   const resumeTimer = async (subject) => {
     const current = currentActiveTimers[subject.id];
+    if (usesTrustedSchool) {
+      if (current && school.ready && !school.busy) await school.commandTimer({ action: 'resume', blockId: current.blockId, timerSessionId: current.sessionId });
+      return;
+    }
     const now = Date.now();
     const config = current.pausedAt
       ? { ...current, isRunning: true, targetEndTime: current.targetEndTime + (now - current.pausedAt), pausedAt: null, resumedAt: now }
@@ -767,6 +846,7 @@ const StudentPortal = () => {
 
   const resetTimer = async (subject) => {
     stopAlarm();
+    if (usesTrustedSchool) { await removeTimer(subject.id); return; }
     setActiveTimers(prev => { const u = { ...prev }; delete u[subject.id]; return u; });
 
     try {
@@ -778,7 +858,7 @@ const StudentPortal = () => {
   };
 
   useEffect(() => {
-    if (!student?.id || !staleTimerSubjectIdsKey) return;
+    if (usesTrustedSchool || !student?.id || publishedWeeklyPlanLoading || publishedWeeklyPlanError || !staleTimerSubjectIdsKey) return;
 
     staleTimerSubjectIds.forEach((subjectId) => {
       if (timerRemovalInFlightRef.current[subjectId]) return;
@@ -794,7 +874,7 @@ const StudentPortal = () => {
         console.warn('Unable to delete stale timer session:', cleanupError);
       });
     });
-  }, [staleTimerSubjectIdsKey, student?.id]);
+  }, [staleTimerSubjectIdsKey, student?.id, publishedWeeklyPlanLoading, publishedWeeklyPlanError, usesTrustedSchool]);
 
   const setSubmissionLock = (subjectId, blockIndex) => { submissionLocksRef.current[`${subjectId}_${blockIndex}`] = true; };
   const clearSubmissionLock = (subjectId, blockIndex) => { delete submissionLocksRef.current[`${subjectId}_${blockIndex}`]; };
@@ -915,7 +995,7 @@ const StudentPortal = () => {
     if (!subject || blockIndex === null || blockIndex === undefined) return;
     const subjectPolicy = getSubjectPolicy(subject, { blockIndex });
     if (!subjectPolicy.canSubmitBlock.allowed) {
-      setError(subjectPolicy.canSubmitBlock.blockedReason?.message || 'Unable to submit this block right now.');
+      setError(subjectPolicy?.canSubmitBlock.blockedReason?.message || 'This week changed. Review the current blocks before completing work.');
       return;
     }
     if (subject.require_timer) {
@@ -923,6 +1003,10 @@ const StudentPortal = () => {
       setActiveTimers(prev => ({ ...prev, [subject.id]: { ...timer, isFinished: true, isRunning: false } }));
     }
 
+    completionIdentityRef.current = { studentId: student.id, weekKey: weekIdentity?.weekKey,
+      blockId: getLauncherWorkItemForSubject(subject, blockIndex)?.id || '',
+      requirements: JSON.stringify([subject.require_timer, subject.require_input, subject.block_length, subject.custom_fields]),
+    };
     setSubmissionLock(subject.id, blockIndex);
     setSelectedSubject(subject);
     setSelectedBlockIndex(blockIndex);
@@ -958,7 +1042,7 @@ const StudentPortal = () => {
       return;
     }
 
-    if (activeSubjectTimer && activeSubjectTimer.blockIndex !== compatibilityBlockIndex) {
+    if (workItem.requireTimer && activeSubjectTimer && activeSubjectTimer.blockIndex !== compatibilityBlockIndex) {
       setError(`Timer is currently active for Block ${activeSubjectTimer.blockIndex + 1}. Finish or reset that timer first.`);
       return;
     }
@@ -979,17 +1063,48 @@ const StudentPortal = () => {
     openCompletionModal(compatibilitySubject, compatibilityBlockIndex);
   };
 
+  const validateLiveCompletion = (subject, blockIndex) => {
+    const live = liveCompletionContextRef.current;
+    const captured = completionIdentityRef.current;
+    const currentKey = usesTrustedSchool ? school.data?.week_key : getWeekKey(getCurrentWeekRange(new Date(), live?.weekConfig).weekStart, live?.weekConfig);
+    if (!live || live.loading || live.error || captured?.studentId !== live.student?.id
+      || captured?.weekKey !== currentKey || captured.weekKey !== live.weekKey) return null;
+    if (!live.authority) return { subject, policy: live.getSubjectPolicy(subject, { blockIndex, ignoreSubmissionLock: true }) };
+    const workItem = live.items.find((item) => item.id === captured.blockId
+      && item.legacySubjectId === subject.id && item.compatibilityBlockIndex === blockIndex);
+    const liveSubject = workItem?.compatibilitySubject;
+    const requirements = liveSubject ? JSON.stringify([liveSubject.require_timer, liveSubject.require_input, liveSubject.block_length, liveSubject.custom_fields]) : '';
+    if (requirements !== captured.requirements) return null;
+    return workItem ? { subject: workItem.compatibilitySubject,
+      policy: live.getWorkItemPolicy(workItem, { ignoreSubmissionLock: true }) } : null;
+  };
+
   const submitBlock = async (subject, blockIndex, summary) => {
     stopAlarm();
-    const subjectPolicy = getSubjectPolicy(subject, { blockIndex, ignoreSubmissionLock: true });
-    if (!subjectPolicy.canSubmitBlock.allowed) {
-      setError(subjectPolicy.canSubmitBlock.blockedReason?.message || 'Unable to submit this block right now.');
+    const current = validateLiveCompletion(subject, blockIndex);
+    const subjectPolicy = current?.policy;
+    if (!subjectPolicy?.canSubmitBlock.allowed) {
+      setError(subjectPolicy?.canSubmitBlock.blockedReason?.message || 'This week changed. Review the current blocks before completing work.');
       clearSubmissionLock(subject.id, blockIndex);
       return;
     }
     setSubmissionLock(subject.id, blockIndex);
     setSubmitting(true);
     try {
+      if (usesTrustedSchool) {
+        if (!school.ready || school.busy) return;
+        const item = getLauncherWorkItemForSubject(current.subject, blockIndex);
+        if (!item) throw new Error('This block changed. Reload the school week.');
+        const timer = currentActiveTimers[subject.id];
+        const response = await school.submit({ blockId: item.id, summaryText: summary,
+          resourcesUsed: selectedResources, customFieldResponses,
+          timerSessionId: timer?.blockId === item.id ? timer.sessionId : null });
+        if (response) {
+          setSelectedSubject(null); setSelectedBlockIndex(null);
+          setSummaryText(''); setSelectedResources([]); resetCustomFieldResponses();
+        }
+        return;
+      }
       const { weekStart } = getCurrentWeekRange(new Date(), weekConfig);
       const existing = await getDocs(query(collection(db, 'submissions'),
         where('student_id', '==', student.id), where('subject_id', '==', subject.id),
@@ -1002,6 +1117,9 @@ const StudentPortal = () => {
         setSummaryText(''); setSelectedResources([]); resetCustomFieldResponses();
         return;
       }
+      const liveSelection = validateLiveCompletion(subject, blockIndex);
+      if (!liveSelection?.policy.canSubmitBlock.allowed) throw new Error('The published week changed before submission.');
+      subject = liveSelection.subject;
       await addDoc(collection(db, 'submissions'), {
         student_id: student.id, parent_id: student.parent_id,
         subject_name: getSubmissionSubjectName(subject), subject_id: subject.id,
@@ -1012,12 +1130,15 @@ const StudentPortal = () => {
         created_at: serverTimestamp()
       });
 
-      try {
-        await removeTimer(subject.id);
-      } catch (timerCleanupError) {
-        console.warn('Block was submitted, but the remote timer could not be cleared:', timerCleanupError);
+      // A non-timed block can finish while another block's timer keeps running.
+      if (currentActiveTimers[subject.id]?.blockIndex === blockIndex) {
+        try {
+          await removeTimer(subject.id);
+        } catch (timerCleanupError) {
+          console.warn('Block was submitted, but the remote timer could not be cleared:', timerCleanupError);
+        }
+        setActiveTimers(prev => { const u = { ...prev }; delete u[subject.id]; return u; });
       }
-      setActiveTimers(prev => { const u = { ...prev }; delete u[subject.id]; return u; });
       setSelectedSubject(null); setSelectedBlockIndex(null);
       setSummaryText(''); setSelectedResources([]); resetCustomFieldResponses();
       clearSubmissionLock(subject.id, blockIndex);
@@ -1026,6 +1147,7 @@ const StudentPortal = () => {
       setError('Failed to submit. Please try again.');
       clearSubmissionLock(subject.id, blockIndex);
     } finally {
+      clearSubmissionLock(subject.id, blockIndex);
       setSubmitting(false);
     }
   };
@@ -1079,29 +1201,32 @@ const StudentPortal = () => {
   }
 
   return (
-    <div className="student-portal-v2" style={{ fontFamily: FONT }}>
+    <div className="student-portal-v2" data-routine-theme={routineSelections.profile_theme || undefined} style={{ fontFamily: FONT }}>
       <header className="student-portal-topbar">
         <div className="student-portal-brand"><span>OwnPath</span><strong>Student Portal</strong></div>
         <div className="student-portal-topbar-spacer" />
+        {studentChores.routineFirst && studentChores.routineRewards ? <div className="student-portal-points"><Star />{studentChores.routineRewards.wallet?.total_points || 0} pts</div> : null}
         {studentChores.canShowRewardTab && studentChores.rewardStore.wallet ? <div className="student-portal-points"><Star />{studentChores.rewardStore.wallet.total_points || 0} pts</div> : null}
         <label className="sr-only" htmlFor="student-alarm-sound">Timer alarm sound</label>
         <select id="student-alarm-sound" className="student-alarm-select" value={alarmSound} onChange={(event) => handleAlarmChange(event.target.value)}>
           {ALARM_SOUNDS.map((sound) => <option key={sound.file} value={sound.file}>{sound.label}</option>)}
         </select>
-        <button type="button" className="student-profile-control" onClick={() => setActiveWorkspace('profile')}><span className="student-mini-avatar" /><span className="student-profile-name">{student.name}</span><UserRound /></button>
+        <button type="button" className="student-profile-control" onClick={() => setActiveWorkspace('profile')}>{studentChores.routineFirst ? <CosmeticArt id={routineSelections.avatar || 'builtin_avatar_seedling'} title="Your avatar" className="w-8 h-8 rounded-full" /> : <span className="student-mini-avatar" />}<span className="student-profile-name">{student.name}</span>{studentChores.routineFirst && routineSelections.badge ? <CosmeticArt id={routineSelections.badge} title="Your badge" className="w-6 h-6" /> : <UserRound />}</button>
         {student.access_pin ? <button type="button" className="student-button is-icon" onClick={handleSignOut} aria-label="Sign out"><LogOut /></button> : null}
       </header>
 
       <nav className="student-portal-nav" aria-label="Student workspaces" data-testid="student-portal-workspaces">
         <button type="button" className={activeWorkspace === 'school' ? 'is-active' : ''} onClick={() => setActiveWorkspace('school')}><BookOpen />School</button>
-        {studentChores.canShowTab ? <button type="button" className={activeWorkspace === 'chores' ? 'is-active' : ''} onClick={() => setActiveWorkspace('chores')} data-testid="student-portal-chores-tab"><ListChecks />Chores{studentChores.workspace.claimedChores.length > 0 ? <span className="student-nav-badge">{studentChores.workspace.claimedChores.length}</span> : null}</button> : null}
-        <button type="button" className={activeWorkspace === 'allowance' ? 'is-active' : ''} onClick={() => setActiveWorkspace('allowance')}><Coins />Allowance</button>
+        {studentChores.canShowTab ? <button type="button" className={activeWorkspace === 'chores' ? 'is-active' : ''} onClick={() => setActiveWorkspace('chores')} data-testid="student-portal-chores-tab"><ListChecks />{studentChores.routineFirst ? 'Daily Routines' : 'Chores'}{studentChores.workspace.claimedChores.length > 0 ? <span className="student-nav-badge">{studentChores.workspace.claimedChores.length}</span> : null}</button> : null}
+        {legacyHouseholdReady ? <button type="button" className={activeWorkspace === 'allowance' ? 'is-active' : ''} onClick={() => setActiveWorkspace('allowance')}><Coins />Allowance</button> : null}
         {studentChores.canShowRewardTab ? <button type="button" className={activeWorkspace === 'rewards' ? 'is-active' : ''} onClick={() => setActiveWorkspace('rewards')} data-testid="student-portal-rewards-tab"><Gift />Rewards</button> : null}
-        <button type="button" className={activeWorkspace === 'profile' ? 'is-active' : ''} onClick={() => setActiveWorkspace('profile')}><UserRound />My Avatar</button>
+        <button type="button" className={activeWorkspace === 'profile' ? 'is-active' : ''} onClick={() => setActiveWorkspace('profile')} data-testid="student-portal-avatar-tab"><UserRound />My Avatar</button>
       </nav>
 
       <main className="student-portal-content">
+        {studentChores.error && !studentChores.choreState ? <div role="alert" className="student-list-empty"><p>{studentChores.error.message}</p><button type="button" className="student-button" disabled={studentChores.loading} onClick={studentChores.refresh}>Retry loading</button></div> : null}
 
+        {activeWorkspace === 'school' && school.error ? <div role="alert" className="student-list-empty"><p>{school.error.message}</p><button type="button" className="student-button" disabled={school.loading || school.busy} onClick={() => school.refresh()}>Retry loading school</button></div> : null}
         {activeWorkspace === 'school' ? (
           <StudentSchoolWorkspace
             student={student}
@@ -1116,7 +1241,7 @@ const StudentPortal = () => {
             activeTimers={currentActiveTimers}
             expandedSubjectId={expandedSubjectId}
             expandedBlockIndex={expandedBlockIndex}
-            submitting={submitting}
+            submitting={submitting || school.busy || (schoolEnabled && !school.ready)}
             currentWorkGuidance={currentWorkGuidance}
             isBlockCompleted={isBlockCompleted}
             isSubmissionLocked={isSubmissionLocked}
@@ -1135,7 +1260,7 @@ const StudentPortal = () => {
             onCompleteWorkItem={handleCompleteWorkItem}
           />
         ) : activeWorkspace === 'chores' ? (
-          <StudentChoresWorkspaceV2
+          studentChores.routineFirst ? <StudentDailyRoutines key={student.id} controller={studentChores} /> : <StudentChoresWorkspaceV2
             workspace={studentChores.workspace}
             loading={studentChores.loading || studentChores.isResolvingAccess}
             error={studentChores.error}
@@ -1167,7 +1292,7 @@ const StudentPortal = () => {
             </aside>
           </div>
         ) : activeWorkspace === 'profile' ? (
-          <StudentAvatarWorkspace />
+          studentChores.routineFirst ? <RoutineCosmetics controller={studentChores} studentName={student.name} /> : <StudentAvatarWorkspace />
         ) : (
           <>
         {/* Weekly Progress */}
@@ -1798,8 +1923,8 @@ const StudentPortal = () => {
 
       <nav className="student-portal-mobile-nav" aria-label="Student workspaces">
         <button type="button" className={activeWorkspace === 'school' ? 'is-active' : ''} onClick={() => setActiveWorkspace('school')}><BookOpen /><span>School</span></button>
-        {studentChores.canShowTab ? <button type="button" className={activeWorkspace === 'chores' ? 'is-active' : ''} onClick={() => setActiveWorkspace('chores')}><ListChecks /><span>Chores</span></button> : null}
-        <button type="button" className={activeWorkspace === 'allowance' ? 'is-active' : ''} onClick={() => setActiveWorkspace('allowance')}><Coins /><span>Allowance</span></button>
+        {studentChores.canShowTab ? <button type="button" className={activeWorkspace === 'chores' ? 'is-active' : ''} onClick={() => setActiveWorkspace('chores')}><ListChecks /><span>{studentChores.routineFirst ? 'Daily Routines' : 'Chores'}</span></button> : null}
+        {legacyHouseholdReady ? <button type="button" className={activeWorkspace === 'allowance' ? 'is-active' : ''} onClick={() => setActiveWorkspace('allowance')}><Coins /><span>Allowance</span></button> : null}
         {studentChores.canShowRewardTab ? <button type="button" className={activeWorkspace === 'rewards' ? 'is-active' : ''} onClick={() => setActiveWorkspace('rewards')}><Gift /><span>Rewards</span></button> : null}
         <button type="button" className={activeWorkspace === 'profile' ? 'is-active' : ''} onClick={() => setActiveWorkspace('profile')}><UserRound /><span>Avatar</span></button>
       </nav>

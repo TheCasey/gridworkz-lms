@@ -1616,7 +1616,7 @@ const LockdownPolicyPanel = ({
                 Upgrade Required For Active Management
               </p>
               <p className="mt-1.5 text-[14px] font-body" style={{ color: colors.charcoal }}>
-                {lockdownAccess?.upgradeCopy || 'Upgrade to Lockdown to unlock student-bound pairing and Lockdown management.'}
+                {lockdownAccess?.upgradeCopy || 'Lockdown is coming soon. New purchases are unavailable; saved setup remains available.'}
               </p>
               <p
                 className="mt-2 text-[13px] font-body"

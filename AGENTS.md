@@ -17,20 +17,22 @@ For planning or documentation tasks, start here:
 ```bash
 npm run dev          # Start dev server (Vite, port 3000)
 npm run build        # Production build
-npm run lint         # Intended lint command, but currently unusable until ESLint config is added
-npm run lint:fix     # Intended auto-fix lint command, same config caveat
+npm run lint         # ESLint, using .eslintrc.cjs
+npm run lint:fix     # ESLint auto-fix
+npm run check:student-timers  # Timer identity/stale-session regression checks
 firebase deploy --only firestore:rules  # Deploy Firestore security rules
 ```
 
 Notes:
 
-- No automated test suite is configured.
-- As of 2026-05-04, `npm run build` passes.
-- As of 2026-05-04, `npm run lint` fails because the repo has no ESLint config file yet.
+- Node 20 is the Functions and CI runtime; use it for release validation.
+- Focused Node assertion scripts live under `scripts/check-*.mjs`; these do not all exercise a live backend.
+- As of 2026-10-12, lint, build, timer, and sampled entitlement/report/chores/points checks pass under Node 20.
+- Auth, Firestore, and Functions emulator ports are configured in `firebase.json`.
 
 ## Architecture
 
-GridWorkz LMS is a homeschool learning management system built as a React 18 SPA with Vite, backed by Firebase Auth and Firestore, and intended for deployment to Cloudflare Pages.
+GridWorkz LMS is a homeschool learning management system built as a React 18 SPA with Vite, backed by Firebase Auth, Firestore, and trusted Cloud Functions, and deployed through Cloudflare Pages.
 
 ### User flows
 
@@ -41,12 +43,14 @@ GridWorkz LMS is a homeschool learning management system built as a React 18 SPA
 Important route note:
 
 - `/dashboard` is the main authenticated route.
-- Curriculum, reports, and settings are internal dashboard sections, not separate top-level routes.
+- Dashboard sections use nested `/dashboard/*` routes through the shared feature registry; they are not independent public routes.
 
 ### Current app shape
 
 - `src/App.jsx`: route wiring and auth guards
 - `src/pages/ParentDashboard.jsx`: parent shell, student overview, live activity, rollover orchestration
+- `src/constants/dashboardFeatures.js`: registry-backed dashboard routes and shell metadata
+- `src/hooks/`: extracted dashboard/weekly-plan/entitlement domain loading and actions
 - `src/pages/Curriculum.jsx`: subject builder/editor
 - `src/pages/Reports.jsx`: weekly reports, filters, print/export
 - `src/pages/Settings.jsx`: school year and weekly reset settings
@@ -59,6 +63,8 @@ Core collections:
 - `parents`
 - `students`
 - `subjects`
+- `weeklyPlans`
+- `accountEntitlements`
 - `submissions`
 - `weeklyReports`
 - `dailyLogs`
@@ -76,7 +82,7 @@ Important data conventions:
 ### State and data loading
 
 - State management is React Context (`AuthContext`, `ThemeContext`) plus page-local state.
-- There is no shared data layer; pages own Firestore queries directly.
+- Dashboard data loading is extracted into domain hooks, with page-local queries where still present. Preserve the existing hook/registry boundaries for new work.
 - Real-time Firestore listeners are set up with `onSnapshot()` and cleaned up in `useEffect` returns.
 
 ### Week and rollover logic
@@ -90,7 +96,10 @@ Important data conventions:
 
 - Timer logic lives in `src/utils/timerUtils.js`.
 - Timers are target-end-time based, not interval-drift based.
-- Timer state persists to local storage and is also synced through the `timerSessions` Firestore collection.
+- Current school clients use trusted singleton `timerSessions/{studentId}` sessions. Server-issued identity/context and elapsed time govern completion; device target-end-time ticks are display only. Legacy per-subject/local-storage paths remain compatibility code before adoption.
+- `functions/src/schoolCompletionAuthority.js` owns PIN-verified reads/submission/timers and owner correction/report filing. Parent consumers resolve canonical block state before any immutable publication bridge baseline.
+- First school-authority publication preserves legacy execution or older canonical publication state through private `schoolPublicationBridges`; differing instance identities require explicit source reconciliation. Never infer links from subject/index/title.
+- Official original reports are filed transactionally, never updated. Corrections append explicit report amendments; historical operations must not affect another week’s timer.
 
 ### Reporting
 
@@ -105,11 +114,15 @@ Do not assume the rules are fully hardened.
 Current high-level posture:
 
 - `parents`: owner-only access
-- `students`: public read, owner-controlled create/update/delete
-- `subjects`: public read, owner-controlled create/update/delete
-- `submissions`: public read and create, authenticated update/delete
-- `timerSessions`: unauthenticated access with assignment and shape checks
-- `weeklyReports`: parent-scoped
+- `students`: public read, trusted callable create, owner-controlled update/delete
+- `subjects`: public read, trusted callable create, owner-controlled update/delete
+- `submissions`: public read; adopted students require trusted writes and immutable evidence. Legacy creates remain constrained to assigned scope before adoption.
+- `timerSessions`: trusted singleton server writes for adopted students; owner reads and PIN-safe callable projection. Legacy assignment/shape compatibility remains before adoption.
+- `weeklyReports`: parent-readable, trusted create, no original updates; owner deletion only before any amendment.
+- `accountEntitlements`: owner-readable, server-writable only
+- School states/events/history/executions/bridges/receipts and report amendments/heads are owner-readable and server-writable only.
+- Chores/routines/rewards writes use trusted callables; collection reads are parent-scoped.
+- `firestore.indexes.json` preserves production inventory plus authority queries. Emulator tests cannot validate cloud composite-index readiness; build indexes before coordinated release.
 
 If you touch the student portal or reporting architecture, check `firestore.rules` directly before making assumptions.
 
@@ -124,6 +137,16 @@ If you touch the student portal or reporting architecture, check `firestore.rule
 
 ## Working Conventions
 
-- Preserve the existing page-owned query pattern unless you are intentionally refactoring architecture.
+- Preserve extracted domain hooks, the dashboard feature registry, and remaining page-owned queries unless intentionally refactoring architecture.
 - When documentation changes affect planning or implementation status, update the relevant file under `docs/` instead of only editing a legacy top-level note.
 - If a task claims “lint passes,” verify whether the repo has actually gained an ESLint config first.
+- Routine-first execution state lives in `docs/upgrades/product-direction-execution/`; read `decisions.md` and `workflow-state.yaml` before continuing that work. New contracts/rules remain additive until their implementation phase activates them.
+
+## Billing Authority (routine-first release pending)
+
+- Core purchase/portal/status adapters live in `functions/src/coreBillingAuthority.js` and `coreBillingPolicy.js`; index.js owns their production binding and signed webhook adapter.
+- `billingAccounts`, `billingCheckoutIntents`, `billingCheckoutAttempts`, and `billingEventReceipts` are server-only. Never use writable parent profile fields or email matching as customer ownership.
+- Checkout defaults off. Server-approved price/origin/mode and live approval gates are required; no redirect grants entitlements. Keep Lockdown purchase disabled and preserve existing customer/subscription/price IDs, support overrides and usage.
+- `npm run check:core-billing-helpers` is pure policy/view validation. `npm run check:core-billing-runtime` uses only the isolated Firestore emulator with injected provider behavior; this is not actual Stripe lifecycle evidence. Read `docs/upgrades/product-direction-execution/billing-operations.md` before provider or release actions.
+
+Quota increases use trusted create/reactivate Functions and the private `quotaMutationState` transaction coordinator. Direct subject updates cannot reactivate archived/inactive records or change ownership. Count legacy active subjects with absent `is_active`; preserve existing over-limit work. `npm run check:quota-mutations` requires isolated Auth/Firestore/Functions emulators.

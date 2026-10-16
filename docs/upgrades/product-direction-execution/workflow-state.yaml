@@ -1,0 +1,173 @@
+workflow_name: "product-direction-routine-first"
+workflow_title: "Routine-First Product Direction Execution"
+workflow_summary: "Execute source phases 0\u20138 as operational phases 1\u20139. Production acceptance remains separate from local completion."
+workflow_status: "active"
+source_plan_path: "docs/upgrades/product-direction-execution-plan-2026-09.md"
+master_developer_start_prompt_path: "docs/upgrades/product-direction-execution/start-master-developer-chat.md"
+current_phase_number: 8
+current_phase_slug: "phase-08-ship-live-core-billing-and-consistent-product-copy"
+current_role: "master-developer"
+phase_status: "in_progress"
+owner: "master-developer"
+next_downstream_role: "tester"
+last_completed_phase_number: 7
+last_completed_phase_slug: "phase-07-ship-simplified-reports-and-verified-print-output"
+last_completed_role: "tester"
+last_handoff_role: "tester"
+blocked_reason: "none for owner-authorized internal family testing; Stripe/payment and broad launch acceptance explicitly deferred"
+last_updated: "2026-10-16"
+active_phase_path: "docs/upgrades/product-direction-execution/phases/phase-08-ship-live-core-billing-and-consistent-product-copy/phase.md"
+active_run_log_path: "docs/upgrades/product-direction-execution/phases/phase-08-ship-live-core-billing-and-consistent-product-copy/run-log.md"
+prompt_policy:
+  read_first_max_items: 6
+  allowed_discovery: "Start with the listed read-first files, then follow imports, routes, adjacent tests, and nearby implementation files only as needed. Do not preload broad workflow or product background unless the active phase exposes a concrete blocker."
+coordination:
+  project_manager_role: "user"
+  ask_pm_before_guessing: true
+  question_policy: "The user authorized execution of the proposed plan on 2026-10-12. Apply its recommended defaults. Ask only for genuinely new product intent or missing required external access; continue independent work."
+  manual_assist_policy: "If validation is blocked by a missing simulator, physical device, account, credential, service, fixture, or human-only check, pause and ask the project manager for setup help or a manual verification pass instead of treating the phase as conclusively failed."
+  decision_recording: "Record accepted defaults and external blockers in decisions.md, environment-inventory.md, and active run-log.md."
+  subagents:
+    prefer_subagents: true
+    fork_context_default: false
+    one_downstream_agent_at_a_time: true
+    fallback: "When subagent spawning is unavailable, output the exact downstream prompt so the project manager can start a manual chat with the same role contract."
+    model_policy:
+      master-developer:
+        model: "gpt-6.1-sol"
+        reasoning_effort: "medium"
+      developer:
+        model: "gpt-6.1-sol"
+        reasoning_effort: "high"
+      tester:
+        model: "gpt-6.1-sol"
+        reasoning_effort: "medium"
+      researcher:
+        model: "gpt-6-luna"
+        reasoning_effort: "medium"
+    escalation_rules:
+      - "Use gpt-6-astra high only for a bounded trust/migration/payment review or reproducible unresolved hard failure."
+foundation_acceptance: "source phases 0/1 locally verified; Cloudflare production metadata remains a carry-forward release dependency"
+production_status: "internal_testing_deploy_in_progress"
+external_release_dependencies:
+  - "Stripe lifecycle/live payment and full observation apply to later paid launch, not internal testing"
+  - "Owner-authorized live-mode payment after checkout is concrete and reviewable"
+active_phase_guidance:
+  read_first:
+    - "AGENTS.md"
+    - "docs/upgrades/product-direction-execution-plan-2026-09.md"
+    - "docs/upgrades/product-direction-execution/decisions.md"
+  automated_test_expectation: "SourcePhase7: authenticated checkout/portal, duplicate/idempotent purchase, ordered trusted billing reconciliation, preserved support overrides/usage, sandbox lifecycle, consistent Free/Core/Lockdown copy"
+  test_files:
+    - "scripts/check-core-billing-helpers.mjs"
+    - "scripts/check-core-billing-runtime.mjs"
+    - "scripts/check-core-billing-callables.mjs"
+    - "scripts/check-core-billing-webhook.mjs"
+    - "scripts/check-quota-mutation-callables.mjs"
+    - "tests/product-direction/billing.spec.js"
+  test_cases:
+    - "Auth/URL/price/customer forgery, mode checks, nonterminal subscription denial, concurrent/uncertain checkout, duplicate/out-of-order webhooks, override race, downgrade preservation, sandbox purchase/manage/cancel"
+  no_test_rationale: ""
+  test_commands:
+    - "npm run lint"
+    - "npm run build"
+  validation_modes:
+    - "code-review"
+    - "build-health"
+    - "unit-regression"
+  runtime_targets:
+    - "Firebase emulators on isolated demo-gridworkz-direction project; production requires orchestrator release gate"
+  evidence_required:
+    - "Commands and outcomes, redacted persisted observations, environment and commit IDs"
+  manual_verification: []
+  pm_questions: []
+  human_assistance:
+    - "Request only missing external access or owner-authorized live purchase when it becomes required."
+phase_sequence:
+  - "phase-01-adopt-the-product-contract-and-establish-the-baseline"
+  - "phase-02-fix-shared-contracts-and-build-persisted-qa-fixtures"
+  - "phase-03-implement-routine-reward-and-entitlement-authority"
+  - "phase-04-ship-daily-routines-avatars-and-the-narrow-household-surface"
+  - "phase-05-ship-correct-weekly-plan-persistence-and-conditional-timers"
+  - "phase-06-ship-trusted-parent-completion-corrections"
+  - "phase-07-ship-simplified-reports-and-verified-print-output"
+  - "phase-08-ship-live-core-billing-and-consistent-product-copy"
+  - "phase-09-complete-production-acceptance-and-operational-handoff"
+phase_role_sequences:
+  phase-01-adopt-the-product-contract-and-establish-the-baseline:
+    - "developer"
+    - "tester"
+  phase-02-fix-shared-contracts-and-build-persisted-qa-fixtures:
+    - "developer"
+    - "tester"
+  phase-03-implement-routine-reward-and-entitlement-authority:
+    - "developer"
+    - "tester"
+  phase-04-ship-daily-routines-avatars-and-the-narrow-household-surface:
+    - "developer"
+    - "tester"
+  phase-05-ship-correct-weekly-plan-persistence-and-conditional-timers:
+    - "developer"
+    - "tester"
+  phase-06-ship-trusted-parent-completion-corrections:
+    - "developer"
+    - "tester"
+  phase-07-ship-simplified-reports-and-verified-print-output:
+    - "developer"
+    - "tester"
+  phase-08-ship-live-core-billing-and-consistent-product-copy:
+    - "developer"
+    - "tester"
+  phase-09-complete-production-acceptance-and-operational-handoff:
+    - "developer"
+    - "tester"
+git:
+  enabled: true
+  available: true
+  repo_root: "."
+  base_branch: "codex/product-direction-routine-first"
+  base_commit: "e3120e1c16a2920b2d062ed18012345040188ac3"
+  working_branch: "codex/product-direction-routine-first"
+  branch_name: "codex/product-direction-routine-first"
+  branch_created_by_scaffold: false
+  branch_reused_by_scaffold: false
+  initial_worktree_clean: false
+  initial_worktree_dirty_paths:
+    - "ocs/roadmap.md"
+    - "docs/upgrades/README.md"
+    - "scripts/check-entitlement-resolution.mjs"
+    - "docs/product-direction-working-notes-2026-09.md"
+    - "docs/upgrades/product-direction-execution-plan-2026-09.md"
+  status_note: "already on workflow branch"
+  policy:
+    create_branch: false
+    require_clean_start: false
+    commit_mode: "phase_acceptance"
+    push_mode: "accepted_phase"
+    pr_mode: "draft_on_first_push"
+    track_runtime_files: true
+    tracked_paths:
+      - "workflow-plan.md"
+      - "start-master-developer-chat.md"
+      - "agents/*.md"
+      - "phases/*/phase.md"
+    ignored_paths:
+      - "workflow-state.yaml"
+      - "phases/*/run-log.md"
+    commit_message_template: "{workflow_slug}: accept phase {phase_number} ({phase_slug})"
+
+routine_authority_acceptance: "locally verified 2026-10-13;164 helper assertions,6 rules,4 compatibility callables,12 routine runtime,2 baseline browser passes; deployment/activation pending UI and release gates"
+
+routine_interface_acceptance: "locally verified 2026-10-13;166 backend+19 view assertions,7 rules,4 compatibility,13 authority/bootstrap,11 browser passes; production activation pending"
+
+weekly_planning_acceptance: "locally verified 2026-10-14; calendars/identities/readers,8 rules,4 compatibility,13 routine,8 planning and20 browser checks pass; mobile drawer/keyboard focused follow-up; deployment pending"
+
+last_checkpoint_commit: "e1b5ed2"
+
+school_authority_acceptance: "locally verified 2026-10-15;12 rules,4 compatibility,13 routine,8 planning,14 school API and26 browser cases plus1 mobile keyboard case pass; independent review findings repaired; production pending"
+
+report_presentation_acceptance: "locally verified 2026-10-15;14 school APIs and32 browser cases pass,8 Letter/A4 PDFs visually inspected,3 real reports read-only; owner physical spot check and production pending"
+
+billing_implementation_acceptance: "locally verified 2026-10-15:70 policy,22 persisted billing,4 billing HTTP,9 quota persistence,6 quota rules,4 quota HTTP; full runtime API/rules passes.Clean CI run38846955531 passes all36 browsers, all emulator checks and PDF generation; lint/build and Cloudflare preview green. Actual test-mode provider sessions/expiration pass, no payment/subscription. Live Phase8 acceptance pending."
+
+internal_testing_scope: "Owner authorized2026-10-16: deploy nonpayment app and activate one selected existing household; preserve plan/history; keep billing webhook and purchase creation unchanged/unavailable; new-account gate off."

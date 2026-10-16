@@ -104,44 +104,82 @@ service cloud.firestore {
     match /students/{studentId} {
       allow read: if true;
       allow create: if false;
-      allow update, delete: if isOwner(resource.data.parent_id);
+      allow update: if isOwner(resource.data.parent_id) &&
+        request.resource.data.parent_id == resource.data.parent_id &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["weekly_planning_version", "weekly_planning_adopted_at", "school_authority_version", "school_state_revision", "school_authority_adopted_at"]);
+      allow delete: if isOwner(resource.data.parent_id);
     }
 
     // Subjects: parents own their records; students need read access for the portal
+    function isQuotaActiveSubject(data) {
+      return data.get("is_active", true) != false &&
+        data.get("is_archived", false) != true && data.get("archived", false) != true &&
+        data.get("status", "") != "archived" && data.get("archived_at", null) == null;
+    }
     match /subjects/{subjectId} {
       allow read: if true;
       allow create: if false;
-      allow update, delete: if isOwner(resource.data.parent_id);
+      allow update: if isOwner(resource.data.parent_id) &&
+        request.resource.data.parent_id == resource.data.parent_id &&
+        (isQuotaActiveSubject(resource.data) || !isQuotaActiveSubject(request.resource.data));
+      allow delete: if isOwner(resource.data.parent_id);
     }
 
-    // Submissions: students write (portal is unauthenticated), parents read their own
+    // Private transaction coordinator, never a client-maintained quota counter.
+    match /quotaMutationState/{document=**} { allow read, write: if false; }
+
+    function usesTrustedSchoolAuthority(studentId) {
+      return studentExists(studentId) &&
+        get(/databases/$(database)/documents/students/$(studentId)).data.get("school_authority_version", 0) >= 1;
+    }
+    function hasSchoolAuthorityFields(data) {
+      return data.keys().hasAny(["authority_version", "actor_id", "weekly_plan_id", "weekly_block_id", "trusted_elapsed_ms", "timer_session_id",
+        "session_id", "context_signature", "state_revision", "duration_ms", "elapsed_ms", "started_at_ms", "target_end_ms"]);
+    }
+    // Legacy compatibility remains until per-student authority is adopted.
+    // Activated evidence is immutable; all completion/correction writes are trusted.
     match /submissions/{submissionId} {
       allow read: if true;
-      allow create: if true;
-      allow update, delete: if isAuth();
+      allow create: if !usesTrustedSchoolAuthority(request.resource.data.student_id) &&
+        studentOwnedByParent(request.resource.data.student_id, request.resource.data.parent_id) &&
+        timerSubjectIsAssigned(request.resource.data.student_id, request.resource.data.subject_id) &&
+        !hasSchoolAuthorityFields(request.resource.data);
+      allow update: if isOwnerResource() && !usesTrustedSchoolAuthority(resource.data.student_id) &&
+        !hasSchoolAuthorityFields(resource.data) && !hasSchoolAuthorityFields(request.resource.data) &&
+        request.resource.data.parent_id == resource.data.parent_id &&
+        request.resource.data.student_id == resource.data.student_id;
+      allow delete: if isOwnerResource() && !usesTrustedSchoolAuthority(resource.data.student_id) && !hasSchoolAuthorityFields(resource.data);
     }
 
-    // Timer sessions: portal needs unauthenticated cross-device persistence
+    function hasTrustedTimerFields(data) {
+      return data.keys().hasAny(["authority_version", "session_id", "context_signature", "state_revision", "elapsed_ms", "started_at_ms", "target_end_ms"]);
+    }
     match /timerSessions/{timerSessionId} {
-      // A missing deterministic timer document must resolve as "not found" so the
-      // portal can fall back to local storage without entering a denied-listener loop.
-      allow get: if resource == null ||
-        (
-          studentExists(resource.data.student_id) &&
-          timerSubjectIsAssigned(resource.data.student_id, resource.data.subject_id)
-        );
-      allow list: if false;
-      allow create, update: if studentExists(request.resource.data.student_id) &&
+      allow get: if resource == null || isOwnerResource() ||
+        (!usesTrustedSchoolAuthority(resource.data.student_id) && !hasTrustedTimerFields(resource.data) &&
+          timerSubjectIsAssigned(resource.data.student_id, resource.data.subject_id));
+      allow list: if isOwnerResource();
+      allow create: if !usesTrustedSchoolAuthority(request.resource.data.student_id) &&
+        !hasTrustedTimerFields(request.resource.data) &&
         timerSubjectIsAssigned(request.resource.data.student_id, request.resource.data.subject_id) &&
         validTimerTimerSessionData(request.resource.data);
-      allow delete: if resource == null ||
-        (
-          studentExists(resource.data.student_id) &&
-          timerSubjectIsAssigned(resource.data.student_id, resource.data.subject_id)
-        );
+      allow update: if !usesTrustedSchoolAuthority(request.resource.data.student_id) &&
+        !usesTrustedSchoolAuthority(resource.data.student_id) && !hasTrustedTimerFields(resource.data) &&
+        !hasTrustedTimerFields(request.resource.data) &&
+        request.resource.data.student_id == resource.data.student_id &&
+        timerSubjectIsAssigned(request.resource.data.student_id, request.resource.data.subject_id) &&
+        validTimerTimerSessionData(request.resource.data);
+      allow delete: if resource == null || (!usesTrustedSchoolAuthority(resource.data.student_id) &&
+        !hasTrustedTimerFields(resource.data) && timerSubjectIsAssigned(resource.data.student_id, resource.data.subject_id));
     }
 
-    // Weekly plans: parent-owned and identity-stable for one student-week planning
+    function allowsLegacyWeeklyPlanWrite(data) {
+      return !data.keys().hasAny(["schema_version"]) &&
+        get(/databases/$(database)/documents/students/$(data.student_id)).data.get("weekly_planning_version", 0) < 1 &&
+        !usesTrustedSchoolAuthority(data.student_id);
+    }
+
+    // Versioned weekly plans are written atomically by trusted planning callables.
     match /weeklyPlans/{weeklyPlanId} {
       allow get: if isOwnerWeeklyPlanLookup(weeklyPlanId) ||
         (
@@ -151,20 +189,85 @@ service cloud.firestore {
             isPublishedPortalWeeklyPlan(resource.data, weeklyPlanId)
           )
         );
-      allow list, delete: if false;
+      allow list: if isOwnerResource();
+      allow delete: if false;
       allow create: if isAuth() &&
-        validWeeklyPlanData(request.resource.data, weeklyPlanId, request.auth.uid);
+        validWeeklyPlanData(request.resource.data, weeklyPlanId, request.auth.uid) &&
+        allowsLegacyWeeklyPlanWrite(request.resource.data);
       allow update: if isOwner(resource.data.parent_id) &&
         validWeeklyPlanData(request.resource.data, weeklyPlanId, resource.data.parent_id) &&
         request.resource.data.parent_id == resource.data.parent_id &&
         request.resource.data.student_id == resource.data.student_id &&
-        request.resource.data.week_key == resource.data.week_key;
+        request.resource.data.week_key == resource.data.week_key &&
+        allowsLegacyWeeklyPlanWrite(resource.data) && allowsLegacyWeeklyPlanWrite(request.resource.data);
+    }
+
+    // Private planning records have server-owned revisions and identity history.
+    match /weeklyPlanDrafts/{weeklyPlanId} {
+      allow get: if (resource == null && isOwnerWeeklyPlanLookup(weeklyPlanId)) || isOwnerResource();
+      allow list: if isOwnerResource();
+      allow write: if false;
+    }
+    match /studentDefaultWeeks/{defaultWeekId} {
+      allow get: if (resource == null && isOwnerWeeklyPlanLookup(defaultWeekId)) || isOwnerResource();
+      allow list: if isOwnerResource();
+      allow write: if false;
+    }
+    match /weeklyPlanningReceipts/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+
+    match /schoolPublicationBridges/{recordId} { allow read: if isOwnerResource(); allow write: if false; }
+    match /schoolExecutionSnapshots/{recordId} { allow read: if isOwnerResource(); allow write: if false; }
+    match /schoolOperationReceipts/{recordId} { allow read: if isOwnerResource(); allow write: if false; }
+    match /schoolStateHistory/{recordId} { allow read: if isOwnerResource(); allow write: if false; }
+    match /schoolReportAmendmentHeads/{recordId} { allow read: if isOwnerResource(); allow write: if false; }
+
+    // Authority and sensitive history are server-written, parent-readable only.
+    // A later trusted student callable returns a safe projection, not these docs.
+    match /blockCompletionStates/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+    match /parentCorrectionEvents/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+    match /weeklyReportAmendments/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+    match /routineDaySnapshots/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+    match /routineDayPointers/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+    match /productDirectionConfig/{id} {
+      allow read, write: if false;
+    }
+
+    match /productDirectionMigrations/{recordId} {
+      allow read, write: if false;
+    }
+    match /householdHistoryEvents/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
+    }
+    match /studentCosmeticStates/{recordId} {
+      allow read: if isOwnerResource();
+      allow write: if false;
     }
 
     // Weekly reports: parent-scoped only
     match /weeklyReports/{reportId} {
-      allow read, write: if isAuth() && request.auth.uid == resource.data.parent_id;
-      allow create: if isOwner(request.resource.data.parent_id);
+      allow read: if isOwnerResource();
+      allow create: if false; // Official originals are filed atomically by the trusted school adapter.
+      allow update: if false; // Original saved snapshots never change; corrections append amendments.
+      allow delete: if isOwnerResource() && !exists(/databases/$(database)/documents/schoolReportAmendmentHeads/$(reportId));
     }
 
     // Parent profiles: owner only
@@ -289,6 +392,13 @@ service cloud.firestore {
     match /dailyLogs/{logId} {
       allow read, write: if isAuth();
     }
+
+    // Billing provider bindings, immutable intents/attempts and webhook receipts
+    // are private server authority; even the owner uses a minimal callable view.
+    match /billingAccounts/{document=**} { allow read, write: if false; }
+    match /billingCheckoutIntents/{document=**} { allow read, write: if false; }
+    match /billingCheckoutAttempts/{document=**} { allow read, write: if false; }
+    match /billingEventReceipts/{document=**} { allow read, write: if false; }
 
     // Deny everything else by default so specific collection matches stay authoritative.
     match /{document=**} {

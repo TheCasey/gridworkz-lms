@@ -1,5 +1,6 @@
+import DailyRoutinesRoute from './DailyRoutinesRoute';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useOutletContext } from 'react-router-dom';
+import { Link, Navigate, useOutletContext } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowRight,
@@ -160,7 +161,7 @@ const EmptyState = ({ icon: Icon, title, detail }) => (
 );
 
 const readOnlyMessage = 'This account can view saved chores setup data, but entitlement lock keeps create, edit, archive, and review actions disabled.';
-const paidModuleReadOnlyMessage = 'Daily routines are available on this account. Core or Lockdown is required for chore pools, allowance tracking, points, rewards, redemptions, achievements, and related cosmetics.';
+const paidModuleReadOnlyMessage = 'Daily Routines, daily points, and built-in avatars are included on Free. New chore pools, allowance setup, and custom rewards are paused; existing records remain in Household History.';
 const formatCurrency = (value) => new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
@@ -241,7 +242,7 @@ const getRewardIcon = (reward = {}) => {
   return '🎁';
 };
 
-const ChoresRoute = () => {
+const LegacyChoresRoute = () => {
   const {
     activeDashboardFeatureId,
     colors,
@@ -3519,7 +3520,7 @@ const ChoresRoute = () => {
               rewardTab === 'requests' ? 'Reward Requests' : 'Reward Store',
               rewardTab === 'requests'
                 ? 'Approve, reject, cancel, or fulfill live student requests without changing the trusted redemption flow.'
-                : 'Create parent-managed rewards, restock limited inventory, and keep built-in cosmetic placeholders visible.',
+                : 'Existing reward records and reservations remain available in Household History.',
               Gift,
               colors
             )}
@@ -3912,6 +3913,15 @@ const ChoresRoute = () => {
       </div>
     </div>
   );
+};
+
+const ChoresRoute = () => {
+  const { entitlementSummary, activeDashboardFeatureId } = useOutletContext();
+  if (entitlementSummary?.loading) return <p role="status">Loading household access…</p>;
+  if (entitlementSummary?.error) return <div role="alert" className="op-chores-section"><h2>Household access is unavailable</h2><p className="op-subtle mt-2">{entitlementSummary.error.message || 'Unable to load account access.'}</p><button type="button" className="op-button mt-4" onClick={entitlementSummary.retryBootstrap}>Retry access</button></div>;
+  if (!entitlementSummary?.routineFirst) return <LegacyChoresRoute />;
+  if (['weekly-chores', 'monthly-chores', 'allowance', 'rewards'].includes(activeDashboardFeatureId)) return <Navigate to="/dashboard/chores/household-history" replace />;
+  return <DailyRoutinesRoute history={activeDashboardFeatureId === 'household-history'} />;
 };
 
 export default ChoresRoute;

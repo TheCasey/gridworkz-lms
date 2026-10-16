@@ -210,6 +210,7 @@ function AppRoutes() {
           path={dashboardFeaturesById[DASHBOARD_CHORES_CHILD_FEATURE_IDS.REWARDS].path}
           element={withDashboardSuspense(<DashboardChoresRoute />)}
         />
+        <Route path={dashboardFeaturesById['household-history'].path} element={withDashboardSuspense(<DashboardChoresRoute />)} />
         <Route
           path={dashboardFeaturesById.lockdown.path}
           element={withDashboardSuspense(<Lockdown />)}

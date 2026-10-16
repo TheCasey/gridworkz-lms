@@ -95,6 +95,7 @@ export const normalizeSubjectCurriculumBlock = (block = {}, index = 0) => {
     custom_fields: cloneArray(block?.custom_fields),
     default_quantity: Number.isFinite(defaultQuantity) && defaultQuantity >= 0 ? defaultQuantity : 0,
     pinned: block?.pinned !== false,
+    is_active: block?.is_active !== false && block?.is_archived !== true && block?.archived !== true && block?.status !== 'archived' && block?.archived_at == null,
   };
 };
 
@@ -238,18 +239,18 @@ export const buildLegacySubjectAssignmentSeed = ({ subject, studentId }) => ({
   block_objectives: cloneCompatValue(subject?.block_objectives || {}),
 });
 
-export const buildLegacySubjectWeeklyBlockSeeds = ({ subject, studentId }) => {
+export const buildLegacySubjectWeeklyBlockSeeds = ({ subject, studentId, defaultQuantities: overrideQuantities }) => {
   const blockLength = getSubjectBlockLengthMinutes(subject);
   const curriculumBlocks = getSubjectCurriculumBlocks(subject);
-  const defaultQuantities = getSubjectDefaultBlockQuantities(subject);
+  const defaultQuantities = overrideQuantities ?? getSubjectDefaultBlockQuantities(subject);
   const blockDefinitions = curriculumBlocks.flatMap((block, blockDefinitionIndex) => (
-    Array.from({ length: Math.max(0, Number.parseInt(defaultQuantities[block.id], 10) || 0) }, (_, occurrenceIndex) => ({
+    Array.from({ length: block.is_active === false ? 0 : Math.max(0, Number.parseInt(defaultQuantities[block.id], 10) || 0) }, (_, occurrenceIndex) => ({
       block,
       blockDefinitionIndex,
       occurrenceIndex,
     }))
   ));
-  const fallbackDefinitions = blockDefinitions.length > 0 || Array.isArray(subject?.curriculum_blocks)
+  const fallbackDefinitions = blockDefinitions.length > 0 || overrideQuantities !== undefined || Array.isArray(subject?.curriculum_blocks)
     ? blockDefinitions
     : Array.from({ length: getSubjectBlockCount(subject) }, (_, blockIndex) => ({
       block: normalizeSubjectCurriculumBlock({

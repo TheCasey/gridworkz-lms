@@ -192,12 +192,26 @@ export const resolveEntitlementState = ({
   const usage = deriveEntitlementUsage({ students, subjects });
   const limitChecks = buildEntitlementLimitChecks({ planId, usage });
   const billingState = normalizeEntitlementBillingState(entitlementDoc?.billing_state);
+  const productDirectionVersion = Number.isSafeInteger(entitlementDoc?.product_direction_version)
+    ? entitlementDoc.product_direction_version
+    : 0;
+  const routineFirstActive = productDirectionVersion >= 1;
+  const features = resolveEntitlementFeatures(planId, entitlementDoc?.feature_overrides);
+  features[EntitlementFeatureKeys.ROUTINE_REWARDS] = routineFirstActive
+    && features[EntitlementFeatureKeys.DAILY_ROUTINES]
+    && features[EntitlementFeatureKeys.ROUTINE_REWARDS];
+  if (routineFirstActive) {
+    features[EntitlementFeatureKeys.CHORES] = false;
+    features[EntitlementFeatureKeys.REWARDS] = false;
+  }
 
   return {
     planId,
     plan,
     limits: plan.limits,
-    features: resolveEntitlementFeatures(planId, entitlementDoc?.feature_overrides),
+    features,
+    productDirectionVersion,
+    routineFirstActive,
     usage,
     usageSnapshot: {
       [EntitlementLimitKeys.STUDENTS]: entitlementDoc?.usage_snapshot?.students ?? 0,

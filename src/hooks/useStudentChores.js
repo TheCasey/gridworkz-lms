@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   cancelTrustedRewardRedemption,
   claimTrustedChore,
@@ -6,6 +6,8 @@ import {
   completeTrustedRoutine,
   readTrustedStudentChoreState,
   requestTrustedRewardRedemption,
+  unlockTrustedRoutineCosmetic,
+  selectTrustedRoutineCosmetics,
 } from '../firebase/trustedOperations';
 import { buildStudentChoreWorkspaceModel } from '../utils/choreUtils';
 import { buildStudentRewardStoreModel } from '../utils/rewardUtils';
@@ -30,7 +32,10 @@ export const useStudentChores = ({
   isAuthenticated = false,
   enabled = true,
 } = {}) => {
-  const [choreState, setChoreState] = useState(null);
+  const [storedChoreState, setChoreState] = useState(null);
+  const [storedIdentity, setStoredIdentity] = useState('');
+  const requestGeneration = useRef(0);
+  const currentIdentity = useRef('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -49,7 +54,16 @@ export const useStudentChores = ({
     access_pin: hasVerifiedStudentContext ? pin : '',
   }), [hasVerifiedStudentContext, pin, slug, student?.id, student?.slug]);
 
+  const identity = JSON.stringify([enabled, student?.id, slug, pin, isAuthenticated]);
+  currentIdentity.current = identity;
+  const choreState = storedIdentity === identity ? storedChoreState : null;
+  const routineFirst = choreState?.contract === 'routine_rewards_v1';
+  const [cosmeticPending, setCosmeticPending] = useState({});
+
   const loadChoreState = useCallback(async () => {
+    const requestIdentity = identity;
+    const request = ++requestGeneration.current;
+    const isCurrent = () => request === requestGeneration.current && currentIdentity.current === requestIdentity;
     if (!enabled || !student?.id || !hasVerifiedStudentContext) {
       setChoreState(null);
       setHasLoaded(false);
@@ -60,13 +74,15 @@ export const useStudentChores = ({
     setLoading(true);
     try {
       const nextState = await readTrustedStudentChoreState(trustedStudentPayload);
+      if (!isCurrent()) return null;
+      setStoredIdentity(requestIdentity);
       setChoreState(nextState);
       setError(null);
       setHasLoaded(true);
       return nextState;
     } catch (nextError) {
+      if (!isCurrent()) return null;
       console.error('Unable to load trusted student chore state:', nextError);
-      setChoreState(null);
       setError({
         code: getTrustedOperationErrorCode(nextError),
         message: getTrustedOperationErrorMessage(nextError),
@@ -74,9 +90,9 @@ export const useStudentChores = ({
       setHasLoaded(false);
       return null;
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [enabled, hasVerifiedStudentContext, student?.id, trustedStudentPayload]);
+  }, [enabled, hasVerifiedStudentContext, student?.id, trustedStudentPayload, identity]);
 
   useEffect(() => {
     if (!enabled || !student?.id) {
@@ -95,8 +111,11 @@ export const useStudentChores = ({
       return undefined;
     }
 
+    setChoreState(null); setStoredIdentity(''); setError(null); setHasLoaded(false);
+    setClaimingIds({}); setCompletingClaimIds({}); setCompletingRoutineIds({});
+    setRequestingRewardIds({}); setCancelingRewardIds({}); setCosmeticPending({});
     loadChoreState();
-    return undefined;
+    return () => { requestGeneration.current += 1; };
   }, [enabled, hasVerifiedStudentContext, loadChoreState, student?.id]);
 
   const runTrustedMutation = useCallback(async ({
@@ -108,13 +127,16 @@ export const useStudentChores = ({
       return;
     }
 
+    const mutationIdentity = identity;
+    const isCurrent = () => currentIdentity.current === mutationIdentity;
     setPendingState((current) => ({ ...current, [pendingKey]: true }));
 
     try {
       await operation();
+      if (!isCurrent()) return;
       await loadChoreState();
-      setError(null);
     } catch (nextError) {
+      if (!isCurrent()) return;
       console.error('Unable to complete trusted student chore action:', nextError);
       setError({
         code: getTrustedOperationErrorCode(nextError),
@@ -122,13 +144,13 @@ export const useStudentChores = ({
       });
       throw nextError;
     } finally {
-      setPendingState((current) => {
+      if (isCurrent()) setPendingState((current) => {
         const nextState = { ...current };
         delete nextState[pendingKey];
         return nextState;
       });
     }
-  }, [hasVerifiedStudentContext, loadChoreState]);
+  }, [hasVerifiedStudentContext, loadChoreState, identity]);
 
   const claimChore = useCallback(async (choreDefinitionId) => {
     if (!choreDefinitionId || !hasVerifiedStudentContext) return;
@@ -157,7 +179,7 @@ export const useStudentChores = ({
     });
   }, [hasVerifiedStudentContext, runTrustedMutation, trustedStudentPayload]);
 
-  const completeRoutine = useCallback(async ({ routineTemplateId, completedItemIds = [] } = {}) => {
+  const completeRoutine = useCallback(async ({ routineTemplateId, completedItemIds = [], dateKey = null } = {}) => {
     if (!routineTemplateId || !hasVerifiedStudentContext) return;
 
     await runTrustedMutation({
@@ -167,9 +189,10 @@ export const useStudentChores = ({
         ...trustedStudentPayload,
         routine_template_id: routineTemplateId,
         completed_item_ids: completedItemIds,
+        ...(routineFirst && dateKey ? { date_key: dateKey } : {}),
       }),
     });
-  }, [hasVerifiedStudentContext, runTrustedMutation, trustedStudentPayload]);
+  }, [hasVerifiedStudentContext, runTrustedMutation, trustedStudentPayload, routineFirst]);
 
   const requestRewardRedemption = useCallback(async (rewardCatalogItemId) => {
     if (!rewardCatalogItemId || !hasVerifiedStudentContext) return;
@@ -196,6 +219,15 @@ export const useStudentChores = ({
       }),
     });
   }, [hasVerifiedStudentContext, runTrustedMutation, trustedStudentPayload]);
+
+  const unlockCosmetic = async (cosmeticId) => runTrustedMutation({
+    pendingKey: cosmeticId, setPendingState: setCosmeticPending,
+    operation: () => unlockTrustedRoutineCosmetic({ ...trustedStudentPayload, cosmetic_id: cosmeticId }),
+  });
+  const selectCosmetics = async (selectedCosmeticIds) => runTrustedMutation({
+    pendingKey: 'selection', setPendingState: setCosmeticPending,
+    operation: () => selectTrustedRoutineCosmetics({ ...trustedStudentPayload, selected_cosmetic_ids: selectedCosmeticIds, expected_revision: choreState?.routine_rewards?.cosmetics?.revision }),
+  });
 
   const isPinError = error?.code === 'missing_pin' || error?.code === 'pin_mismatch';
   const isResolvingAccess = Boolean(
@@ -243,6 +275,11 @@ export const useStudentChores = ({
   ]);
 
   return {
+    routineFirst,
+    routineRewards: choreState?.routine_rewards || null,
+    unlockCosmetic,
+    selectCosmetics,
+    cosmeticPending,
     workspace,
     rewardStore,
     choreState,
@@ -251,7 +288,7 @@ export const useStudentChores = ({
     isResolvingAccess,
     hasVisibleWorkspace: workspace.canShowArea,
     canShowTab: Boolean(enabled && hasVerifiedStudentContext && !isPinError),
-    canShowRewardTab: Boolean(rewardStore.canShowArea || isResolvingAccess),
+    canShowRewardTab: !routineFirst && Boolean(rewardStore.canShowArea || isResolvingAccess),
     refresh: loadChoreState,
     claimChore,
     completeChore,

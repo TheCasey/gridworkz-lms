@@ -3,8 +3,6 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Menu, X } from 'lucide-react';
 import {
   EntitlementCatalog,
-  EntitlementFeatureCatalog,
-  EntitlementFeatureKeys,
   EntitlementLimitKeys,
   PlanIds,
   isUnlimitedPlanLimit,
@@ -22,7 +20,7 @@ const marketingNavLinks = [
 const heroProofPoints = [
   'Multi-student planning',
   'Student portal access',
-  'Timers and reflections',
+  'Daily Routines and avatars',
   'Weekly reports',
 ];
 
@@ -37,7 +35,7 @@ const weeklyWorkflow = [
     step: '02',
     title: 'Students run the day',
     description:
-      'Students open their own workspace, choose what to tackle next, use timers, and submit the work that happened.',
+      'Students complete their Daily Routines, earn daily points for avatars, and work through their published Weekly Plan with timers only where needed.',
   },
   {
     step: '03',
@@ -93,25 +91,25 @@ const pricingPlanOrder = [PlanIds.FREE, PlanIds.CORE, PlanIds.LOCKDOWN];
 
 const pricingCardMeta = Object.freeze({
   [PlanIds.FREE]: {
-    eyebrow: 'Try the weekly system',
+    eyebrow: 'The complete daily loop',
     description:
-      'For trying Own Path with a smaller household before you need more room or more control.',
+      'School planning, student work, reports, Daily Routines, and built-in avatar rewards for a smaller household.',
     ctaNote: 'No billing is required to begin on Free.',
     accentClassName: 'border-parchment/80 bg-white/84',
   },
   [PlanIds.CORE]: {
-    eyebrow: 'Full planning workspace',
+    eyebrow: 'Room for a larger household',
     description:
-      'For active homeschool families who want the complete weekly planning surface and a larger household cap.',
-    ctaNote: 'Public paid checkout is not self-serve yet, so the entry path still starts free.',
+      'The same complete school and routine experience with unlimited students and active curriculum records.',
+    ctaNote: 'Start free. Upgrade from account Settings when Core billing is available.',
     accentClassName:
       'border-mysteria/18 bg-[linear-gradient(180deg,_rgba(255,255,255,0.94),_rgba(203,183,251,0.16))]',
   },
   [PlanIds.LOCKDOWN]: {
-    eyebrow: 'Focus-control plan',
+    eyebrow: 'Coming soon',
     description:
-      'For families who want the Core planning workspace plus tighter focus controls as Lockdown expands.',
-    ctaNote: 'Lockdown activation follows the current billing rollout after signup.',
+      'Future focus controls built on Core. New Lockdown purchases are not available.',
+    ctaNote: 'Lockdown is coming soon. Existing access is preserved.',
     accentClassName:
       'border-charcoal-ink/12 bg-[linear-gradient(180deg,_rgba(27,25,56,0.04),_rgba(113,76,182,0.16))]',
   },
@@ -131,7 +129,7 @@ const faqItems = [
   {
     question: 'Can I manage multiple students?',
     answer:
-      'Yes. Multi-student planning is part of the core product shape. The Free plan covers up to 2 students, and Core plus Lockdown cover up to 10 students.',
+      'Yes. Free includes 2 students and 3 active curriculum records. Core is $5/month for unlimited students and active curriculum records. Schoolwork, Daily Routines, routine points, and built-in avatars are included on Free.',
   },
   {
     question: 'Does this replace my curriculum?',
@@ -146,12 +144,12 @@ const faqItems = [
   {
     question: 'What is Lockdown?',
     answer:
-      'Lockdown is the optional advanced plan for families who want tighter focus controls. It builds on Core and is the only plan that includes Lockdown extension and kiosk entitlements.',
+      'Lockdown is the coming-soon focus-control tier built on Core. New purchases are unavailable; existing Lockdown access is preserved.',
   },
   {
     question: 'Can I start free?',
     answer:
-      'Yes. The public entry path still starts through the current signup flow. The site does not advertise a live self-serve paid checkout yet, so families can begin on Free and move up when the paid path is ready.',
+      'Yes. Start Free without payment and use the complete school and Daily Routines experience. Core adds household scale. Available billing options appear in account Settings.',
   },
 ];
 
@@ -170,28 +168,12 @@ const buildPricingPoints = (planId) => {
   const plan = EntitlementCatalog[planId];
 
   const points = [
-    formatPlanLimitLabel(
-      plan.limits[EntitlementLimitKeys.STUDENTS],
-      'student',
-    ),
-    formatPlanLimitLabel(
-      plan.limits[EntitlementLimitKeys.CURRICULUM_ITEMS],
-      'curriculum item',
-    ),
-    plan.features[EntitlementFeatureKeys.PROJECTS]
-      ? EntitlementFeatureCatalog[EntitlementFeatureKeys.PROJECTS].availableDescription
-      : EntitlementFeatureCatalog[EntitlementFeatureKeys.PROJECTS].lockedDescription,
+    formatPlanLimitLabel(plan.limits[EntitlementLimitKeys.STUDENTS], 'student'),
+    formatPlanLimitLabel(plan.limits[EntitlementLimitKeys.CURRICULUM_ITEMS], 'active curriculum record'),
+    'Complete Weekly Plans, student work, timers and reports',
+    'Daily Routines, daily points and built-in avatars',
   ];
-
-  if (plan.features[EntitlementFeatureKeys.LOCKDOWN_EXTENSION]) {
-    points.push(EntitlementFeatureCatalog[EntitlementFeatureKeys.LOCKDOWN_EXTENSION].availableDescription);
-  } else {
-    points.push('Lockdown browser controls stay reserved for the Lockdown plan.');
-  }
-
-  if (plan.features[EntitlementFeatureKeys.LOCKDOWN_KIOSK]) {
-    points.push(EntitlementFeatureCatalog[EntitlementFeatureKeys.LOCKDOWN_KIOSK].availableDescription);
-  }
+  if (planId === PlanIds.LOCKDOWN) points.push('Focus controls coming soon; new purchases unavailable');
 
   return points;
 };
@@ -238,9 +220,9 @@ function MarketingHome() {
       ...pricingCardMeta[planId],
       planId,
       displayName: plan.displayName,
-      priceLabel: plan.priceLabel,
+      priceLabel: planId === PlanIds.LOCKDOWN ? 'Coming soon' : plan.priceLabel,
       points: buildPricingPoints(planId),
-      priceContextLabel: planId === PlanIds.FREE ? 'Start here' : 'Current plan target',
+      priceContextLabel: planId === PlanIds.FREE ? 'Included' : planId === PlanIds.LOCKDOWN ? 'New purchases unavailable' : 'More room',
     };
   });
 
@@ -868,21 +850,18 @@ function MarketingHome() {
                   Start simple. Upgrade when your family needs more room or more control.
                 </h2>
                 <p className="mt-4 max-w-2xl text-base font-body leading-8 text-charcoal-ink/78">
-                  The weekly story stays the same across every plan: parents shape the week,
-                  students work from a focused portal, and reports keep the record straight. The
-                  differences below come from the live entitlement contract already wired into the
-                  app.
+                  Free includes the complete school and Daily Routines experience. Core adds room
+                  for more students and curriculum. Lockdown remains coming soon.
                 </p>
               </div>
 
               <div className="rounded-[28px] border border-dashed border-parchment bg-warm-cream/80 p-5">
                 <p className="text-xs font-label uppercase tracking-[0.2em] text-charcoal-ink/60">
-                  Billing readiness note
+                  Start with Free
                 </p>
                 <p className="mt-3 text-sm font-body leading-7 text-charcoal-ink/74">
-                  Public pricing is informative now, but the site is not advertising a live
-                  self-serve paid checkout yet. Every CTA here still routes through the current
-                  signup or sign-in path.
+                  No payment is required to start. Available Core upgrade and subscription
+                  management options appear in account Settings. Lockdown is coming soon.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-3">
                   <Link
@@ -931,8 +910,8 @@ function MarketingHome() {
                     </p>
                     <p className="mt-2 text-sm font-body text-charcoal-ink/64">
                       {plan.planId === PlanIds.FREE
-                        ? 'Smaller-household entry plan'
-                        : 'Paid plan pricing shown for decision-making clarity'}
+                        ? 'The complete experience for a smaller household'
+                        : plan.planId === PlanIds.LOCKDOWN ? 'Existing access is preserved' : 'Unlimited students and active curriculum'}
                     </p>
                   </div>
 
@@ -946,13 +925,13 @@ function MarketingHome() {
                   </div>
 
                   <div className="mt-6">
-                    <Link
+                    {plan.planId === PlanIds.LOCKDOWN ? <button type="button" disabled className="inline-flex w-full items-center justify-center rounded-full bg-charcoal-ink/60 px-5 py-3 text-sm font-label text-white">Coming soon</button> : <Link
                       to="/login?mode=signup"
                       className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-charcoal-ink px-5 py-3 text-sm font-label text-white transition hover:bg-mysteria"
                     >
                       Start free
                       <ArrowRight className="h-4 w-4" />
-                    </Link>
+                    </Link>}
                     <p className="mt-3 text-sm font-body leading-6 text-charcoal-ink/68">
                       {plan.ctaNote}
                     </p>
@@ -973,7 +952,7 @@ function MarketingHome() {
                 FAQ
               </p>
               <h2 className="mt-3 max-w-xl text-3xl font-display tracking-normal text-mysteria sm:text-[2.5rem]">
-                Clear answers before a family hits the auth wall
+                Clear answers before you get started
               </h2>
               <p className="mt-4 max-w-xl text-base font-body leading-8 text-charcoal-ink/78">
                 The goal here is not a giant support page. It is enough context to remove the
@@ -987,8 +966,8 @@ function MarketingHome() {
                 </p>
                 <p className="mt-3 text-sm font-body leading-7 text-white/86">
                   Parents keep the weekly planning account. Students work from a simpler portal.
-                  Free is the current safe entry point, and paid plan details stay public without
-                  pretending checkout is already a one-click homepage flow.
+                  Free includes school planning, reports, Daily Routines and built-in avatar
+                  rewards. Core adds unlimited students and curriculum for $5/month.
                 </p>
               </div>
             </div>

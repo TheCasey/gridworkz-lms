@@ -167,7 +167,7 @@ const StudentSchoolWorkspace = ({
         <header className="student-page-heading">
           <div>
             <h1>This week&apos;s school</h1>
-            <p>{hasPublishedWeeklyPlan ? 'Published weekly plan' : 'Current subject plan'} · Choose any available block in any order</p>
+            <p>{hasPublishedWeeklyPlan ? 'Your school week' : 'Current subject plan'} · Choose any available block in any order</p>
           </div>
           <span className="student-status-chip">Current week</span>
         </header>
@@ -210,14 +210,14 @@ const StudentSchoolWorkspace = ({
                         const policy = item.workItem ? getWorkItemPolicy(item.workItem) : getSubjectPolicy(item.subject, { blockIndex: item.blockIndex });
                         const locked = !completed && !policy.subjectAvailability.allowed;
                         const selected = expandedBlockIndex === item.blockIndex;
-                        const blockedByTimer = Boolean(timer && timer.blockIndex !== item.blockIndex);
+                        const blockedByTimer = Boolean(item.requireTimer && timer && timer.blockIndex !== item.blockIndex);
                         return (
                           <button
                             key={item.id}
                             type="button"
                             className={`student-block-chip ${completed ? 'is-complete' : ''} ${selected ? 'is-selected' : ''}`}
                             onClick={() => selectItem(group, item)}
-                            disabled={completed || locked || blockedByTimer || isSubmissionLocked(item.subject.id, item.blockIndex)}
+                            disabled={submitting || completed || locked || blockedByTimer || isSubmissionLocked(item.subject.id, item.blockIndex)}
                             title={item.title}
                           >
                             {completed ? <Check /> : index + 1}
@@ -235,34 +235,34 @@ const StudentSchoolWorkspace = ({
                           <h2>{selectedItem.title}</h2>
                           <div className="student-block-meta">
                             <span><Clock3 /> {selectedItem.duration} minutes</span>
-                            <span>{selectedItem.requireTimer ? 'Timer required' : 'Timer optional'}</span>
+                            <span>{selectedItem.requireTimer ? 'Timer required' : 'No timer'}</span>
                             <span>{selectedFields.length} response{selectedFields.length === 1 ? '' : 's'}</span>
                           </div>
                           {selectedInstruction ? <p className="student-block-instruction">{selectedInstruction}</p> : null}
                         </div>
 
-                        <div className="student-timer-panel">
+                        {selectedItem.requireTimer ? <div className="student-timer-panel" data-testid="school-block-timer">
                           <span>Block timer</span>
                           <strong>{timerMatchesSelection ? formatRemainingTime(selectedTimer.remainingTime) : `${String(selectedItem.duration).padStart(2, '0')}:00`}</strong>
                           <div>
                             {!timerMatchesSelection ? (
-                              <button type="button" className="student-button is-primary" disabled={!canStartTimer} onClick={() => onStartTimer(selectedSubject, selectedItem.blockIndex)}><Play /> Start</button>
+                              <button type="button" className="student-button is-primary" disabled={!canStartTimer || submitting} onClick={() => onStartTimer(selectedSubject, selectedItem.blockIndex)}><Play /> Start</button>
                             ) : selectedTimer.remainingTime > 0 ? (
                               <>
-                                <button type="button" className="student-button is-primary" onClick={() => selectedTimer.isRunning ? onPauseTimer(selectedSubject) : onResumeTimer(selectedSubject)}>{selectedTimer.isRunning ? <Pause /> : <Play />}{selectedTimer.isRunning ? 'Pause' : 'Resume'}</button>
-                                <button type="button" className="student-button is-icon" onClick={() => onResetTimer(selectedSubject)} aria-label="Reset timer"><RotateCcw /></button>
+                                <button type="button" className="student-button is-primary" disabled={submitting} onClick={() => selectedTimer.isRunning ? onPauseTimer(selectedSubject) : onResumeTimer(selectedSubject)}>{selectedTimer.isRunning ? <Pause /> : <Play />}{selectedTimer.isRunning ? 'Pause' : 'Resume'}</button>
+                                <button type="button" className="student-button is-icon" disabled={submitting} onClick={() => onResetTimer(selectedSubject)} aria-label="Reset timer"><RotateCcw /></button>
                               </>
                             ) : (
                               <>
                                 <button type="button" className="student-button is-success" disabled={!timerPolicy?.canSubmitBlock?.allowed || submitting} onClick={completeSelected}>Complete</button>
-                                <button type="button" className="student-button is-icon" onClick={() => onResetTimer(selectedSubject)} aria-label="Reset timer"><RotateCcw /></button>
+                                <button type="button" className="student-button is-icon" disabled={submitting} onClick={() => onResetTimer(selectedSubject)} aria-label="Reset timer"><RotateCcw /></button>
                               </>
                             )}
                           </div>
-                        </div>
+                        </div> : null}
                       </div>
 
-                      {timerOnOtherBlock ? <p className="student-inline-notice">Finish or reset the timer on Block {selectedTimer.blockIndex + 1} before switching.</p> : null}
+                      {selectedItem.requireTimer && timerOnOtherBlock ? <p className="student-inline-notice">Finish or reset the timer on Block {selectedTimer.blockIndex + 1} before switching.</p> : null}
 
                       <div className="student-block-actions">
                         {selectedItem.resources.map((resource, index) => resource.url ? (
@@ -270,7 +270,7 @@ const StudentSchoolWorkspace = ({
                         ) : (
                           <span key={`${resource.name}_${index}`} className="student-resource-label"><BookOpen />{resource.name}</span>
                         ))}
-                        {!selectedItem.requireTimer ? <button type="button" className="student-button is-success" disabled={!canSubmit || selectedCompleted || timerOnOtherBlock || submitting} onClick={completeSelected}>Complete block</button> : null}
+                        {!selectedItem.requireTimer ? <button type="button" className="student-button is-success" disabled={!canSubmit || selectedCompleted || submitting} onClick={completeSelected}>Complete block</button> : null}
                       </div>
                     </div>
                   ) : null}

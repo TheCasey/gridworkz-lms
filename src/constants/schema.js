@@ -31,6 +31,11 @@ export const StudentSchema = {
   week_reset_hour: "number", // Public copy of school weekly rollover hour
   week_reset_minute: "number", // Public copy of school weekly rollover minute
   timezone: "string", // IANA timezone for weekly rollover
+  school_authority_version: "number", // Server-owned completion/timer authority marker
+  school_state_revision: "number", // Student-safe change signal; no private audit details
+  school_authority_adopted_at: "timestamp", // First trusted school authority use
+  weekly_planning_version: "number", // Server-owned published-plan authority marker
+  weekly_planning_adopted_at: "timestamp", // First trusted publish
   lockdown_schedule: "object", // Optional student-bound lockdown schedule plus legacy off-hours resource windows used as migration input
   is_active: "boolean", // Whether student account is active
   created_at: "timestamp", // Student profile creation
@@ -303,6 +308,7 @@ export const WeeklyReportSchema = {
   week_ending: "timestamp", // Compatibility alias still used by report queries/sorting
   weekly_goal: "number", // Total assigned blocks for the week
   total_blocks: "number", // Total completed blocks for the week
+  total_minutes: "number", // Exact recorded evidence minutes; never infer from rounded hours
   total_hours: "number", // Rounded hours from block_duration totals
   subject_ids: "array", // Legacy subject ids represented in the snapshot
   subject_titles: "array", // Cached subject titles represented in the snapshot
@@ -317,6 +323,15 @@ export const WeeklyReportSchema = {
   school_year_end: "timestamp", // Cached school year range end
   school_quarter: "number", // Cached quarter index
   school_quarter_label: "string", // Cached quarter label
+  published_revision: "number", // Published revision at filing; null for frozen legacy execution
+  school_authority_kind: "string", // published or legacy_execution
+  timezone: "string", // Recorded household timezone for stable display/print
+  correction_events: "array", // Immutable allowlisted correction snapshots at this version
+  correction_watermark: "object", // School revision and included event IDs
+  authority_version: "number", // 1 for transactionally filed official snapshots
+  school_state_revision: "number", // Effective-state change watermark at filing
+  report_version: "number", // Original version 1; amendments are separate records
+  original_report_id: "string", // Canonical original ID, unchanged by amendments
   record_source: "string", // manual or automatic archival path
   created_at: "timestamp"
 };
@@ -552,6 +567,7 @@ export const SupportOperatorSchema = {
 export const AccountEntitlementFeatureOverridesSchema = {
   can_use_projects: "boolean", // Optional override for the planned projects feature
   can_use_daily_routines: "boolean", // Optional override for grouped daily routine access; included on Free by default
+  can_use_routine_rewards: "boolean", // Narrow full-day points/built-in cosmetics; activation is separate from broad rewards
   can_use_chores: "boolean", // Optional override for paid chore pools, allowance tracking, and achievements
   can_use_rewards: "boolean", // Optional override for paid points, reward-store behavior, redemptions, and cosmetics
   can_use_lockdown_extension: "boolean", // Optional override for browser extension access
@@ -598,7 +614,45 @@ export const AccountEntitlementSchema = {
   updated_via: "string", // billing_webhook | operator_console | operator_clear_override
   billing_state: "object", // See AccountEntitlementBillingStateSchema
   manual_override: "object", // See AccountEntitlementManualOverrideSchema, nullable
+  product_direction_version: "number", // Server-owned activation; 0/absent legacy, 1 routine-first
+  product_direction_migration_version: "number", // Last trusted packaging migration version
+  product_direction_migrated_at: "timestamp", // First trusted packaging migration time
   updated_at: "timestamp" // Last trusted backend entitlement document update
+};
+
+// Private serialization point for quota-increasing mutations. Actual records supply counts.
+export const QuotaMutationStateSchema = {
+  parent_id: "string", revision: "number", updated_at: "timestamp"
+};
+
+// All billing coordinator records are server-only. Clients use the three billing callables.
+export const BillingAccountSchema = {
+  parent_id: "string",
+  mode: "string", // test | live; a binding cannot silently cross modes
+  stripe_customer_id: "string", // Provider-verified ownership, never writable parent profile data
+  stripe_subscription_id: "string", // Current provider subscription, nullable
+  subscription_status: "string",
+  pending_checkout: "object", // Immutable intent key/id, created time and optional known session id
+  reconciliation_required: "boolean",
+  lease: "object", // Opaque token + expires_at_ms; every coordinator commit is fenced
+  updated_at: "timestamp"
+};
+
+export const BillingCheckoutIntentSchema = {
+  parent_id: "string", intent_id: "string", mode: "string", price_id: "string",
+  return_url: "string", created_at_ms: "number", existing_customer_id: "string",
+  customer_parameters: "object", checkout_parameters: "object" // Frozen server parameters; never credentials
+};
+
+export const BillingEventReceiptSchema = {
+  event_id: "string", mode: "string", event_type: "string", parent_id: "string",
+  disposition: "string", created_at: "timestamp"
+};
+
+export const BillingCheckoutAttemptSchema = {
+  parent_id: "string", intent_id: "string", operation: "string", stage: "string",
+  request: "object", // Exact server parameters and idempotency key before a provider mutation; nullable afterward
+  created_at: "timestamp"
 };
 
 export const EntitlementAuditLogSchema = {
@@ -887,6 +941,206 @@ export const RewardRedemptionSchema = {
   updated_at: "timestamp"
 };
 
+// Additive product-direction v1 contracts. Existing shapes stay available for legacy readers.
+// These are vocabulary, not permission grants; trusted writers validate with pure helpers.
+export const ProductDirectionContractVersion = 1;
+
+export const EffectiveBlockStatuses = Object.freeze({
+  INCOMPLETE: "incomplete",
+  COMPLETED: "completed",
+});
+
+export const WeeklyBlockInstanceSchema = {
+  ...WeeklyBlockSchema,
+  instance_key: "string", // Immutable copy identity; never an array index or quantity ordinal
+};
+
+export const PublishedWeeklyPlanV1Schema = {
+  ...WeeklyPlanSchema,
+  schema_version: "number",
+  revision: "number", // Positive server-checked published revision; archived is immutable
+  school_completion_version: "number", // 1 disables raw subject/index completion fallback
+};
+
+export const WeeklyPlanDraftSchema = {
+  ...WeeklyPlanSchema,
+  schema_version: "number",
+  revision: "number", // Positive private draft revision
+  base_published_revision: "number", // 0 before first publication
+  parent_notes: "string", // Private; never projected into weeklyPlans
+  legacy_source_links: "object", // Private reviewed first-publication source IDs, or null for new work
+  block_identity_history: "object", // Retained removed identities; server-owned, private
+};
+
+export const WeeklyPlanningReceiptSchema = {
+  parent_id: "string",
+  student_id: "string",
+  schema_version: "number",
+  action: "string", // save, publish, defaults or archive
+  idempotency_key: "string",
+  request_fingerprint: "string", // SHA-256 of canonical action and full request
+  response: "object", // Original accepted response for safe uncertain retries
+  recorded_at: "timestamp",
+};
+
+export const StudentDefaultWeekSchema = {
+  parent_id: "string",
+  student_id: "string", // Exactly one student; never a subject-wide default write
+  schema_version: "number",
+  revision: "number",
+  default_block_quantities: "object", // subject id -> curriculum block id -> nonnegative integer
+  created_at: "timestamp",
+  updated_at: "timestamp",
+};
+
+export const BlockCompletionStateSchema = {
+  id: "string",
+  parent_id: "string",
+  student_id: "string",
+  week_key: "string",
+  weekly_plan_id: "string",
+  weekly_block_id: "string",
+  schema_version: "number",
+  revision: "number", // 0 for initial state; transaction increments on each accepted change
+  status: "string", // EffectiveBlockStatuses; evidence remains separate and immutable
+  original_evidence_ids: "array", // References to original submissions, including after undo
+  provenance: "string", // student, parent_correction, legacy_student or legacy_parent
+  actor_id: "string", // Trusted actor; unknown legacy actor stays null
+  completed_at: "timestamp", // Effective completion timestamp, nullable
+  last_submission_id: "string", // Latest immutable student evidence, optional
+  last_correction_event_id: "string",
+  updated_at: "timestamp",
+};
+
+export const SchoolStateHistorySchema = {
+  ...BlockCompletionStateSchema,
+  recorded_at: "timestamp",
+  event_id: "string", // Optional correction event reference
+  submission_id: "string", // Optional immutable student evidence reference
+};
+
+export const SchoolExecutionSnapshotSchema = {
+  ...WeeklyPlanSchema,
+  schema_version: "number",
+  authority_kind: "string", // legacy_execution; separate from published planning authority
+  original_report_ids: "array", // Historical assignment anchors when unambiguous
+  recorded_at: "timestamp",
+};
+
+export const SchoolPublicationBridgeSchema = {
+  id: "string", // Canonical published plan ID
+  parent_id: "string",
+  student_id: "string",
+  week_key: "string",
+  weekly_plan_id: "string",
+  source_execution_id: "string", // Actual legacy execution or prior canonical publication ID
+  source_kind: "string", // legacy_execution or published
+  source_revision: "number", // Prior publication revision, nullable for legacy
+  schema_version: "number",
+  legacy_source_links: "object", // target block ID -> exact source block ID, or null
+  inherited_states: "object", // Full canonical state ID -> immutable normalized baseline
+  source_blocks: "object", // Exact source block IDs -> frozen execution definitions
+  recorded_at: "timestamp",
+};
+
+export const SchoolOperationReceiptSchema = {
+  parent_id: "string",
+  student_id: "string",
+  action: "string",
+  schema_version: "number",
+  request_fingerprint: "string",
+  response: "object",
+  recorded_at: "timestamp",
+};
+
+export const SchoolReportAmendmentHeadSchema = {
+  parent_id: "string",
+  student_id: "string",
+  week_key: "string",
+  weekly_plan_id: "string",
+  original_report_id: "string", // Document ID matches this field, rules can lock original
+  latest_amendment_id: "string",
+  report_version: "number",
+  updated_at: "timestamp",
+};
+
+export const ParentCorrectionEventSchema = {
+  id: "string",
+  parent_id: "string",
+  student_id: "string",
+  week_key: "string",
+  weekly_plan_id: "string",
+  weekly_block_id: "string",
+  schema_version: "number",
+  revision: "number",
+  original_evidence_ids: "array",
+  actor_id: "string", // Server derives authenticated parent, never request payload
+  recorded_at: "timestamp", // Server clock supplied by trusted caller
+  prior_status: "string",
+  new_status: "string",
+  prior_revision: "number",
+  reason: "string",
+  note: "string",
+  idempotency_key: "string",
+};
+
+export const WeeklyReportAmendmentSchema = {
+  id: "string",
+  parent_id: "string",
+  student_id: "string",
+  week_key: "string",
+  weekly_plan_id: "string",
+  schema_version: "number",
+  original_report_id: "string", // Root saved snapshot is never rewritten
+  previous_report_version_id: "string", // Root id for version 2; previous amendment id thereafter
+  report_version: "number", // Original is logical version 1; amendments begin at 2
+  correction_event_ids: "array", // Events incorporated in this version
+  snapshot: "object", // Fully materialized report snapshot for this amendment
+  actor_id: "string",
+  recorded_at: "timestamp",
+};
+
+export const RoutineDaySnapshotSchema = {
+  id: "string",
+  parent_id: "string",
+  student_id: "string",
+  schema_version: "number",
+  date_key: "string", // Household-local date on first daily use
+  timezone: "string", // IANA timezone captured with date
+  templates: "array", // Populated qualifying periods and their stable checklist ids/labels
+  routine_day_points: "number", // Existing valid configured amount; new settings default to 10
+  routine_points_enabled: "boolean",
+  recorded_at: "timestamp", // First-use server time; snapshot never changes for this day
+};
+
+export const RoutineRewardCapabilitySchema = {
+  schema_version: "number",
+  daily_routines: "boolean",
+  routine_day_rewards: "boolean", // Narrow full-day award authority, independent of broad rewards
+  built_in_cosmetics: "boolean", // Narrow ownership/selection authority, independent of custom rewards
+};
+
+export const RoutineDayPointerSchema = {
+  parent_id: "string",
+  student_id: "string",
+  snapshot_id: "string", // Frozen qualifying day; server-owned selection
+  date_key: "string",
+  timezone: "string",
+  day_start: "timestamp", // Frozen household-local day bounds
+  day_end: "timestamp",
+};
+
+export const StudentCosmeticStateSchema = {
+  id: "string",
+  parent_id: "string",
+  student_id: "string",
+  schema_version: "number",
+  revision: "number",
+  owned_cosmetic_ids: "array", // Stable built-in catalog ids; preserve historical unlock ids
+  selected_cosmetic_ids: "object", // Slot -> owned built-in catalog id; empty slot is allowed
+  updated_at: "timestamp",
+};
+
 // Export collection names for Firestore
 export const Collections = {
   PARENTS: "parents",
@@ -895,6 +1149,23 @@ export const Collections = {
   CURRICULUM_TEMPLATES: "curriculumTemplates",
   ASSIGNMENTS: "assignments",
   WEEKLY_PLANS: "weeklyPlans",
+  WEEKLY_PLAN_DRAFTS: "weeklyPlanDrafts",
+  STUDENT_DEFAULT_WEEKS: "studentDefaultWeeks",
+  WEEKLY_PLANNING_RECEIPTS: "weeklyPlanningReceipts",
+  BLOCK_COMPLETION_STATES: "blockCompletionStates",
+  SCHOOL_EXECUTION_SNAPSHOTS: "schoolExecutionSnapshots",
+  SCHOOL_PUBLICATION_BRIDGES: "schoolPublicationBridges",
+  SCHOOL_OPERATION_RECEIPTS: "schoolOperationReceipts",
+  SCHOOL_STATE_HISTORY: "schoolStateHistory",
+  SCHOOL_REPORT_AMENDMENT_HEADS: "schoolReportAmendmentHeads",
+  PARENT_CORRECTION_EVENTS: "parentCorrectionEvents",
+  WEEKLY_REPORT_AMENDMENTS: "weeklyReportAmendments",
+  ROUTINE_DAY_SNAPSHOTS: "routineDaySnapshots",
+  ROUTINE_DAY_POINTERS: "routineDayPointers",
+  PRODUCT_DIRECTION_MIGRATIONS: "productDirectionMigrations",
+  PRODUCT_DIRECTION_CONFIG: "productDirectionConfig",
+  HOUSEHOLD_HISTORY_EVENTS: "householdHistoryEvents",
+  STUDENT_COSMETIC_STATES: "studentCosmeticStates",
   WEEKLY_REPORTS: "weeklyReports",
   DAILY_LOGS: "dailyLogs",
   SUBMISSIONS: "submissions",
@@ -911,7 +1182,12 @@ export const Collections = {
   STUDENT_POINT_WALLETS: "studentPointWallets",
   REWARD_CATALOG_ITEMS: "rewardCatalogItems",
   REWARD_REDEMPTIONS: "rewardRedemptions",
+  QUOTA_MUTATION_STATE: "quotaMutationState",
   ACCOUNT_ENTITLEMENTS: "accountEntitlements",
+  BILLING_ACCOUNTS: "billingAccounts",
+  BILLING_CHECKOUT_INTENTS: "billingCheckoutIntents",
+  BILLING_CHECKOUT_ATTEMPTS: "billingCheckoutAttempts",
+  BILLING_EVENT_RECEIPTS: "billingEventReceipts",
   ENTITLEMENT_AUDIT_LOGS: "entitlementAuditLogs",
   SUPPORT_OPERATORS: "supportOperators",
   LOCKDOWN_POLICIES: "lockdownPolicies",
@@ -922,8 +1198,21 @@ export const Collections = {
 };
 
 export const TrustedFunctionNames = {
+  GET_CORE_BILLING_STATUS: "getCoreBillingStatus",
+  CREATE_CORE_CHECKOUT: "createCoreCheckout",
+  CREATE_BILLING_PORTAL: "createBillingPortal",
+  FILE_SCHOOL_WEEKLY_REPORT: "fileSchoolWeeklyReport",
+  GET_STUDENT_SCHOOL_STATE: "getStudentSchoolState",
+  CORRECT_SCHOOL_BLOCK: "correctSchoolBlock",
+  SUBMIT_SCHOOL_BLOCK: "submitSchoolBlock",
+  COMMAND_STUDENT_SCHOOL_TIMER: "commandStudentSchoolTimer",
+  SAVE_WEEKLY_PLAN_DRAFT: "saveWeeklyPlanDraft",
+  PUBLISH_WEEKLY_PLAN: "publishWeeklyPlan",
+  SAVE_STUDENT_DEFAULT_WEEK: "saveStudentDefaultWeek",
+  ARCHIVE_WEEKLY_PLAN: "archiveWeeklyPlan",
   CREATE_STUDENT: "createStudent",
   CREATE_SUBJECT: "createSubject",
+  REACTIVATE_SUBJECT: "reactivateSubject",
   GET_OPERATOR_SESSION: "getOperatorSession",
   SEARCH_PARENT_ACCOUNTS: "searchParentAccounts",
   GET_OPERATOR_ENTITLEMENT_RECORD: "getOperatorEntitlementRecord",
@@ -951,6 +1240,12 @@ export const TrustedFunctionNames = {
   CANCEL_REWARD_REDEMPTION: "cancelRewardRedemption",
   REVIEW_REWARD_REDEMPTION: "reviewRewardRedemption",
   READ_STUDENT_CHORE_STATE: "readStudentChoreState",
+  READ_STUDENT_ROUTINE_REWARDS: "readStudentRoutineRewards",
+  UNLOCK_ROUTINE_COSMETIC: "unlockRoutineCosmetic",
+  SELECT_ROUTINE_COSMETICS: "selectRoutineCosmetics",
+  UPSERT_ROUTINE_REWARD_SETTINGS: "upsertRoutineRewardSettings",
+  SETTLE_HOUSEHOLD_HISTORY: "settleHouseholdHistory",
+  INITIALIZE_ROUTINE_FIRST_ACCOUNT: "initializeRoutineFirstAccount",
   CLAIM_CHORE: "claimChore",
   COMPLETE_CHORE: "completeChore",
   COMPLETE_ROUTINE: "completeRoutine",

@@ -47,12 +47,15 @@ const getCredentialMeta = (student) => {
 const StudentsRoute = () => {
   const {
     canAddStudent,
+    entitlementSummary,
     handleDeleteStudent,
     handleViewChoresProgress,
     handleViewSchoolProgress,
     loading,
     openAddStudentModal,
     studentLimitReached,
+    schoolWeeksByStudentId = {},
+    schoolActivityLoading,
     students,
     subjects,
   } = useOutletContext();
@@ -242,7 +245,7 @@ const StudentsRoute = () => {
                       </div>
                       <div className="op-mini-stat-grid">
                         <div className="op-mini-stat"><div className="num">{selectedStudentSubjects.length}</div><div className="lab">subjects</div></div>
-                        <div className="op-mini-stat"><div className="num">{selectedStudentSubjects.reduce((sum, subject) => sum + Number(subject.block_count || subject.total_blocks || 0), 0)}</div><div className="lab">weekly blocks</div></div>
+                        <div className="op-mini-stat"><div className="num">{schoolActivityLoading ? '…' : schoolWeeksByStudentId[selectedStudent.id]?.total ?? 0}</div><div className="lab">weekly blocks</div></div>
                         <div className="op-mini-stat"><div className="num">{getCredentialMeta(selectedStudent).label}</div><div className="lab">credential</div></div>
                       </div>
                     </section>
@@ -304,7 +307,7 @@ const StudentsRoute = () => {
                           <Eye className="h-3.5 w-3.5" /> School
                         </button>
                         <button type="button" onClick={() => handleViewChoresProgress?.(selectedStudent)} className="op-proto-btn">
-                          <Eye className="h-3.5 w-3.5" /> Chores
+                          <Eye className="h-3.5 w-3.5" /> {entitlementSummary?.routineFirst ? 'Daily Routines' : 'Chores'}
                         </button>
                         {handleDeleteStudent ? (
                           <button type="button" onClick={() => handleDeleteStudent(selectedStudent.id)} className="op-proto-btn">
