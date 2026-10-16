@@ -42,7 +42,7 @@ Local redacted aggregate artifact: `tmp/product-direction/production-inventory.j
 
 ## Outstanding Release Dependencies
 
-Cloudflare authentication/project/deployment inspection is the only unresolved Phase 0 infrastructure inventory item. It does not prevent additive local contracts/fixtures. Live-mode price/secrets, owner-authorized payment, staging promotion, print QA, and the observation window are later gates and remain unverified.
+Baseline note, superseded by the 2026-10-16 release entry below: Cloudflare authentication/project inspection initially remained unresolved. Access and the nonpayment internal-testing rollout are now verified. Payment, physical printing and full observation acceptance remain later gates.
 
 ## SourcePhase6 reporting validation (2026-10-15)
 
@@ -69,3 +69,11 @@ Cloudflare OAuth access is restored. Project`gridworkz-lms` production branch is
 Fresh inventory found15 READY cloud indexes, all preserved in the local manifest. Eleven additive authority indexes were submitted. The backend release selects49 functions, including a closed billing-status adapter using existing secrets; purchase/portal creation and the existing webhook are omitted. Do not activate the selected household until required indexes, backend, rules and compatible UI are verified.
 
 The cloud migration dry run initially exposed unsupported Admin Firestore custom credentials. `scripts/firebase-cli-cloud.mjs` now supplies the existing CLI OAuth client to the Google Firestore SDK in memory; actual selected-household cloud dry run succeeds without mutation. Credentials are never persisted by this helper.
+
+## Internal testing live — 2026-10-16
+
+The coordinated nonpayment rollout is complete. All 49 selected Functions are ACTIVE; the existing webhook is unchanged and checkout/portal creation exports are absent. All 26 indexes are READY. Deployed rules exactly match the reviewed local source: ruleset `a4df5000-9992-4ec7-8260-80bd5f9875fd`. Initial compatible Pages production deployment is `a4427c0f-9154-4eb7-b840-ee53ee532076` at merged commit `1fe41e1`; both production hosts and dashboard deep links return the app.
+
+Exactly one selected existing household is activated; global new-account activation stays off. Original household records and protected plan/billing/support/usage fields are preserved. Four additional allowance periods appeared during rollout and remain retained; all 16 original allowance records hash identically to baseline. No ordinary family data was used for QA.
+
+Nine actual cloud smoke stages passed using one disposable household, including browser-to-callable-to-data assertions and the saved amendment print popup. All QA data and its Auth account were cleaned up. A follow-up fixes parent routine/history text contrast with measured browser regression checks. See the [release record](internal-testing-release-2026-10-16.md) for boundaries and the [testing guide](internal-family-testing.md) for owner steps.

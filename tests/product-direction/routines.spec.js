@@ -107,9 +107,16 @@ test('Free parent saves narrow settings and suspended direct links reach private
     if (/\/(syncAllowanceLedger|adjustStudentPoints|upsertChoreDefinition|upsertRewardCatalogItem)$/.test(request.url())) forbiddenCalls.push(request.url());
   });
   await enterParent(page, fixture);
+  const routines = page.getByTestId('parent-daily-routines');
+  await assertReadable(routines.getByRole('heading', { name: 'Daily Routines', exact: true }));
+  await assertReadable(routines.locator('label[for="routine-morning"]'));
+  await assertReadable(routines.locator('label[for="routine-day-points"]'));
   await page.getByLabel('Daily points', { exact: true }).fill('12');
   await page.getByRole('button', { name: 'Save routine settings', exact: true }).click();
   await expect.poll(async () => (await db.collection('rewardSettings').doc(fixture.parentId).get()).data()?.routine_day_points).toBe(12);
+  const savedNotice = routines.getByRole('status').filter({ hasText: 'Daily award settings saved' });
+  await expect(savedNotice).toBeVisible();
+  await assertReadable(savedNotice);
   await page.getByLabel('Student', { exact: true }).selectOption(fixture.students[1].id);
   await page.getByLabel('Morning', { exact: true }).fill('Sibling checklist');
   await page.getByRole('button', { name: 'Save Morning', exact: true }).click();
@@ -118,6 +125,7 @@ test('Free parent saves narrow settings and suspended direct links reach private
   await page.goto('/dashboard/chores/weekly-chores');
   await expect(page).toHaveURL(/\/chores\/household-history$/);
   await expect(page.getByRole('heading', { name: 'Household History', exact: true }).first()).toBeVisible();
+  await assertReadable(page.getByTestId('household-history').getByRole('heading', { name: 'Household History', exact: true }));
   await expect(page.getByRole('button', { name: /new chore|add reward|sync allowance/i })).toHaveCount(0);
   expect(forbiddenCalls).toEqual([]);
 });
@@ -162,6 +170,7 @@ test('downgraded parent settles original history once; student never sees househ
   const fixture = await resetScenario('legacy');
   await db.collection('accountEntitlements').doc(fixture.parentId).update({ plan_id: 'free' });
   await enterParent(page, fixture, '/dashboard/chores/household-history');
+  await assertReadable(page.getByRole('heading', { name: 'Saved allowance', exact: true }));
   page.on('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Cancel and refund', exact: true }).click();
   await expect.poll(async () => (await wallet(fixture.students[0])).total_points).toBe(40);

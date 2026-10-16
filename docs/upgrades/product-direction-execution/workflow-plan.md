@@ -4,7 +4,7 @@ Source plan: `docs/upgrades/product-direction-execution-plan-2026-09.md`
 
 ## Summary
 
-Checkpoint 2026-10-12: source phases 0/1 are accepted locally. No product surface or production deployment has changed. Cloudflare project/deployment inspection carries forward as a required release gate. The next development slice is source Phase 2.
+Checkpoint 2026-10-16: the nonpayment app/backend/rules/indexes are live and the selected existing household is activated for internal family testing. All nine disposable cloud smoke stages pass. The owner deferred Stripe; full paid-launch and observation gates remain open. See the [release record](internal-testing-release-2026-10-16.md) and [testing guide](internal-family-testing.md).
 
 Execute source phases 0–8 as operational phases 1–9. Production acceptance remains separate from local completion.
 
@@ -19,15 +19,15 @@ Execute source phases 0–8 as operational phases 1–9. Production acceptance r
 
 | Phase | Downstream Roles | Validation Modes | Depends On | Status |
 | --- | --- | --- | --- | --- |
-| [Phase 1: Adopt The Product Contract And Establish The Baseline (source Phase 0)](phases/phase-01-adopt-the-product-contract-and-establish-the-baseline/phase.md) | `developer -> tester` | `code-review`, `build-health`, `unit-regression` | None | `local_verified; Pages metadata pending` |
+| [Phase 1: Adopt The Product Contract And Establish The Baseline (source Phase 0)](phases/phase-01-adopt-the-product-contract-and-establish-the-baseline/phase.md) | `developer -> tester` | `code-review`, `build-health`, `unit-regression` | None | `verified; production metadata recorded` |
 | [Phase 2: Fix Shared Contracts And Build Persisted QA Fixtures (source Phase 1)](phases/phase-02-fix-shared-contracts-and-build-persisted-qa-fixtures/phase.md) | `developer -> tester` | `code-review`, `build-health`, `unit-regression` | Operational Phase 1 / source Phase 0 | `local_verified` |
-| [Phase 3: Implement Routine Reward And Entitlement Authority (source Phase 2)](phases/phase-03-implement-routine-reward-and-entitlement-authority/phase.md) | `developer -> tester` | `unit-regression`, `api-smoke`, `browser-smoke` | Operational Phase 2 / source Phase 1 | `ready_for_master_developer` |
-| [Phase 4: Ship Daily Routines, Avatars, And The Narrow Household Surface (source Phase 3)](phases/phase-04-ship-daily-routines-avatars-and-the-narrow-household-surface/phase.md) | `developer -> tester` | `unit-regression`, `api-smoke`, `browser-smoke` | Operational Phase 3 / source Phase 2 | `pending` |
-| [Phase 5: Ship Correct Weekly Plan Persistence And Conditional Timers (source Phase 4)](phases/phase-05-ship-correct-weekly-plan-persistence-and-conditional-timers/phase.md) | `developer -> tester` | `unit-regression`, `api-smoke`, `browser-smoke` | Operational Phase 4 / source Phase 3 | `pending` |
-| [Phase 6: Ship Trusted Parent Completion Corrections (source Phase 5)](phases/phase-06-ship-trusted-parent-completion-corrections/phase.md) | `developer -> tester` | `unit-regression`, `api-smoke`, `browser-smoke` | Operational Phase 5 / source Phase 4 | `pending` |
-| [Phase 7: Ship Simplified Reports And Verified Print Output (source Phase 6)](phases/phase-07-ship-simplified-reports-and-verified-print-output/phase.md) | `developer -> tester` | `unit-regression`, `api-smoke`, `browser-smoke` | Operational Phase 6 / source Phase 5 | `pending` |
-| [Phase 8: Ship Live Core Billing And Consistent Product Copy (source Phase 7)](phases/phase-08-ship-live-core-billing-and-consistent-product-copy/phase.md) | `developer -> tester` | `unit-regression`, `api-smoke`, `browser-smoke` | Operational Phase 7 / source Phase 6 | `pending` |
-| [Phase 9: Complete Production Acceptance And Operational Handoff (source Phase 8)](phases/phase-09-complete-production-acceptance-and-operational-handoff/phase.md) | `developer -> tester` | `unit-regression`, `api-smoke`, `browser-smoke` | Operational Phase 8 / source Phase 7 | `pending` |
+| [Phase 3: Implement Routine Reward And Entitlement Authority (source Phase 2)](phases/phase-03-implement-routine-reward-and-entitlement-authority/phase.md) | `developer -> tester` | `unit-regression`, `api-smoke`, `browser-smoke` | Operational Phase 2 / source Phase 1 | `verified; selected household live` |
+| [Phase 4: Ship Daily Routines, Avatars, And The Narrow Household Surface (source Phase 3)](phases/phase-04-ship-daily-routines-avatars-and-the-narrow-household-surface/phase.md) | `developer -> tester` | `unit-regression`, `api-smoke`, `browser-smoke` | Operational Phase 3 / source Phase 2 | `verified; selected household live` |
+| [Phase 5: Ship Correct Weekly Plan Persistence And Conditional Timers (source Phase 4)](phases/phase-05-ship-correct-weekly-plan-persistence-and-conditional-timers/phase.md) | `developer -> tester` | `unit-regression`, `api-smoke`, `browser-smoke` | Operational Phase 4 / source Phase 3 | `verified; selected household live` |
+| [Phase 6: Ship Trusted Parent Completion Corrections (source Phase 5)](phases/phase-06-ship-trusted-parent-completion-corrections/phase.md) | `developer -> tester` | `unit-regression`, `api-smoke`, `browser-smoke` | Operational Phase 5 / source Phase 4 | `verified; selected household live` |
+| [Phase 7: Ship Simplified Reports And Verified Print Output (source Phase 6)](phases/phase-07-ship-simplified-reports-and-verified-print-output/phase.md) | `developer -> tester` | `unit-regression`, `api-smoke`, `browser-smoke` | Operational Phase 6 / source Phase 5 | `verified; selected household live` |
+| [Phase 8: Ship Live Core Billing And Consistent Product Copy (source Phase 7)](phases/phase-08-ship-live-core-billing-and-consistent-product-copy/phase.md) | `developer -> tester` | `unit-regression`, `api-smoke`, `browser-smoke` | Operational Phase 7 / source Phase 6 | `implementation verified; billing launch deferred` |
+| [Phase 9: Complete Production Acceptance And Operational Handoff (source Phase 8)](phases/phase-09-complete-production-acceptance-and-operational-handoff/phase.md) | `developer -> tester` | `unit-regression`, `api-smoke`, `browser-smoke` | Operational Phase 8 / source Phase 7 | `internal testing live; full observation deferred` |
 
 ## Prompt Budget
 
@@ -114,7 +114,7 @@ Escalation rules:
 
 - `master-developer` is the persistent orchestrator for the whole workflow.
 - `workflow-state.yaml` is the source of truth for what should happen next.
-- Each phase enters `ready_for_master_developer` before the first downstream handoff and after every downstream result.
+- Each phase enters `verified; selected household live` before the first downstream handoff and after every downstream result.
 - Each phase `role_sequence` is the expected downstream order under `master-developer` oversight.
 - The scaffold does not prewrite downstream prompts. `master-developer` writes one runtime prompt at a time based on the live workflow state.
 - Downstream agents should work only on the active phase and should return control to `master-developer` instead of handing off directly.

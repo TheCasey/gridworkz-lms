@@ -67,7 +67,7 @@ export default function DailyRoutinesRoute({ history = false }) {
   };
   const rewardTitle = (record) => record.title_snapshot || record.reward_title_snapshot || data.rewardCatalogItems?.find((item) => item.id === record.reward_catalog_item_id)?.title || record.id;
   const studentName = (record) => students.find((student) => student.id === record.student_id)?.name || 'Former student';
-  return <div className="font-body space-y-6" data-testid={history ? 'household-history' : 'parent-daily-routines'}>
+  return <div className="op-page font-body space-y-6" data-testid={history ? 'household-history' : 'parent-daily-routines'}>
     <div className="op-chores-section"><h2 className="text-xl font-display">{history ? 'Household History' : 'Daily Routines'}</h2><p className="op-subtle mt-2">{history ? 'Private saved household records. Existing obligations can be settled here, including after a plan change.' : 'Set up a simple checklist for each student. Today’s checklist and daily award are saved on first use; edits apply to the next day.'}</p><Link className="op-button op-button-secondary mt-4" to={history ? '/dashboard/chores/daily-routines' : '/dashboard/chores/household-history'}>{history ? 'Daily Routines' : 'Household History'}</Link></div>
     {loading ? <p role="status">Loading {history ? 'history' : 'routines'}…</p> : null}
     {error || actionError ? <div role="alert" className="op-panel-muted p-4"><p>{actionError || error.message}</p><button className="op-button mt-3" disabled={!!busy} onClick={refresh}>Retry loading</button><p className="op-subtle mt-2">For a failed save or settlement, retry the same action below.</p></div> : null}
