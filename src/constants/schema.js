@@ -620,6 +620,41 @@ export const AccountEntitlementSchema = {
   updated_at: "timestamp" // Last trusted backend entitlement document update
 };
 
+// Private serialization point for quota-increasing mutations. Actual records supply counts.
+export const QuotaMutationStateSchema = {
+  parent_id: "string", revision: "number", updated_at: "timestamp"
+};
+
+// All billing coordinator records are server-only. Clients use the three billing callables.
+export const BillingAccountSchema = {
+  parent_id: "string",
+  mode: "string", // test | live; a binding cannot silently cross modes
+  stripe_customer_id: "string", // Provider-verified ownership, never writable parent profile data
+  stripe_subscription_id: "string", // Current provider subscription, nullable
+  subscription_status: "string",
+  pending_checkout: "object", // Immutable intent key/id, created time and optional known session id
+  reconciliation_required: "boolean",
+  lease: "object", // Opaque token + expires_at_ms; every coordinator commit is fenced
+  updated_at: "timestamp"
+};
+
+export const BillingCheckoutIntentSchema = {
+  parent_id: "string", intent_id: "string", mode: "string", price_id: "string",
+  return_url: "string", created_at_ms: "number", existing_customer_id: "string",
+  customer_parameters: "object", checkout_parameters: "object" // Frozen server parameters; never credentials
+};
+
+export const BillingEventReceiptSchema = {
+  event_id: "string", mode: "string", event_type: "string", parent_id: "string",
+  disposition: "string", created_at: "timestamp"
+};
+
+export const BillingCheckoutAttemptSchema = {
+  parent_id: "string", intent_id: "string", operation: "string", stage: "string",
+  request: "object", // Exact server parameters and idempotency key before a provider mutation; nullable afterward
+  created_at: "timestamp"
+};
+
 export const EntitlementAuditLogSchema = {
   parent_id: "string", // Parent account affected by the entitlement event
   operator_uid: "string", // Operator uid for manual events; null for webhook/system events
@@ -1147,7 +1182,12 @@ export const Collections = {
   STUDENT_POINT_WALLETS: "studentPointWallets",
   REWARD_CATALOG_ITEMS: "rewardCatalogItems",
   REWARD_REDEMPTIONS: "rewardRedemptions",
+  QUOTA_MUTATION_STATE: "quotaMutationState",
   ACCOUNT_ENTITLEMENTS: "accountEntitlements",
+  BILLING_ACCOUNTS: "billingAccounts",
+  BILLING_CHECKOUT_INTENTS: "billingCheckoutIntents",
+  BILLING_CHECKOUT_ATTEMPTS: "billingCheckoutAttempts",
+  BILLING_EVENT_RECEIPTS: "billingEventReceipts",
   ENTITLEMENT_AUDIT_LOGS: "entitlementAuditLogs",
   SUPPORT_OPERATORS: "supportOperators",
   LOCKDOWN_POLICIES: "lockdownPolicies",
@@ -1158,6 +1198,9 @@ export const Collections = {
 };
 
 export const TrustedFunctionNames = {
+  GET_CORE_BILLING_STATUS: "getCoreBillingStatus",
+  CREATE_CORE_CHECKOUT: "createCoreCheckout",
+  CREATE_BILLING_PORTAL: "createBillingPortal",
   FILE_SCHOOL_WEEKLY_REPORT: "fileSchoolWeeklyReport",
   GET_STUDENT_SCHOOL_STATE: "getStudentSchoolState",
   CORRECT_SCHOOL_BLOCK: "correctSchoolBlock",
@@ -1169,6 +1212,7 @@ export const TrustedFunctionNames = {
   ARCHIVE_WEEKLY_PLAN: "archiveWeeklyPlan",
   CREATE_STUDENT: "createStudent",
   CREATE_SUBJECT: "createSubject",
+  REACTIVATE_SUBJECT: "reactivateSubject",
   GET_OPERATOR_SESSION: "getOperatorSession",
   SEARCH_PARENT_ACCOUNTS: "searchParentAccounts",
   GET_OPERATOR_ENTITLEMENT_RECORD: "getOperatorEntitlementRecord",

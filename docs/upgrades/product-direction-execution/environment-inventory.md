@@ -47,3 +47,11 @@ Cloudflare authentication/project/deployment inspection is the only unresolved P
 ## SourcePhase6 reporting validation (2026-10-15)
 
 Read-only Firestore REST inspection rendered three representative weeklyReports in memory. Raw family text, IDs and dates were neither logged nor persisted; only aggregate shape/outcomes and fully redacted screenshots were retained under ignored tmp/product-direction/. The records included zero completion and historical evidence (one 33-assignment record with 90 recorded minutes). All rendered within the viewport. Two Epson ET-2800 printer queues are available; no print job was sent. Physical spot-check results remain pending owner feedback.
+
+## SourcePhase7 billing validation (2026-10-15)
+
+Read-only recheck confirmed the existing deployed secret remains test-mode, Core is USD500/month and there were no provider subscriptions. Its lifecycle webhook still points to the deployed production backend. Full subscription testing requires an isolated sandbox/webhook target and is pending owner setup; no production entitlement was written by QA.
+
+Safe actual-provider session QA used only a disposable emulator parent and test customer: two Checkout sessions were opened/expired, open-session retries reused the exact hosted session and customer, and a portal session was created. No payment or subscription was created. QA customer was deleted and sessions closed. Stripe made the first test portal configuration the default and refused deactivation. It remains clearly labeled QA with invoice history only; subscription switching/cancellation and payment changes are disabled, and no app configuration references it. Own IDs remain only in the ignored cleanup receipt.
+
+Cloudflare authentication recheck reports an expired token that cannot refresh noninteractively. Local `npx wrangler login` was requested again. Production settings, rollback IDs and actual deployment acceptance remain pending access.

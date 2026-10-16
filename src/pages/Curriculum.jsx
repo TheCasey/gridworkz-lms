@@ -752,6 +752,7 @@ const Curriculum = () => {
                   <div className="op-panel-muted px-4 py-3">
                     <p className="op-eyebrow">Active Subject Limit</p>
                     <p className="op-subtle mt-1.5 text-[12px] leading-5">{curriculumLimitMessage}</p>
+                    {curriculumLimitReached && <Link to="/dashboard/settings" className="inline-block mt-2 text-sm text-lavender-glow underline">View Core options in Settings</Link>}
                   </div>
                 ) : null}
 
@@ -877,7 +878,7 @@ const Curriculum = () => {
                   disabled={isCreateSubjectBlocked}
                   className="op-button flex-1 disabled:cursor-not-allowed">
                   {isCreateSubjectBlocked
-                    ? 'Upgrade Required'
+                    ? 'Active curriculum limit reached'
                     : editingSubject ? 'Save Settings' : `Create Subject${selectedStudents.length > 1 ? 's' : ''}`}
                 </button>
               </div>

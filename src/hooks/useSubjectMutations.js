@@ -7,8 +7,8 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { app } from '../firebase/firebaseConfig';
-import { createTrustedSubject } from '../firebase/trustedOperations';
-import { buildEntitlementUsageSummary } from '../utils/entitlementUtils';
+import { createTrustedSubject, reactivateTrustedSubject } from '../firebase/trustedOperations';
+import { buildEntitlementUsageSummary, isActiveCurriculumSubject } from '../utils/entitlementUtils';
 
 const getUniqueStudentIds = (subjectData = {}) => (
   Array.from(new Set(
@@ -47,6 +47,9 @@ export const useSubjectMutations = ({
 
     try {
       if (editingSubject) {
+        if (!isActiveCurriculumSubject(editingSubject) && isActiveCurriculumSubject({ ...editingSubject, ...subjectData })) {
+          await reactivateTrustedSubject({ subject_id: editingSubject.id });
+        }
         await updateDoc(doc(db, 'subjects', editingSubject.id), subjectData);
       } else {
         const { parent_id, updated_at, ...createPayload } = subjectData;

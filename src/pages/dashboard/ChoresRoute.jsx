@@ -161,7 +161,7 @@ const EmptyState = ({ icon: Icon, title, detail }) => (
 );
 
 const readOnlyMessage = 'This account can view saved chores setup data, but entitlement lock keeps create, edit, archive, and review actions disabled.';
-const paidModuleReadOnlyMessage = 'Daily routines are available on this account. Core or Lockdown is required for chore pools, allowance tracking, points, rewards, redemptions, achievements, and related cosmetics.';
+const paidModuleReadOnlyMessage = 'Daily Routines, daily points, and built-in avatars are included on Free. New chore pools, allowance setup, and custom rewards are paused; existing records remain in Household History.';
 const formatCurrency = (value) => new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
@@ -3520,7 +3520,7 @@ const LegacyChoresRoute = () => {
               rewardTab === 'requests' ? 'Reward Requests' : 'Reward Store',
               rewardTab === 'requests'
                 ? 'Approve, reject, cancel, or fulfill live student requests without changing the trusted redemption flow.'
-                : 'Create parent-managed rewards, restock limited inventory, and keep built-in cosmetic placeholders visible.',
+                : 'Existing reward records and reservations remain available in Household History.',
               Gift,
               colors
             )}

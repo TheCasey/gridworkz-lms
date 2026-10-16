@@ -47,11 +47,23 @@ Add meaningful policy/persistence tests for the source phase cases; static sourc
 
 ## Test Files
 
-- Not listed yet. Add likely files before dispatching developer work if automated tests are expected.
+- `scripts/check-core-billing-helpers.mjs`
+- `scripts/check-core-billing-runtime.mjs`
+- `scripts/check-core-billing-callables.mjs`
+- `scripts/check-core-billing-webhook.mjs`
+- `scripts/check-quota-mutation-runtime.mjs`
+- `scripts/check-quota-mutation-rules.mjs`
+- `scripts/check-quota-mutation-callables.mjs`
+- `tests/product-direction/billing.spec.js`
 
 ## Test Cases To Cover
 
-- Not listed yet. Add focused regression or behavior cases before dispatching developer work if the phase changes behavior.
+- Auth/identity/customer/price/return-host forgery; Core-only purchase and mode validation.
+- Concurrent checkout, lost response/crash, idempotency retention and lease takeover.
+- Duplicate/out-of-order events, replaced subscription events, webhook/support override races and preserved usage/rollout markers.
+- Sandbox purchase, abandonment, delayed webhook, failure/recovery, renewal, scheduled/expired cancellation and customer portal.
+- Concurrent Free create/reactivate boundaries, legacy active/archive counts, direct rules bypass denials and paid/null-limit/downgrade preservation.
+- Real live purchase remains a separately authorized external acceptance gate.
 
 ## No-Test Rationale
 
@@ -83,7 +95,8 @@ Follow active phase imports/consumers/tests; do not widen product scope.
 
 ## Manual Verification Follow-Up
 
-- None currently required. Add a follow-up here if the phase cannot be fully verified in-agent.
+- Isolated provider payment lifecycle requires a sandbox whose subscription webhooks cannot mutate the current production backend.
+- Actual live purchase/manage/cancel requires separate owner authorization after the flow is reviewable.
 
 ## Project Manager Questions
 

@@ -336,3 +336,21 @@ export const fileTrustedSchoolWeeklyReport = async (payload) => {
   const result = await httpsCallable(functions, TrustedFunctionNames.FILE_SCHOOL_WEEKLY_REPORT)(payload);
   return result.data;
 };
+
+export const getTrustedCoreBillingStatus = async () => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.GET_CORE_BILLING_STATUS)({});
+  return result.data;
+};
+export const createTrustedCoreCheckout = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.CREATE_CORE_CHECKOUT)(payload);
+  return result.data;
+};
+export const createTrustedBillingPortal = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.CREATE_BILLING_PORTAL)(payload);
+  return result.data;
+};
+
+export const reactivateTrustedSubject = async (payload) => {
+  const result = await httpsCallable(functions, TrustedFunctionNames.REACTIVATE_SUBJECT)(payload);
+  return result.data;
+};

@@ -13,6 +13,7 @@ export const DIRECTION_RESET_COLLECTIONS = Object.freeze([
   'rewardRedemptions', 'pointLedgerEntries', 'studentPointWallets', 'studentCosmeticStates',
   'blockCompletionStates', 'parentCorrectionEvents', 'schoolExecutionSnapshots', 'schoolOperationReceipts', 'schoolStateHistory', 'schoolReportAmendmentHeads', 'schoolPublicationBridges',
   'entitlementAuditLogs', 'householdHistoryEvents',
+  'quotaMutationState', 'billingAccounts', 'billingCheckoutIntents', 'billingCheckoutAttempts', 'billingEventReceipts',
 ]);
 export const DIRECTION_SCENARIOS = Object.freeze({
   empty: { plan: 'free', students: 0, subjects: 0 },

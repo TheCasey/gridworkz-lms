@@ -4,20 +4,20 @@ workflow_summary: "Execute source phases 0\u20138 as operational phases 1\u20139
 workflow_status: "active"
 source_plan_path: "docs/upgrades/product-direction-execution-plan-2026-09.md"
 master_developer_start_prompt_path: "docs/upgrades/product-direction-execution/start-master-developer-chat.md"
-current_phase_number: 7
-current_phase_slug: "phase-07-ship-simplified-reports-and-verified-print-output"
+current_phase_number: 8
+current_phase_slug: "phase-08-ship-live-core-billing-and-consistent-product-copy"
 current_role: "master-developer"
-phase_status: "locally_verified"
+phase_status: "in_progress"
 owner: "master-developer"
-next_downstream_role: "developer"
+next_downstream_role: "tester"
 last_completed_phase_number: 7
 last_completed_phase_slug: "phase-07-ship-simplified-reports-and-verified-print-output"
 last_completed_role: "tester"
 last_handoff_role: "tester"
-blocked_reason: "none"
+blocked_reason: "Local implementation verified; full provider lifecycle needs isolated Stripe sandbox, and production release needs renewed Cloudflare access. Owner setup requested; physical print/live purchase/observation gates remain open."
 last_updated: "2026-10-15"
-active_phase_path: "docs/upgrades/product-direction-execution/phases/phase-07-ship-simplified-reports-and-verified-print-output/phase.md"
-active_run_log_path: "docs/upgrades/product-direction-execution/phases/phase-07-ship-simplified-reports-and-verified-print-output/run-log.md"
+active_phase_path: "docs/upgrades/product-direction-execution/phases/phase-08-ship-live-core-billing-and-consistent-product-copy/phase.md"
+active_run_log_path: "docs/upgrades/product-direction-execution/phases/phase-08-ship-live-core-billing-and-consistent-product-copy/run-log.md"
 prompt_policy:
   read_first_max_items: 6
   allowed_discovery: "Start with the listed read-first files, then follow imports, routes, adjacent tests, and nearby implementation files only as needed. Do not preload broad workflow or product background unless the active phase exposes a concrete blocker."
@@ -57,18 +57,20 @@ active_phase_guidance:
     - "AGENTS.md"
     - "docs/upgrades/product-direction-execution-plan-2026-09.md"
     - "docs/upgrades/product-direction-execution/decisions.md"
-  automated_test_expectation: "SourcePhase6: simplified student/week reports with effective counts and explicit original/amended print/PDF output; Letter/A4 long-content visual QA"
+  automated_test_expectation: "SourcePhase7: authenticated checkout/portal, duplicate/idempotent purchase, ordered trusted billing reconciliation, preserved support overrides/usage, sandbox lifecycle, consistent Free/Core/Lockdown copy"
   test_files:
-    - "scripts/check-reporting-safety.mjs"
-    - "scripts/check-school-report-view.mjs"
-    - "tests/product-direction/reports.spec.js"
+    - "scripts/check-core-billing-helpers.mjs"
+    - "scripts/check-core-billing-runtime.mjs"
+    - "scripts/check-core-billing-callables.mjs"
+    - "scripts/check-core-billing-webhook.mjs"
+    - "scripts/check-quota-mutation-callables.mjs"
+    - "tests/product-direction/billing.spec.js"
   test_cases:
-    - "Screen/saved/export/print parity; long names/responses/many blocks; zero completion/legacy/unknown duration; original/amendment versions; household reset/archive; Letter/A4 no clipping or unexpected blanks"
+    - "Auth/URL/price/customer forgery, mode checks, nonterminal subscription denial, concurrent/uncertain checkout, duplicate/out-of-order webhooks, override race, downgrade preservation, sandbox purchase/manage/cancel"
   no_test_rationale: ""
   test_commands:
     - "npm run lint"
     - "npm run build"
-    - "npm run check:student-timers"
   validation_modes:
     - "code-review"
     - "build-health"
@@ -160,8 +162,10 @@ routine_interface_acceptance: "locally verified 2026-10-13;166 backend+19 view a
 
 weekly_planning_acceptance: "locally verified 2026-10-14; calendars/identities/readers,8 rules,4 compatibility,13 routine,8 planning and20 browser checks pass; mobile drawer/keyboard focused follow-up; deployment pending"
 
-last_checkpoint_commit: "1bc5639"
+last_checkpoint_commit: "07c7038"
 
 school_authority_acceptance: "locally verified 2026-10-15;12 rules,4 compatibility,13 routine,8 planning,14 school API and26 browser cases plus1 mobile keyboard case pass; independent review findings repaired; production pending"
 
 report_presentation_acceptance: "locally verified 2026-10-15;14 school APIs and32 browser cases pass,8 Letter/A4 PDFs visually inspected,3 real reports read-only; owner physical spot check and production pending"
+
+billing_implementation_acceptance: "locally verified 2026-10-15:70 policy,22 persisted billing,4 billing HTTP,9 quota persistence,6 quota rules,4 quota HTTP; full runtime API/rules passes.35 browser pass plus unchanged focused bootstrap pass; clean CI pending. Actual test-mode provider sessions/expiration pass, no payment/subscription. Live Phase8 acceptance pending."

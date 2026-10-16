@@ -54,6 +54,9 @@ jobs:
       - name: Check shared report presentation and HTML escaping
         run: npm run check:report-print
 
+      - name: Check billing policy, retry intent and trusted redirect presentation
+        run: npm run check:core-billing-helpers
+
       - name: Check product direction contracts
         run: npm run check:direction-contracts
 

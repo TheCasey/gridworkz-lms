@@ -165,3 +165,18 @@ test('weekly plan queries are owner-scoped, including empty query results', asyn
   await assertFails(getDocs(collection(dbFor(parent), 'weeklyPlans')));
   await assertFails(getDocs(query(collection(dbFor('another_parent'), 'weeklyPlans'), where('parent_id', '==', parent))));
 });
+
+
+test('billing bindings, intents, attempts and event receipts are callable-only even for their owner', async () => {
+  const collections = ['billingAccounts', 'billingCheckoutIntents', 'billingCheckoutAttempts', 'billingEventReceipts'];
+  await env.withSecurityRulesDisabled(async (context) => {
+    const database = context.firestore();
+    for (const name of collections) await setDoc(doc(database, name, 'private_billing_fixture'), { parent_id: parent });
+  });
+  for (const name of collections) {
+    for (const uid of [null, parent, 'another_parent']) {
+      await assertFails(getDoc(doc(dbFor(uid), name, 'private_billing_fixture')));
+      await assertFails(setDoc(doc(dbFor(uid), name, 'forged_billing_fixture'), { parent_id: parent }));
+    }
+  }
+});

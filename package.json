@@ -14,7 +14,7 @@
     "check:direction-rules": "node --test scripts/check-product-direction-rules.mjs",
     "seed:direction": "node scripts/seed-product-direction-fixtures.mjs --scenario=all --write",
     "check:direction-callables": "node --test scripts/check-product-direction-callables.mjs",
-    "check:direction-emulators": "firebase emulators:exec --only auth,firestore,functions --project demo-gridworkz-direction \"npm run check:direction-rules && npm run seed:direction && npm run check:direction-callables && npm run check:routine-reward-callables && npm run check:weekly-planning-callables && npm run check:school-authority-callables && npm run check:direction-browser\"",
+    "check:direction-emulators": "firebase emulators:exec --only auth,firestore,functions --project demo-gridworkz-direction \"npm run check:direction-rules && npm run seed:direction && npm run check:direction-callables && npm run check:routine-reward-callables && npm run check:weekly-planning-callables && npm run check:school-authority-callables && npm run check:quota-mutations && npm run check:core-billing-runtime && npm run check:core-billing-callables && npm run check:core-billing-webhook && npm run check:direction-browser\"",
     "check:direction-browser": "playwright test --config playwright.direction.config.js",
     "check:direction-fixtures": "node --test scripts/check-product-direction-fixtures.mjs",
     "check:routine-reward-helpers": "node scripts/check-routine-reward-helpers.mjs",
@@ -26,7 +26,12 @@
     "check:school-authority-helpers": "node scripts/check-school-authority-helpers.mjs && node scripts/check-school-timer-view.mjs && node scripts/check-school-report-view.mjs && node scripts/check-parent-school-view.mjs",
     "check:school-authority-callables": "node --test scripts/check-school-authority-callables.mjs",
     "check:report-print": "node scripts/check-report-print.mjs",
-    "render:report-pdfs": "node scripts/render-product-direction-report-pdfs.mjs"
+    "render:report-pdfs": "node scripts/render-product-direction-report-pdfs.mjs",
+    "check:core-billing-helpers": "node scripts/check-core-billing-helpers.mjs && node scripts/check-core-billing-view.mjs",
+    "check:core-billing-runtime": "GCLOUD_PROJECT=demo-gridworkz-direction node scripts/check-core-billing-runtime.mjs",
+    "check:core-billing-callables": "node --test scripts/check-core-billing-callables.mjs",
+    "check:core-billing-webhook": "GCLOUD_PROJECT=demo-gridworkz-direction node scripts/check-core-billing-webhook.mjs",
+    "check:quota-mutations": "GCLOUD_PROJECT=demo-gridworkz-direction node scripts/check-quota-mutation-runtime.mjs && node scripts/check-quota-mutation-rules.mjs && node --test scripts/check-quota-mutation-callables.mjs"
   },
   "dependencies": {
     "firebase": "^10.8.0",

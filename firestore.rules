@@ -111,11 +111,22 @@ service cloud.firestore {
     }
 
     // Subjects: parents own their records; students need read access for the portal
+    function isQuotaActiveSubject(data) {
+      return data.get("is_active", true) != false &&
+        data.get("is_archived", false) != true && data.get("archived", false) != true &&
+        data.get("status", "") != "archived" && data.get("archived_at", null) == null;
+    }
     match /subjects/{subjectId} {
       allow read: if true;
       allow create: if false;
-      allow update, delete: if isOwner(resource.data.parent_id);
+      allow update: if isOwner(resource.data.parent_id) &&
+        request.resource.data.parent_id == resource.data.parent_id &&
+        (isQuotaActiveSubject(resource.data) || !isQuotaActiveSubject(request.resource.data));
+      allow delete: if isOwner(resource.data.parent_id);
     }
+
+    // Private transaction coordinator, never a client-maintained quota counter.
+    match /quotaMutationState/{document=**} { allow read, write: if false; }
 
     function usesTrustedSchoolAuthority(studentId) {
       return studentExists(studentId) &&
@@ -381,6 +392,13 @@ service cloud.firestore {
     match /dailyLogs/{logId} {
       allow read, write: if isAuth();
     }
+
+    // Billing provider bindings, immutable intents/attempts and webhook receipts
+    // are private server authority; even the owner uses a minimal callable view.
+    match /billingAccounts/{document=**} { allow read, write: if false; }
+    match /billingCheckoutIntents/{document=**} { allow read, write: if false; }
+    match /billingCheckoutAttempts/{document=**} { allow read, write: if false; }
+    match /billingEventReceipts/{document=**} { allow read, write: if false; }
 
     // Deny everything else by default so specific collection matches stay authoritative.
     match /{document=**} {

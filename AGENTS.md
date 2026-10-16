@@ -141,3 +141,12 @@ If you touch the student portal or reporting architecture, check `firestore.rule
 - When documentation changes affect planning or implementation status, update the relevant file under `docs/` instead of only editing a legacy top-level note.
 - If a task claims “lint passes,” verify whether the repo has actually gained an ESLint config first.
 - Routine-first execution state lives in `docs/upgrades/product-direction-execution/`; read `decisions.md` and `workflow-state.yaml` before continuing that work. New contracts/rules remain additive until their implementation phase activates them.
+
+## Billing Authority (routine-first release pending)
+
+- Core purchase/portal/status adapters live in `functions/src/coreBillingAuthority.js` and `coreBillingPolicy.js`; index.js owns their production binding and signed webhook adapter.
+- `billingAccounts`, `billingCheckoutIntents`, `billingCheckoutAttempts`, and `billingEventReceipts` are server-only. Never use writable parent profile fields or email matching as customer ownership.
+- Checkout defaults off. Server-approved price/origin/mode and live approval gates are required; no redirect grants entitlements. Keep Lockdown purchase disabled and preserve existing customer/subscription/price IDs, support overrides and usage.
+- `npm run check:core-billing-helpers` is pure policy/view validation. `npm run check:core-billing-runtime` uses only the isolated Firestore emulator with injected provider behavior; this is not actual Stripe lifecycle evidence. Read `docs/upgrades/product-direction-execution/billing-operations.md` before provider or release actions.
+
+Quota increases use trusted create/reactivate Functions and the private `quotaMutationState` transaction coordinator. Direct subject updates cannot reactivate archived/inactive records or change ownership. Count legacy active subjects with absent `is_active`; preserve existing over-limit work. `npm run check:quota-mutations` requires isolated Auth/Firestore/Functions emulators.

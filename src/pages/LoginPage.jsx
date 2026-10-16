@@ -140,6 +140,10 @@ const LoginPage = () => {
           {isSignUp ? 'Create your account' : 'Sign in to your account'}
         </p>
 
+        {isSignUp && <p style={{ fontSize: '13px', lineHeight: 1.6, color: '#595354', margin: '0 0 20px', fontFamily: FONT }}>
+          Start Free with 2 students, 3 active curriculum records, complete schoolwork, Daily Routines, and built-in avatar rewards. Core adds unlimited students and curriculum for $5/month. Lockdown is coming soon.
+        </p>}
+
         {/* Feedback */}
         {error && (
           <div style={{ backgroundColor: '#f5f0ff', border: '1px solid #cbb7fb', borderRadius: '8px', padding: '12px 14px', marginBottom: '20px', fontSize: '14px', fontWeight: 460, color: '#292827', fontFamily: FONT }}>

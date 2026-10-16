@@ -653,7 +653,7 @@ const ParentDashboard = () => {
   });
   const studentLimitReached = Boolean(studentLimitCheck?.hasReachedLimit);
   const studentLimitMessage = studentLimitReached
-    ? `${studentLimitSummary} ${studentLimitCheck?.upgradeCopy || ''} You can still delete existing students to get back under the cap.`
+    ? `${studentLimitSummary} ${studentLimitCheck?.upgradeCopy || ''} Existing students and schoolwork remain available. Review Core options in Settings, or remove a student to free a slot.`
     : studentLimitSummary;
   const openAddStudentModal = () => {
     if (!canAddStudent) return;
@@ -758,6 +758,7 @@ const ParentDashboard = () => {
         <p className="op-subtle mt-1.5 text-[13px] font-body leading-5">
           {studentLimitMessage}
         </p>
+        {studentLimitReached && <NavLink to="/dashboard/settings" className="inline-block mt-2 text-sm text-lavender-glow underline">View Core options in Settings</NavLink>}
       </div>
     );
   };

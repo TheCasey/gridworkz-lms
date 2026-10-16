@@ -1,8 +1,12 @@
 # Subscriptions And Entitlements
 
-Last updated: 2026-06-23
+Last updated: 2026-10-15
 
-Status: Implemented
+Status: entitlement foundation implemented; routine-first billing implementation/release tracked separately
+
+## Active Product Contract
+
+The [routine-first decisions](product-direction-execution/decisions.md) supersede the earlier packaging narrative below: Free includes complete schoolwork, Daily Routines, daily points and built-in avatars, with2students/3active curriculum records. Core is $5/month for unlimited students/curriculum. Lockdown is coming soon for new purchases; existing access/subscriptions/price IDs remain preserved. New broad chores, allowance and custom reward setup are paused; Household History retains records and approved settlements. See the current [pricing spec](../specs/core-pricing-and-launch-positioning.md) and [execution phase](product-direction-execution/phases/phase-08-ship-live-core-billing-and-consistent-product-copy/phase.md) for billing availability and acceptance. The remaining sections retain the historical foundation design and must not be used as new product promises.
 
 ## Goal
 

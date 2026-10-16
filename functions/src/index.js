@@ -1,3 +1,6 @@
+import { createCoreBillingService } from './coreBillingAuthority.js';
+import { createQuotaMutationService } from './quotaMutationAuthority.js';
+import { resolveCoreBillingConfig, resolveBillingSubscriptionPlan } from './coreBillingPolicy.js';
 import { buildTrustedSchoolPolicyTimers } from './schoolLockdownFoundation.js';
 import { createSchoolCompletionService } from './schoolCompletionAuthority.js';
 import { resolvePlanningWeek } from './weeklyPlanningContracts.js';
@@ -2157,23 +2160,6 @@ const isExpiredTimestamp = (timestampValue) => {
   }
 
   return timestampValue.toMillis() <= Date.now();
-};
-
-const countStudentsForParent = async (parentId) => {
-  const snapshot = await db.collection(COLLECTIONS.STUDENTS)
-    .where('parent_id', '==', parentId)
-    .get();
-
-  return snapshot.size;
-};
-
-const countActiveSubjectsForParent = async (parentId) => {
-  const snapshot = await db.collection(COLLECTIONS.SUBJECTS)
-    .where('parent_id', '==', parentId)
-    .where('is_active', '==', true)
-    .get();
-
-  return snapshot.size;
 };
 
 const isArchivedSubjectRecord = (subjectRecord = {}) => (
@@ -4767,65 +4753,14 @@ const getStripeClient = () => {
     throw new Error('Missing STRIPE_SECRET_KEY environment variable.');
   }
 
-  return new Stripe(apiKey);
+  return new Stripe(apiKey, { timeout: 20000, maxNetworkRetries: 1 });
 };
 
-const resolveStripePlanIdFromPriceId = (priceId) => {
-  const lockdownPriceIds = new Set([trimString(STRIPE_LOCKDOWN_PRICE_ID.value())].filter(Boolean));
-  const corePriceIds = new Set([trimString(STRIPE_CORE_PRICE_ID.value())].filter(Boolean));
-
-  if (!priceId) return null;
-  if (lockdownPriceIds.has(priceId)) return PLAN_IDS.LOCKDOWN;
-  if (corePriceIds.has(priceId)) return PLAN_IDS.CORE;
-  return null;
-};
-
-const resolveStripePlanIdFromSubscription = (subscription) => {
-  const metadataPlanId = normalizePlanId(
-    trimString(subscription?.metadata?.plan_id || subscription?.metadata?.gridworkz_plan_id)
-  );
-
-  if (metadataPlanId !== PLAN_IDS.FREE || trimString(subscription?.metadata?.plan_id || subscription?.metadata?.gridworkz_plan_id)) {
-    return metadataPlanId;
-  }
-
-  const priceId = trimString(subscription?.items?.data?.[0]?.price?.id);
-  return resolveStripePlanIdFromPriceId(priceId);
-};
-
-const resolveStripeParentIdFromObject = (stripeObject) => {
-  const metadataParentId = trimString(
-    stripeObject?.metadata?.parent_id ||
-    stripeObject?.metadata?.parentId ||
-    stripeObject?.metadata?.uid
-  );
-
-  if (metadataParentId) {
-    return metadataParentId;
-  }
-
-  const clientReferenceId = trimString(stripeObject?.client_reference_id);
-  return clientReferenceId || '';
-};
-
-const resolveStripeParentIdFromSubscription = async (stripe, subscription) => {
-  const directParentId = resolveStripeParentIdFromObject(subscription);
-  if (directParentId) {
-    return directParentId;
-  }
-
-  const customerId = trimString(subscription?.customer);
-  if (!customerId) {
-    return '';
-  }
-
-  const customer = await stripe.customers.retrieve(customerId);
-  if (customer?.deleted) {
-    return '';
-  }
-
-  return resolveStripeParentIdFromObject(customer);
-};
+const historicalBillingPrices = (value) => String(value || '').split(',').map((id) => id.trim()).filter(Boolean);
+const resolveStripePlanIdFromSubscription = (subscription) => resolveBillingSubscriptionPlan(subscription, {
+  corePriceIds: [trimString(STRIPE_CORE_PRICE_ID.value()), ...historicalBillingPrices(process.env.CORE_BILLING_HISTORICAL_CORE_PRICE_IDS)].filter(Boolean),
+  lockdownPriceIds: [trimString(STRIPE_LOCKDOWN_PRICE_ID.value()), ...historicalBillingPrices(process.env.CORE_BILLING_HISTORICAL_LOCKDOWN_PRICE_IDS)].filter(Boolean),
+});
 
 const mapStripeSubscriptionStatus = (stripeStatus) => {
   switch (stripeStatus) {
@@ -4845,75 +4780,42 @@ const mapStripeSubscriptionStatus = (stripeStatus) => {
   }
 };
 
-const syncEntitlementFromSubscription = async (stripe, subscription, eventType = 'stripe_subscription_sync') => {
-  const parentId = await resolveStripeParentIdFromSubscription(stripe, subscription);
-  if (!parentId) {
-    throw new Error('Stripe subscription is missing parent_id metadata or customer metadata.');
-  }
-
-  const rawPlanId = resolveStripePlanIdFromSubscription(subscription);
-  if (!rawPlanId) {
-    throw new Error('Stripe subscription is missing plan_id metadata and no known price mapping matched.');
-  }
-
-  const subscriptionStatus = mapStripeSubscriptionStatus(subscription.status);
-  const planId = subscriptionStatus === SUBSCRIPTION_STATUSES.CANCELED
-    ? PLAN_IDS.FREE
-    : rawPlanId;
-
-  const existingSnapshot = await entitlementRef(parentId).get();
-  const existingEntitlement = existingSnapshot.exists ? existingSnapshot.data() : {};
-  const nowTimestamp = Timestamp.now();
-  const billingState = buildEntitlementBillingState({
-    planId,
-    subscriptionStatus,
-    billingProvider: BILLING_PROVIDERS.STRIPE,
-    featureOverrides: existingEntitlement?.billing_state?.feature_overrides
-      || existingEntitlement?.feature_overrides
-      || {},
-    trialEndsAt: toTimestampOrNull(subscription.trial_end),
-    currentPeriodEnd: toTimestampOrNull(subscription.current_period_end),
-    updatedAt: nowTimestamp,
-  });
-  const {
-    entitlementDoc,
-    hasExpiredManualOverride,
-  } = buildEntitlementWriteForBillingSync({
-    parentId,
-    existingEntitlement,
-    billingState,
-    nowTimestamp,
-    nowMillis: nowTimestamp.toMillis(),
-  });
-  const afterEntitlement = {
-    ...existingEntitlement,
-    ...entitlementDoc,
-  };
-  const batch = db.batch();
-
-  batch.set(entitlementRef(parentId), entitlementDoc, { merge: true });
-  queueEntitlementAuditWrite(batch, {
-    parentId,
-    eventType: ENTITLEMENT_AUDIT_EVENT_TYPES.BILLING_WEBHOOK_SYNC,
-    reason: eventType,
-    before: existingSnapshot.exists ? existingEntitlement : null,
-    after: afterEntitlement,
-    createdAt: nowTimestamp,
-  });
-
-  if (hasExpiredManualOverride) {
-    queueEntitlementAuditWrite(batch, {
-      parentId,
-      eventType: ENTITLEMENT_AUDIT_EVENT_TYPES.OVERRIDE_EXPIRED,
-      reason: 'manual override expired during billing webhook sync',
-      before: existingSnapshot.exists ? existingEntitlement : null,
-      after: afterEntitlement,
-      createdAt: nowTimestamp,
+const coreBillingService = createCoreBillingService({
+  db, Timestamp, HttpsError, getStripe: getStripeClient,
+  getConfig: () => resolveCoreBillingConfig({ ...process.env, corePriceId: STRIPE_CORE_PRICE_ID.value() }),
+  buildBillingWrite: ({ parentId, existingEntitlement, subscription, nowTimestamp, nowMillis }) => {
+    const rawPlanId = subscription ? resolveStripePlanIdFromSubscription(subscription) : PLAN_IDS.FREE;
+    if (!rawPlanId || subscription && ![PLAN_IDS.CORE, PLAN_IDS.LOCKDOWN].includes(rawPlanId)) return null;
+    const subscriptionStatus = subscription ? mapStripeSubscriptionStatus(subscription.status) : SUBSCRIPTION_STATUSES.CANCELED;
+    return buildEntitlementWriteForBillingSync({
+      parentId, existingEntitlement, nowTimestamp, nowMillis,
+      billingState: buildEntitlementBillingState({
+        planId: subscriptionStatus === SUBSCRIPTION_STATUSES.CANCELED ? PLAN_IDS.FREE : rawPlanId,
+        subscriptionStatus, billingProvider: BILLING_PROVIDERS.STRIPE,
+        featureOverrides: existingEntitlement?.billing_state?.feature_overrides || existingEntitlement?.feature_overrides || {},
+        trialEndsAt: toTimestampOrNull(subscription?.trial_end),
+        currentPeriodEnd: toTimestampOrNull(subscription?.current_period_end), updatedAt: nowTimestamp,
+      }),
     });
-  }
-
-  await batch.commit();
-};
+  },
+  queueAudit: (transaction, { hasExpiredManualOverride, ...audit }) => {
+    queueEntitlementAuditWrite(transaction, { ...audit, eventType: ENTITLEMENT_AUDIT_EVENT_TYPES.BILLING_WEBHOOK_SYNC });
+    if (hasExpiredManualOverride) queueEntitlementAuditWrite(transaction, {
+      ...audit, eventType: ENTITLEMENT_AUDIT_EVENT_TYPES.OVERRIDE_EXPIRED,
+      reason: 'manual override expired during billing webhook sync',
+    });
+  },
+});
+const billingCallableOptions = { region: REGION, secrets: [STRIPE_SECRET_KEY, STRIPE_CORE_PRICE_ID] };
+export const createCoreCheckout = onCall(billingCallableOptions, (request) => coreBillingService.checkout({
+  parentId: ensureAuthenticated(request), payload: request.data,
+}));
+export const createBillingPortal = onCall(billingCallableOptions, (request) => coreBillingService.portal({
+  parentId: ensureAuthenticated(request), payload: request.data,
+}));
+export const getCoreBillingStatus = onCall(billingCallableOptions, (request) => coreBillingService.status({
+  parentId: ensureAuthenticated(request), payload: request.data,
+}));
 
 const routineRewardService = createRoutineRewardService({ db, Timestamp, HttpsError, resolveEntitlementRecord });
 const weeklyPlanningService = createWeeklyPlanningService({ db, Timestamp, HttpsError });
@@ -4993,6 +4895,8 @@ export const settleHouseholdHistory = onCall({ region: REGION }, async (request)
   routineRewardService.settleHistory({ parentId: ensureAuthenticated(request), payload: request.data })
 ));
 
+const quotaMutationService = createQuotaMutationService({ db, FieldValue, HttpsError, resolveEntitlementRecord });
+
 export const createStudent = onCall({ region: REGION }, async (request) => {
   const parentId = ensureAuthenticated(request);
   const name = trimString(request.data?.name);
@@ -5002,19 +4906,6 @@ export const createStudent = onCall({ region: REGION }, async (request) => {
   }
 
   const accessPin = validateAccessPin(request.data?.accessPin);
-  const entitlementState = await getAccountEntitlementState(parentId);
-  const currentStudentCount = await countStudentsForParent(parentId);
-
-  if (
-    entitlementState.limits.maxStudents != null &&
-    currentStudentCount >= entitlementState.limits.maxStudents
-  ) {
-    throw new HttpsError(
-      'resource-exhausted',
-      'This account has reached the current plan student limit.'
-    );
-  }
-
   const parentSettings = await loadParentSettings(parentId);
   const slug = buildStudentSlug(name);
   const studentDoc = {
@@ -5038,7 +4929,7 @@ export const createStudent = onCall({ region: REGION }, async (request) => {
     updated_at: FieldValue.serverTimestamp(),
   };
 
-  const createdRef = await db.collection(COLLECTIONS.STUDENTS).add(studentDoc);
+  const createdRef = await quotaMutationService.createStudent({ parentId, studentDoc });
 
   return {
     id: createdRef.id,
@@ -5071,21 +4962,6 @@ export const createSubject = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('invalid-argument', 'Block length must be an integer between 5 and 120 minutes.');
   }
 
-  const entitlementState = await getAccountEntitlementState(parentId);
-  const currentActiveSubjectCount = await countActiveSubjectsForParent(parentId);
-
-  if (
-    entitlementState.limits.maxActiveSubjects != null &&
-    currentActiveSubjectCount >= entitlementState.limits.maxActiveSubjects
-  ) {
-    throw new HttpsError(
-      'resource-exhausted',
-      'This account has reached the current plan active subject limit.'
-    );
-  }
-
-  await assertParentOwnsStudents(parentId, studentIds);
-
   const subjectDoc = {
     student_ids: Array.from(new Set(studentIds)),
     parent_id: parentId,
@@ -5104,12 +4980,19 @@ export const createSubject = onCall({ region: REGION }, async (request) => {
     updated_at: FieldValue.serverTimestamp(),
   };
 
-  const createdRef = await db.collection(COLLECTIONS.SUBJECTS).add(subjectDoc);
+  const createdRef = await quotaMutationService.createSubject({ parentId, subjectDoc });
 
   return {
     id: createdRef.id,
   };
 });
+
+export const reactivateSubject = onCall({ region: REGION }, async (request) => (
+  quotaMutationService.reactivateSubject({
+    parentId: ensureAuthenticated(request),
+    subjectId: request.data?.subject_id || '',
+  })
+));
 
 export const upsertChoreSettings = onCall({ region: REGION }, async (request) => {
   const parentId = ensureAuthenticated(request);
@@ -7006,48 +6889,32 @@ export const billingWebhook = onRequest({
   const webhookSecret = trimString(STRIPE_WEBHOOK_SECRET.value());
   const signature = request.get('stripe-signature');
 
-  if (!webhookSecret || !signature) {
-    response.status(500).send('Stripe webhook is not configured.');
+  if (!webhookSecret) {
+    response.status(503).send('Billing webhook is not configured.');
+    return;
+  }
+  if (!signature) {
+    response.status(400).send('Invalid billing webhook.');
     return;
   }
 
+  let event;
   try {
-    const stripe = getStripeClient();
-    const event = stripe.webhooks.constructEvent(request.rawBody, signature, webhookSecret);
-
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const session = event.data.object;
-        const subscriptionId = trimString(session.subscription);
-        if (!subscriptionId) {
-          throw new Error('checkout.session.completed is missing a subscription id.');
-        }
-
-        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-        const hydratedSubscription = {
-          ...subscription,
-          metadata: {
-            ...(session.metadata || {}),
-            ...(subscription.metadata || {}),
-          },
-          client_reference_id: session.client_reference_id || subscription.client_reference_id,
-        };
-        await syncEntitlementFromSubscription(stripe, hydratedSubscription, event.type);
-        break;
-      }
-      case 'customer.subscription.created':
-      case 'customer.subscription.updated':
-      case 'customer.subscription.deleted': {
-        await syncEntitlementFromSubscription(stripe, event.data.object, event.type);
-        break;
-      }
-      default:
-        break;
-    }
-
+    event = getStripeClient().webhooks.constructEvent(request.rawBody, signature, webhookSecret);
+  } catch {
+    response.status(400).send('Invalid billing webhook.');
+    return;
+  }
+  try {
+    await coreBillingService.webhook(event);
     response.status(200).json({ received: true });
   } catch (error) {
-    console.error('Stripe entitlement webhook failed:', error);
-    response.status(400).send(error.message || 'Webhook processing failed.');
+    // A verified event with transient/provider/coordinator failure must be retried.
+    // Provider payloads and credentials never enter application logs/responses.
+    if (error instanceof HttpsError && error.code === 'failed-precondition') {
+      response.status(400).send('Billing webhook mode is not accepted.');
+      return;
+    }
+    response.status(503).send('Billing processing temporarily unavailable.');
   }
 });

@@ -161,7 +161,7 @@ export const useEntitlements = ({
       canPairDevices: isEnabled,
       upgradeCopy: getLockdownUpgradeCopy(entitlementState.planId),
       lockedDescription: 'Lockdown pairing, student-bound policy visibility, and off-hours setup stay visible but read-only until the Lockdown plan is active.',
-      restoreAccessCopy: 'Upgrade back to Lockdown to restore student-bound pairing and Lockdown management without losing saved setup.',
+      restoreAccessCopy: 'Existing Lockdown access and saved setup are preserved. New Lockdown purchases are coming soon.',
       savedPolicyCopy: 'Saved lockdown setup stays visible on downgrade and becomes manageable again after re-upgrade.',
     };
   }, [entitlementState.planId, featureAccess]);
