@@ -55,3 +55,9 @@ Read-only recheck confirmed the existing deployed secret remains test-mode, Core
 Safe actual-provider session QA used only a disposable emulator parent and test customer: two Checkout sessions were opened/expired, open-session retries reused the exact hosted session and customer, and a portal session was created. No payment or subscription was created. QA customer was deleted and sessions closed. Stripe made the first test portal configuration the default and refused deactivation. It remains clearly labeled QA with invoice history only; subscription switching/cancellation and payment changes are disabled, and no app configuration references it. Own IDs remain only in the ignored cleanup receipt.
 
 Cloudflare authentication recheck reports an expired token that cannot refresh noninteractively. Local `npx wrangler login` was requested again. Production settings, rollback IDs and actual deployment acceptance remain pending access.
+
+## Checkpoint acceptance update (2026-10-16)
+
+Implementation checkpoint`e1b5ed2` has green lint/build and complete emulator/browser CI run`38846955531`, including all36 browser cases in one clean run and generated report PDF artifacts. Successful Cloudflare preview: deployment`df61e06e-5538-4715-bd23-e6f0bac05250`, [preview](https://df61e06e.gridworkz-lms.pages.dev). This verifies the preview build only; it is not coordinated production acceptance.
+
+Cloudflare local authentication recheck still fails because the token is expired and cannot refresh noninteractively. No local environment/secret file has appeared in the checkout. Isolated provider lifecycle setup and physical print feedback remain unconfirmed; no payment or production release has occurred.

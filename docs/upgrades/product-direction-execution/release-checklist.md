@@ -13,7 +13,7 @@ Source phases 0–8 correspond to scaffold phases 1–9. Follow the detailed acc
 | Weekly Plan/timer contract | Locally verified; production pending | Phase05:60e9e8f; private drafts/defaults, atomic publish, timer/calendar/runtime coverage |
 | Trusted correction flow | Locally verified; production pending | Phase06:1bc5639; 12 rules, 14 school API, 27 browser checks; CI green and preview built |
 | Reports/Letter/A4 print | Locally verified; physical spot check and production pending | Phase07:32 browser checks,14 school APIs; eight synthetic PDFs visually inspected; three real reports read-only; physical result pending |
-| Core billing implementation | Locally verified; full CI and provider lifecycle pending |70 policy assertions,22 billing persistence;9 quota persistence,6 quota rules,4 quota HTTP; final independent review clean; browser35 plus focused bootstrap pass |
+| Core billing implementation | Implementation CI verified; provider lifecycle/live acceptance pending |70 policy assertions,22 billing persistence;9 quota persistence,6 quota rules,4 quota HTTP; final independent review clean; CI38846955531 passes36/36 browsers and all emulator checks |
 | Actual provider sessions | Passed in test mode; no subscription/payment | Checkout reuse/expiration and portal; QA customer deleted, default portal retained invoice-history-only |
 | Live Core purchase/manage/cancel | Pending isolated sandbox and live authorization | Full payment lifecycle remains unverified; billing-operations.md |
 | Both production hosts | Pending authentication | Cloudflare CLI sign-in required |

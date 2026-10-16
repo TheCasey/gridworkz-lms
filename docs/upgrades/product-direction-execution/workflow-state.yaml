@@ -15,7 +15,7 @@ last_completed_phase_slug: "phase-07-ship-simplified-reports-and-verified-print-
 last_completed_role: "tester"
 last_handoff_role: "tester"
 blocked_reason: "Local implementation verified; full provider lifecycle needs isolated Stripe sandbox, and production release needs renewed Cloudflare access. Owner setup requested; physical print/live purchase/observation gates remain open."
-last_updated: "2026-10-15"
+last_updated: "2026-10-16"
 active_phase_path: "docs/upgrades/product-direction-execution/phases/phase-08-ship-live-core-billing-and-consistent-product-copy/phase.md"
 active_run_log_path: "docs/upgrades/product-direction-execution/phases/phase-08-ship-live-core-billing-and-consistent-product-copy/run-log.md"
 prompt_policy:
@@ -162,10 +162,10 @@ routine_interface_acceptance: "locally verified 2026-10-13;166 backend+19 view a
 
 weekly_planning_acceptance: "locally verified 2026-10-14; calendars/identities/readers,8 rules,4 compatibility,13 routine,8 planning and20 browser checks pass; mobile drawer/keyboard focused follow-up; deployment pending"
 
-last_checkpoint_commit: "07c7038"
+last_checkpoint_commit: "e1b5ed2"
 
 school_authority_acceptance: "locally verified 2026-10-15;12 rules,4 compatibility,13 routine,8 planning,14 school API and26 browser cases plus1 mobile keyboard case pass; independent review findings repaired; production pending"
 
 report_presentation_acceptance: "locally verified 2026-10-15;14 school APIs and32 browser cases pass,8 Letter/A4 PDFs visually inspected,3 real reports read-only; owner physical spot check and production pending"
 
-billing_implementation_acceptance: "locally verified 2026-10-15:70 policy,22 persisted billing,4 billing HTTP,9 quota persistence,6 quota rules,4 quota HTTP; full runtime API/rules passes.35 browser pass plus unchanged focused bootstrap pass; clean CI pending. Actual test-mode provider sessions/expiration pass, no payment/subscription. Live Phase8 acceptance pending."
+billing_implementation_acceptance: "locally verified 2026-10-15:70 policy,22 persisted billing,4 billing HTTP,9 quota persistence,6 quota rules,4 quota HTTP; full runtime API/rules passes.Clean CI run38846955531 passes all36 browsers, all emulator checks and PDF generation; lint/build and Cloudflare preview green. Actual test-mode provider sessions/expiration pass, no payment/subscription. Live Phase8 acceptance pending."
